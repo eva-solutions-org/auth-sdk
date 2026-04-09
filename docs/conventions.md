@@ -81,29 +81,7 @@ tests/
 
 ---
 
-## Dependencies
+## Dependencies y build
 
-| Dependencia | Uso |
-|-------------|-----|
-| `jose` | JWT verification, JWKS |
-| `bowser` | User-Agent parsing |
-
-### Peer dependencies (opcionales)
-
-| Peer | Versión | Requerida para |
-|------|---------|----------------|
-| `hono` | >=4 | `@eva/auth-sdk/hono` |
-| `react` | >=18 | `@eva/auth-sdk/react` |
-
-**Cero dependencias de Node.js** — funciona en Edge runtime.
-
----
-
-## Build
-
-- **Tool**: tsup
-- **Output**: ESM + CJS con declarations (`.d.ts`)
-- **Target**: ES2022
-- **Entry points**: 4 (`index`, `hono`, `react`, `generic`)
-- **External**: hono, react, react-dom
-- **Build-time config**: `EVA_BUILD_ENV` controla constantes horneadas vía `tsup define` (URL del Auth Service, entorno)
+→ Stack y dependencias: [architecture.md](architecture.md#stack-técnico)
+→ Build scripts y modelo build-time: [configuration.md](configuration.md)

@@ -95,38 +95,9 @@ Esto es opcional — el flujo normal no lo requiere.
 
 ---
 
-## Cookie Secure flag
+## Cookies, JWKS Cache y seguridad
 
-Se decide por el entorno horneado en build-time:
-
-| Entorno (build-time) | Cookie Secure |
-|-----------------------|---------------|
-| `local` | `false` |
-| `development` | `true` |
-| `production` | `true` |
-
----
-
-## Cookies
-
-| Cookie | Max-Age | HttpOnly | Secure | SameSite | Path |
-|--------|---------|----------|--------|----------|------|
-| `eva_access_token` | 900 (15 min) | Sí | Sí* | Lax | `/` |
-| `eva_refresh_token` | 2592000 (30 días) | Sí | Sí* | Lax | `/` |
-
-\* `Secure=false` solo cuando el SDK se construyó con `EVA_BUILD_ENV=local`.
-
----
-
-## JWKS Cache
-
-| Parámetro | Valor |
-|-----------|-------|
-| TTL normal | 24 horas |
-| Max TTL (si fetch falla) | 25 horas |
-| Método de revalidación | ETag / HTTP 304 |
-
-Si el cache supera las 25 horas sin actualización exitosa, la verificación de JWT se rechaza.
+→ Ver [security.md](security.md) para configuración completa de cookies (flags, TTLs, Secure por entorno), JWKS cache y modelo de seguridad.
 
 ---
 

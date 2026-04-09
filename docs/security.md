@@ -1,22 +1,18 @@
 # Modelo de seguridad
 
-## Cookies HttpOnly
+## Cookies
 
-Tokens **NUNCA** accesibles por JavaScript en el frontend. Ambas cookies (`eva_access_token`, `eva_refresh_token`) tienen el flag `HttpOnly`.
+| Cookie | Max-Age | HttpOnly | Secure | SameSite | Path |
+|--------|---------|----------|--------|----------|------|
+| `eva_access_token` | 900 (15 min) | Sí | Sí* | Lax | `/` |
+| `eva_refresh_token` | 2592000 (30 días) | Sí | Sí* | Lax | `/` |
 
----
+\* `Secure=false` solo cuando `EVA_BUILD_ENV=local`. En `development` es `true` — se espera HTTPS. → [ADR-002, ADR-007](decisions.md)
 
-## Cookie Secure
-
-`Secure=true` siempre, excepto cuando el SDK se construyó con `EVA_BUILD_ENV=local`.
-
-En `development` el flag es `true` — se espera HTTPS incluso en desarrollo. Ver [decisions.md](decisions.md).
-
----
-
-## SameSite=Lax
-
-Protección parcial contra CSRF. Requests `POST` desde sitios externos se bloquean. Las cookies solo se envían en navegación directa (top-level) y requests same-site.
+- Tokens **nunca** accesibles por JavaScript (HttpOnly)
+- `SameSite=Lax`: POST desde sitios externos bloqueados
+- Valores decodificados con `decodeURIComponent()` en parsing
+- Cookies se limpian **solo después de confirmar éxito** en el Auth Service
 
 ---
 
@@ -35,7 +31,7 @@ Claims validados:
 
 ---
 
-## JWKS Auto-refresh
+## JWKS Cache
 
 | Parámetro | Valor |
 |-----------|-------|
@@ -43,76 +39,52 @@ Claims validados:
 | Max TTL (fallback) | 25 horas |
 | Revalidación | ETag / HTTP 304 |
 
-Si el cache supera 25 horas sin actualización exitosa, la verificación se **rechaza**. No se usa una key potencialmente revocada.
+Si el cache supera 25 horas sin actualización exitosa → **verificación rechazada**. No se usa key potencialmente revocada. → [ADR-005](decisions.md)
 
 ---
 
-## Token rotation y deduplicación
+## Deduplicación de requests
 
-El middleware deduplica refresh requests concurrentes usando un **`Map<string, Promise>` a nivel de módulo**, keyed por `refreshToken`. Si múltiples requests llegan con un access token expirado simultáneamente, solo una ejecuta el refresh contra el Auth Service. Las demás esperan el resultado de la primera.
+### Token refresh
 
-Este patrón se aplica en `hono/middleware.ts` y `generic/verify.ts`.
+`Map<string, Promise>` a nivel de módulo, keyed por `refreshToken`. Si múltiples requests llegan con access token expirado, solo una ejecuta el refresh. Las demás esperan el resultado. → [ADR-004](decisions.md)
 
-Esto evita race conditions donde múltiples requests intentan usar el mismo refresh token.
+Aplica en: `hono/middleware.ts`, `generic/verify.ts`.
+
+### JWKS fetch
+
+Variable `pendingFetch` a nivel de módulo en `jwks.ts`. Múltiples verificaciones simultáneas → solo un fetch.
 
 ---
 
 ## Request timeouts
-
-Todas las llamadas de red del SDK tienen timeouts explícitos vía `AbortSignal.timeout()`:
 
 | Operación | Timeout |
 |-----------|--------|
 | HTTP Client (Auth Service) | 10 segundos |
 | JWKS fetch | 5 segundos |
 
----
-
-## JWKS fetch dedup
-
-El módulo `jwks.ts` deduplica fetches concurrentes del JWKS usando una variable `pendingFetch` a nivel de módulo. Si múltiples verificaciones necesitan refrescar el JWKS simultáneamente, solo se ejecuta un fetch.
+Implementados con `AbortSignal.timeout()`.
 
 ---
 
-## Cookie parsing seguro
+## Validación
 
-Los valores de cookies se decodifican con `decodeURIComponent()` durante el parsing para manejar correctamente tokens con caracteres especiales codificados.
-
----
-
-## Safe status cast en auth-routes
-
-El sub-router de auth usa un `Set` de status codes HTTP conocidos. Si el Auth Service responde con un status inesperado, se usa `500` como fallback en lugar de hacer un cast directo (`as ErrorStatus`).
-
----
-
-## Input validation
-
+### Input
 - JSON parsing envuelto en try/catch
-- Validación de tipo y formato para `phone` y `code`
-- Body de `PATCH /me` validado como objeto
-- User-Agent truncado a **500 caracteres** antes de enviar al Auth Service
+- `phone` y `code`: validación de tipo y formato
+- Body de `PATCH /me`: validado como objeto
+- User-Agent truncado a **500 caracteres**
+
+### Response
+- Estructura `{ data: T }` del Auth Service validada en runtime
+
+### Safe status cast
+Auth-routes usa `Set` de status codes HTTP conocidos. Status inesperado → fallback `500`.
 
 ---
 
-## Cookie lifecycle
+## Error handling
 
-Las cookies se limpian **SOLO después de confirmar éxito** de la operación en el Auth Service. Nunca se borran preventivamente.
-
----
-
-## Response validation
-
-La estructura `{ data: T }` del Auth Service se valida en runtime antes de usar el contenido.
-
----
-
-## Rate limiting
-
-HTTP 429 del Auth Service pasa **transparente** al frontend. El SDK no implementa rate limiting propio.
-
----
-
-## Error messages
-
-Los mensajes de error del Auth Service se propagan **tal cual** al frontend. Decisión intencional para preservar la UX del consumidor. Ver [decisions.md](decisions.md).
+- Errores del Auth Service se propagan **sin sanitizar** al frontend → [ADR-001](decisions.md)
+- HTTP 429 (rate limiting) pasa **transparente** — el SDK no implementa rate limiting propio

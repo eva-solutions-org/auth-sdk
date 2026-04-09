@@ -30,6 +30,8 @@ Comunicación con el navegador del usuario:
 | `eva_access_token` | JWT ES256 | HttpOnly, Secure, SameSite=Lax, Path=/ |
 | `eva_refresh_token` | `session_id:token` | HttpOnly, Secure, SameSite=Lax, Path=/ |
 
+→ TTLs y detalles de flags: [security.md](security.md)
+
 ---
 
 ## Flujo completo
@@ -122,6 +124,5 @@ src/
 ## Runtime y build
 
 - **Runtime**: Edge + Node.js (cero dependencias de Node.js)
-- **Build**: tsup (ESM + CJS), target ES2022
-- **Build-time config**: `EVA_BUILD_ENV` controla qué constantes se hornean (`AUTH_URL`, `ENV`) vía `tsup define`
-- **Declarations**: `.d.ts` generados automáticamente
+- **Build**: tsup (ESM + CJS), target ES2022, declarations `.d.ts`
+- **Build-time config**: → Ver [configuration.md](configuration.md)

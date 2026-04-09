@@ -83,8 +83,6 @@ Retorna `void`.
 
 ---
 
----
-
 ### Types exportados
 
 | Type | Descripción |
