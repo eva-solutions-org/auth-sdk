@@ -80,7 +80,7 @@ src/
 │
 ├── hono/
 │   ├── middleware.ts   # evaAuth() middleware (usa refresh-dedup)
-│   ├── auth-routes.ts  # evaAuthRoutes() sub-router (safe status cast con Set)
+│   ├── auth-routes.ts  # evaAuthRoutes() sub-router (safe status cast con Set, usa refresh-dedup)
 │   ├── device-info.ts  # parseDeviceInfo con bowser
 │   ├── helpers.ts      # getEvaPayload, getSessionId
 │   └── index.ts        # Barrel file

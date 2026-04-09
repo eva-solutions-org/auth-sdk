@@ -22,18 +22,20 @@ export const useAuthData = <T>(path: string): AuthDataResult<T> => {
     setIsLoading(true)
     setError(null)
 
-    const result = await authFetch<T>(`${basePath}${path}`, { signal })
-    if (signal?.aborted) return
+    try {
+      const result = await authFetch<T>(`${basePath}${path}`, { signal })
+      if (signal?.aborted) return
 
-    if (result.ok) {
-      setData(result.data)
-      setError(null)
-    } else {
-      setData(null)
-      setError({ error: result.error, status: result.status })
+      if (result.ok) {
+        setData(result.data)
+        setError(null)
+      } else {
+        setData(null)
+        setError({ error: result.error, status: result.status })
+      }
+    } finally {
+      if (!signal?.aborted) setIsLoading(false)
     }
-
-    setIsLoading(false)
   }, [basePath, path])
 
   useEffect(() => {

@@ -89,6 +89,12 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthCh
           return
         }
 
+        // Errores de cliente (4xx) no son recuperables con retry
+        if (result.status >= 400 && result.status < 500) {
+          setState({ isAuthenticated: false, isLoading: false, error: { error: result.error, status: result.status } })
+          return
+        }
+
         if (attempt < RETRY_DELAYS.length) {
           await new Promise<void>(r => setTimeout(r, RETRY_DELAYS[attempt]))
           if (controller.signal.aborted) return

@@ -379,3 +379,7 @@ Timeout de **30 segundos**. Distingue errores:
 | `'Tiempo de espera agotado'` | `0` | Timeout de 30s excedido |
 | `'Solicitud cancelada'` | `0` | Abortada externamente (ej: unmount) |
 | `'Error de red'` | `0` | Otro error de conexión |
+
+**Compatibilidad:** Usa `AbortSignal.any()` internamente, que requiere Chrome 116+, Safari 17.4+, Firefox 124+.
+
+**Nota sobre tipado:** La respuesta del Auth Service se valida estructuralmente (`{ data: T }`), pero el contenido de `data` se castea como `T` sin un schema Zod específico. Esto asume confianza en el backend. Si el consumidor necesita validación estricta, debe aplicar su propio schema sobre `result.data`.

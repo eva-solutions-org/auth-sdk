@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { createHttpClient } from '../http-client'
 import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../cookies'
+import { deduplicateRefresh } from '../refresh-dedup'
 import { parseDeviceInfo } from './device-info'
 
 const GetCodeSchema = z.object({
@@ -68,7 +69,7 @@ export function evaAuthRoutes() {
     const cookieHeader = c.req.header('cookie') || null
     const { refreshToken } = readTokensFromCookies(cookieHeader)
     if (!refreshToken) return errorResponse(c, 'Token de refresco no encontrado', 401)
-    const result = await client.refresh({ refreshToken })
+    const result = await deduplicateRefresh(refreshToken, () => client.refresh({ refreshToken }))
     if (!result.ok) return errorResponse(c, result.error, result.status)
     if (result.data.tokens) {
       const cookieHeaders = setTokenCookies(result.data.tokens)
