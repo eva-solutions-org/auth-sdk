@@ -20,7 +20,7 @@ type Result<T> =
 
 ### Excepciones a la regla
 
-Los helpers de Hono (`getEvaPayload`, `getEvaUser`, `getSessionId`) **sí lanzan** si el middleware `evaAuth()` no está aplicado. Esto es un error de programación, no de negocio.
+Los helpers de Hono (`getEvaPayload`, `getSessionId`) **sí lanzan** si el middleware `evaAuth()` no está aplicado. Esto es un error de programación, no de negocio.
 
 ---
 

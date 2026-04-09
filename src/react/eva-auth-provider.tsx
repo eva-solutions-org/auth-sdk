@@ -98,7 +98,7 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthCh
       setState({
         isAuthenticated: false,
         isLoading: false,
-        error: { error: 'Failed to check session after retries', status: 0 },
+        error: { error: 'Fallo al verificar sesión después de reintentos', status: 0 },
       })
     }
 

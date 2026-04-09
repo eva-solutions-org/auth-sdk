@@ -64,12 +64,12 @@ const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<R
 const getCode = (params: { phone: string }): Promise<Result<{ message: string }>> =>
   authFetch('login/get-code', { method: 'POST', body: { phone: params.phone } })
 
-const login = (params: { phone: string; code: string } & DeviceInfo): Promise<Result<{ user: { id: string }; tokens: TokenPair }>> => {
+const login = (params: { phone: string; code: string } & DeviceInfo): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> => {
   const { phone, code, deviceType, os, browser, userAgent } = params
   return authFetch('login', { method: 'POST', body: { phone, code, deviceType, os, browser, userAgent } })
 }
 
-const refresh = (params: { refreshToken: string }): Promise<Result<{ user: { id: string }; tokens: TokenPair }>> =>
+const refresh = (params: { refreshToken: string }): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> =>
   authFetch('login/refresh', { method: 'POST', refreshToken: params.refreshToken })
 
 const logout = (params: { refreshToken: string }): Promise<Result<{ message: string }>> =>

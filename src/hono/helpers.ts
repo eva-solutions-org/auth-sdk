@@ -7,11 +7,6 @@ export function getEvaPayload(c: Context): EvaTokenPayload {
   return payload
 }
 
-/** @deprecated Usa getEvaPayload() en su lugar. Retorna EvaTokenPayload, no EvaUser. */
-export function getEvaUser(c: Context): EvaTokenPayload {
-  return getEvaPayload(c)
-}
-
 export function getSessionId(c: Context): string {
   return getEvaPayload(c).sessionId
 }

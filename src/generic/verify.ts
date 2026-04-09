@@ -9,7 +9,7 @@ type VerifyResult = {
 }
 
 const client = createHttpClient()
-const pendingRefreshes = new Map<string, Promise<Result<{ user: { id: string }; tokens: TokenPair }>>>()
+const pendingRefreshes = new Map<string, Promise<Result<{ user: { id: string }; tokens?: TokenPair }>>>()
 
 export async function verifyRequest(request: Request): Promise<Result<VerifyResult>> {
   const cookieHeader = request.headers.get('cookie')

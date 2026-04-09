@@ -4,7 +4,7 @@ import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../co
 import { createHttpClient } from '../http-client'
 import type { Result, TokenPair } from '../types'
 
-const pendingRefreshes = new Map<string, Promise<Result<{ user: { id: string }; tokens: TokenPair }>>>()
+const pendingRefreshes = new Map<string, Promise<Result<{ user: { id: string }; tokens?: TokenPair }>>>()
 
 export function evaAuth(): MiddlewareHandler {
   const client = createHttpClient()

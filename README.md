@@ -152,7 +152,6 @@ app.route('/auth', evaAuthRoutes())
 | Función | Retorna | Descripción |
 |---------|---------|-------------|
 | `getEvaPayload(c)` | `EvaTokenPayload` | Payload JWT del middleware |
-| `getEvaUser(c)` | `EvaTokenPayload` | Alias de `getEvaPayload` |
 | `getSessionId(c)` | `string` | ID de la sesión actual |
 | `parseDeviceInfo(request)` | `DeviceInfo` | Parsea User-Agent (dispositivo, OS, browser) |
 

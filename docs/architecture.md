@@ -81,7 +81,7 @@ src/
 │   ├── middleware.ts   # evaAuth() middleware (dedup refresh con Map por refreshToken)
 │   ├── auth-routes.ts  # evaAuthRoutes() sub-router (safe status cast con Set)
 │   ├── device-info.ts  # parseDeviceInfo con bowser
-│   ├── helpers.ts      # getEvaPayload, getEvaUser (@deprecated), getSessionId
+│   ├── helpers.ts      # getEvaPayload, getSessionId
 │   └── index.ts        # Barrel file
 │
 ├── generic/

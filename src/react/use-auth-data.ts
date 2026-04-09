@@ -16,7 +16,7 @@ export const useAuthData = <T>(path: string): AuthDataResult<T> => {
   const [data, setData] = useState<T | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<EvaAuthError | null>(null)
-  const refetchControllerRef = useRef<AbortController | null>(null)
+  const controllerRef = useRef<AbortController | null>(null)
 
   const fetchData = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true)
@@ -44,15 +44,17 @@ export const useAuthData = <T>(path: string): AuthDataResult<T> => {
       return
     }
 
+    controllerRef.current?.abort()
     const controller = new AbortController()
+    controllerRef.current = controller
     fetchData(controller.signal)
     return () => controller.abort()
   }, [isAuthenticated, fetchData])
 
   const refetch = useCallback(() => {
-    refetchControllerRef.current?.abort()
+    controllerRef.current?.abort()
     const controller = new AbortController()
-    refetchControllerRef.current = controller
+    controllerRef.current = controller
     fetchData(controller.signal)
   }, [fetchData])
 

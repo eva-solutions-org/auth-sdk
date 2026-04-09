@@ -11,7 +11,7 @@
 
 - Tokens **nunca** accesibles por JavaScript (HttpOnly)
 - `SameSite=Lax`: POST desde sitios externos bloqueados
-- Valores decodificados con `decodeURIComponent()` en parsing
+- Valores decodificados con `decodeURIComponent()` en parsing, con fallback al valor raw si el encoding es inválido (previene crasheo por cookies malformadas)
 - Cookies se limpian **solo después de confirmar éxito** en el Auth Service
 
 ---

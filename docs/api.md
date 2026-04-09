@@ -172,20 +172,6 @@ Retorna `EvaTokenPayload`. Lanza error si el middleware no está aplicado.
 
 ---
 
-### `getEvaUser(c)`
-
-> ⚠️ **DEPRECATED** — Usa `getEvaPayload()` en su lugar.
-
-Alias de `getEvaPayload`.
-
-```ts
-const user = getEvaUser(c)
-```
-
-Retorna `EvaTokenPayload`.
-
----
-
 ### `getSessionId(c)`
 
 Extrae el session ID del context.
@@ -236,11 +222,11 @@ Retorna `Promise<Result<{ payload, newCookies? }>>`.
 Genera headers `Set-Cookie` para setear ambos tokens como cookies.
 
 ```ts
-const { setCookieHeaders } = setTokenCookies(tokens)
-// setCookieHeaders: string[]
+const headers = setTokenCookies(tokens)
+// headers: string[]
 ```
 
-Retorna `{ setCookieHeaders: string[] }`.
+Retorna `string[]`.
 
 ---
 
@@ -249,10 +235,10 @@ Retorna `{ setCookieHeaders: string[] }`.
 Genera headers `Set-Cookie` para limpiar las cookies de auth.
 
 ```ts
-const { setCookieHeaders } = clearTokenCookies()
+const headers = clearTokenCookies()
 ```
 
-Retorna `{ setCookieHeaders: string[] }`.
+Retorna `string[]`.
 
 ---
 

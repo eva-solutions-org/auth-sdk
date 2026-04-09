@@ -48,7 +48,8 @@ export function readTokensFromCookies(cookieHeader: string | null): Partial<Toke
   const cookies = Object.fromEntries(
     cookieHeader.split(';').map(c => {
       const [k, ...v] = c.trim().split('=')
-      return [k, decodeURIComponent(v.join('='))]
+      const raw = v.join('=')
+      try { return [k, decodeURIComponent(raw)] } catch { return [k, raw] }
     })
   )
 
