@@ -35,7 +35,10 @@ export function evaAuthRoutes() {
 
   // POST /get-code
   app.post('/get-code', async (c) => {
-    const raw = await c.req.json().catch(() => null)
+    let raw: unknown
+    try { raw = await c.req.json() } catch {
+      return errorResponse(c, 'JSON inválido en el body', 400)
+    }
     const parsed = GetCodeSchema.safeParse(raw)
     if (!parsed.success) {
       return errorResponse(c, 'Teléfono inválido', 400)
@@ -47,7 +50,10 @@ export function evaAuthRoutes() {
 
   // POST /login — agrega device info server-side
   app.post('/login', async (c) => {
-    const raw = await c.req.json().catch(() => null)
+    let raw: unknown
+    try { raw = await c.req.json() } catch {
+      return errorResponse(c, 'JSON inválido en el body', 400)
+    }
     const parsed = LoginSchema.safeParse(raw)
     if (!parsed.success) {
       return errorResponse(c, 'Teléfono o código inválido', 400)
@@ -109,7 +115,10 @@ export function evaAuthRoutes() {
     const cookieHeader = c.req.header('cookie') || null
     const { accessToken } = readTokensFromCookies(cookieHeader)
     if (!accessToken) return errorResponse(c, 'Token de acceso no encontrado', 401)
-    const raw = await c.req.json().catch(() => null)
+    let raw: unknown
+    try { raw = await c.req.json() } catch {
+      return errorResponse(c, 'JSON inválido en el body', 400)
+    }
     const parsed = UpdateUserSchema.safeParse(raw)
     if (!parsed.success) {
       return errorResponse(c, 'Cuerpo de solicitud inválido', 400)

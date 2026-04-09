@@ -71,6 +71,7 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthCh
     const controller = new AbortController()
 
     const checkSession = async () => {
+      let lastError = 'Error de red'
       for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
         const result = await authFetch<unknown>(`${urlBase}/refresh`, {
           method: 'POST',
@@ -95,6 +96,8 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthCh
           return
         }
 
+        lastError = result.error
+
         if (attempt < RETRY_DELAYS.length) {
           await new Promise<void>(r => setTimeout(r, RETRY_DELAYS[attempt]))
           if (controller.signal.aborted) return
@@ -104,7 +107,7 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthCh
       setState({
         isAuthenticated: false,
         isLoading: false,
-        error: { error: 'Fallo al verificar sesión después de reintentos', status: 0 },
+        error: { error: lastError, status: 0 },
       })
     }
 

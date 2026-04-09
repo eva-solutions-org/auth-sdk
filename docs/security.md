@@ -71,9 +71,9 @@ Implementados con `AbortSignal.timeout()`.
 ## Validación
 
 ### Input
-- JSON parsing envuelto en try/catch
-- `phone` y `code`: validación de tipo y formato
-- Body de `PATCH /me`: validado como objeto
+- JSON parsing con error diferenciado (`"JSON inválido en el body"`) antes de la validación de schema
+- `phone` y `code`: validación de tipo y formato (schema Zod)
+- Body de `PATCH /me`: validado como objeto no vacío
 - User-Agent truncado a **500 caracteres**
 
 ### Response

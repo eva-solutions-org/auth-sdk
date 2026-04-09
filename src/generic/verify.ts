@@ -38,7 +38,7 @@ export async function verifyRequest(request: Request): Promise<Result<VerifyResu
   const verifyResult = await verifyAccessToken(tokens.accessToken)
 
   if (!verifyResult.ok) {
-    return { ok: false, error: verifyResult.error, status: 401 }
+    return { ok: false, error: `Verificación fallida tras refresh: ${verifyResult.error}`, status: 401 }
   }
 
   return {
