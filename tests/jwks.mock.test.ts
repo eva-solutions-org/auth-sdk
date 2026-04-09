@@ -8,6 +8,10 @@ vi.mock('../src/constants', () => ({
   getAuthServiceUrl: vi.fn().mockReturnValue('http://auth.test'),
 }))
 
+class MockCryptoKey {}
+vi.stubGlobal('CryptoKey', MockCryptoKey)
+const mockKey = new MockCryptoKey() as unknown as CryptoKey
+
 import { fetchJwks, getPublicKey, clearJwksCache } from '../src/jwks'
 import { importJWK } from 'jose'
 
@@ -35,7 +39,7 @@ function mockFetchResponse(opts: {
 beforeEach(() => {
   vi.clearAllMocks()
   clearJwksCache()
-  importJWKMock.mockResolvedValue('mock-crypto-key' as any)
+  importJWKMock.mockResolvedValue(mockKey)
 })
 
 describe('fetchJwks', () => {
@@ -101,7 +105,7 @@ describe('fetchJwks', () => {
   it('lanza error si fetch falla y no hay cache', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')))
 
-    await expect(fetchJwks()).rejects.toThrow('Failed to fetch JWKS and no cached key available')
+    await expect(fetchJwks()).rejects.toThrow('Error al obtener JWKS y no hay clave en caché')
   })
 
   it('usa cache si fetch falla pero hay key cacheada (no lanza)', async () => {
@@ -119,7 +123,7 @@ describe('fetchJwks', () => {
   it('lanza error si respuesta no-ok y no hay cache', async () => {
     vi.stubGlobal('fetch', mockFetchResponse({ ok: false, status: 500 }))
 
-    await expect(fetchJwks()).rejects.toThrow('JWKS fetch failed with status 500')
+    await expect(fetchJwks()).rejects.toThrow('Error al obtener JWKS con estado 500')
   })
 
   it('usa cache si respuesta no-ok pero hay key cacheada', async () => {
@@ -137,7 +141,7 @@ describe('fetchJwks', () => {
   it('lanza error si JWKS no contiene keys', async () => {
     vi.stubGlobal('fetch', mockFetchResponse({ json: { keys: [] } }))
 
-    await expect(fetchJwks()).rejects.toThrow('JWKS response contains no keys')
+    await expect(fetchJwks()).rejects.toThrow('Formato de respuesta JWKS inválido')
   })
 
   it('importa correctamente el primer JWK y actualiza cache', async () => {
@@ -147,7 +151,7 @@ describe('fetchJwks', () => {
 
     expect(importJWKMock).toHaveBeenCalledWith(fakeJwk, 'ES256')
     const key = await getPublicKey()
-    expect(key).toBe('mock-crypto-key')
+    expect(key).toBe(mockKey)
   })
 })
 
@@ -158,7 +162,7 @@ describe('getPublicKey', () => {
     const key = await getPublicKey()
 
     expect(fetch).toHaveBeenCalled()
-    expect(key).toBe('mock-crypto-key')
+    expect(key).toBe(mockKey)
   })
 
   it('retorna key cacheada cuando no está stale', async () => {
@@ -172,7 +176,7 @@ describe('getPublicKey', () => {
     const key = await getPublicKey()
 
     expect(fetch).not.toHaveBeenCalled()
-    expect(key).toBe('mock-crypto-key')
+    expect(key).toBe(mockKey)
   })
 
   it('lanza error si después de fetchJwks no hay key', async () => {

@@ -1,7 +1,13 @@
 import { jwtVerify } from 'jose'
+import { z } from 'zod'
 import { getPublicKey } from './jwks'
 import { JWT_CONFIG } from './constants'
 import type { EvaTokenPayload, Result } from './types'
+
+const JwtPayloadSchema = z.object({
+  sub: z.string(),
+  sessionId: z.string(),
+})
 
 export async function verifyAccessToken(token: string): Promise<Result<EvaTokenPayload>> {
   try {
@@ -11,16 +17,15 @@ export async function verifyAccessToken(token: string): Promise<Result<EvaTokenP
       audience: JWT_CONFIG.AUDIENCE,
     })
 
-    const id = payload.sub
-    const sessionId = payload.sessionId as string | undefined
+    const parsed = JwtPayloadSchema.safeParse(payload)
 
-    if (!id || !sessionId) {
-      return { ok: false, error: 'Invalid token payload', status: 401 }
+    if (!parsed.success) {
+      return { ok: false, error: 'Payload del token inválido', status: 401 }
     }
 
-    return { ok: true, data: { id, sessionId } }
+    return { ok: true, data: { id: parsed.data.sub, sessionId: parsed.data.sessionId } }
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Token verification failed'
+    const message = err instanceof Error ? err.message : 'Verificación de token fallida'
     return { ok: false, error: message, status: 401 }
   }
 }

@@ -3,7 +3,6 @@ import { Hono } from 'hono'
 import { evaAuth } from '../src/hono/middleware'
 import { verifyAccessToken } from '../src/jwt'
 import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
-import { createHttpClient } from '../src/http-client'
 
 vi.mock('../src/jwt', () => ({
   verifyAccessToken: vi.fn(),

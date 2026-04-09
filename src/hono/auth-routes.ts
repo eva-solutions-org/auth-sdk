@@ -1,7 +1,19 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 import { createHttpClient } from '../http-client'
 import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../cookies'
 import { parseDeviceInfo } from './device-info'
+
+const GetCodeSchema = z.object({
+  phone: z.string().min(1),
+})
+
+const LoginSchema = z.object({
+  phone: z.string().min(1),
+  code: z.string().min(1),
+})
+
+const UpdateUserSchema = z.record(z.string(), z.unknown())
 
 type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502 | 503
 
@@ -14,17 +26,25 @@ export function evaAuthRoutes() {
 
   // POST /get-code
   app.post('/get-code', async (c) => {
-    const body = await c.req.json<{ phone: string }>()
-    const result = await client.getCode(body)
+    const raw = await c.req.json().catch(() => null)
+    const parsed = GetCodeSchema.safeParse(raw)
+    if (!parsed.success) {
+      return errorResponse(c, 'Teléfono inválido', 400)
+    }
+    const result = await client.getCode(parsed.data)
     if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
   })
 
   // POST /login — agrega device info server-side
   app.post('/login', async (c) => {
-    const body = await c.req.json<{ phone: string; code: string }>()
+    const raw = await c.req.json().catch(() => null)
+    const parsed = LoginSchema.safeParse(raw)
+    if (!parsed.success) {
+      return errorResponse(c, 'Teléfono o código inválido', 400)
+    }
     const deviceInfo = parseDeviceInfo(c.req.raw)
-    const result = await client.login({ ...body, ...deviceInfo })
+    const result = await client.login({ ...parsed.data, ...deviceInfo })
     if (!result.ok) return errorResponse(c, result.error, result.status)
     if (result.data.tokens) {
       const cookieHeaders = setTokenCookies(result.data.tokens)
@@ -39,7 +59,7 @@ export function evaAuthRoutes() {
   app.post('/refresh', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { refreshToken } = readTokensFromCookies(cookieHeader)
-    if (!refreshToken) return errorResponse(c, 'No refresh token', 401)
+    if (!refreshToken) return errorResponse(c, 'Token de refresco no encontrado', 401)
     const result = await client.refresh({ refreshToken })
     if (!result.ok) return errorResponse(c, result.error, result.status)
     if (result.data.tokens) {
@@ -55,13 +75,13 @@ export function evaAuthRoutes() {
   app.post('/logout', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { refreshToken } = readTokensFromCookies(cookieHeader)
-    if (!refreshToken) return errorResponse(c, 'No refresh token', 401)
+    if (!refreshToken) return errorResponse(c, 'Token de refresco no encontrado', 401)
     const result = await client.logout({ refreshToken })
+    if (!result.ok) return errorResponse(c, result.error, result.status)
     const clearHeaders = clearTokenCookies()
     for (const cookie of clearHeaders) {
       c.header('Set-Cookie', cookie, { append: true })
     }
-    if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
   })
 
@@ -69,7 +89,7 @@ export function evaAuthRoutes() {
   app.get('/me', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { accessToken } = readTokensFromCookies(cookieHeader)
-    if (!accessToken) return errorResponse(c, 'No access token', 401)
+    if (!accessToken) return errorResponse(c, 'Token de acceso no encontrado', 401)
     const result = await client.getUser({ accessToken })
     if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
@@ -79,9 +99,13 @@ export function evaAuthRoutes() {
   app.patch('/me', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { accessToken } = readTokensFromCookies(cookieHeader)
-    if (!accessToken) return errorResponse(c, 'No access token', 401)
-    const data = await c.req.json<Record<string, unknown>>()
-    const result = await client.updateUser({ accessToken, data })
+    if (!accessToken) return errorResponse(c, 'Token de acceso no encontrado', 401)
+    const raw = await c.req.json().catch(() => null)
+    const parsed = UpdateUserSchema.safeParse(raw)
+    if (!parsed.success) {
+      return errorResponse(c, 'Cuerpo de solicitud inválido', 400)
+    }
+    const result = await client.updateUser({ accessToken, data: parsed.data })
     if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
   })
@@ -90,13 +114,13 @@ export function evaAuthRoutes() {
   app.delete('/me', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { accessToken } = readTokensFromCookies(cookieHeader)
-    if (!accessToken) return errorResponse(c, 'No access token', 401)
+    if (!accessToken) return errorResponse(c, 'Token de acceso no encontrado', 401)
     const result = await client.deleteUser({ accessToken })
+    if (!result.ok) return errorResponse(c, result.error, result.status)
     const clearHeaders = clearTokenCookies()
     for (const cookie of clearHeaders) {
       c.header('Set-Cookie', cookie, { append: true })
     }
-    if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
   })
 
@@ -104,7 +128,7 @@ export function evaAuthRoutes() {
   app.get('/empresas', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { accessToken } = readTokensFromCookies(cookieHeader)
-    if (!accessToken) return errorResponse(c, 'No access token', 401)
+    if (!accessToken) return errorResponse(c, 'Token de acceso no encontrado', 401)
     const result = await client.getUserEmpresas({ accessToken })
     if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
@@ -114,7 +138,7 @@ export function evaAuthRoutes() {
   app.get('/sessions', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { accessToken } = readTokensFromCookies(cookieHeader)
-    if (!accessToken) return errorResponse(c, 'No access token', 401)
+    if (!accessToken) return errorResponse(c, 'Token de acceso no encontrado', 401)
     const result = await client.getSessions({ accessToken })
     if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
@@ -124,8 +148,11 @@ export function evaAuthRoutes() {
   app.delete('/sessions/:id', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { accessToken } = readTokensFromCookies(cookieHeader)
-    if (!accessToken) return errorResponse(c, 'No access token', 401)
+    if (!accessToken) return errorResponse(c, 'Token de acceso no encontrado', 401)
     const sessionId = c.req.param('id')
+    if (!sessionId || !/^[\w-]+$/.test(sessionId)) {
+      return errorResponse(c, 'ID de sesión inválido', 400)
+    }
     const result = await client.deleteSession({ accessToken, sessionId })
     if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
@@ -135,13 +162,13 @@ export function evaAuthRoutes() {
   app.delete('/sessions', async (c) => {
     const cookieHeader = c.req.header('cookie') || null
     const { refreshToken } = readTokensFromCookies(cookieHeader)
-    if (!refreshToken) return errorResponse(c, 'No refresh token', 401)
+    if (!refreshToken) return errorResponse(c, 'Token de refresco no encontrado', 401)
     const result = await client.deleteAllSessions({ refreshToken })
+    if (!result.ok) return errorResponse(c, result.error, result.status)
     const clearHeaders = clearTokenCookies()
     for (const cookie of clearHeaders) {
       c.header('Set-Cookie', cookie, { append: true })
     }
-    if (!result.ok) return errorResponse(c, result.error, result.status)
     return c.json({ data: result.data })
   })
 

@@ -18,7 +18,7 @@ export async function verifyRequest(request: Request): Promise<Result<VerifyResu
   }
 
   if (!refreshToken) {
-    return { ok: false, error: 'No valid tokens', status: 401 }
+    return { ok: false, error: 'Tokens no válidos', status: 401 }
   }
 
   const refreshResult = await createHttpClient().refresh({ refreshToken })
@@ -29,7 +29,7 @@ export async function verifyRequest(request: Request): Promise<Result<VerifyResu
 
   const { tokens } = refreshResult.data
   if (!tokens) {
-    return { ok: false, error: 'Refresh did not return new tokens', status: 401 }
+    return { ok: false, error: 'El refresco no retornó nuevos tokens', status: 401 }
   }
 
   const verifyResult = await verifyAccessToken(tokens.accessToken)

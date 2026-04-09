@@ -1,8 +1,9 @@
 import { COOKIES, COOKIE_MAX_AGE } from './constants'
 import type { TokenPair } from './types'
+import { env } from './env'
 
 function isSecureCookie(): boolean {
-  return process.env.NODE_ENV !== 'local'
+  return env.NODE_ENV !== 'local'
 }
 
 function getCookieOptions() {

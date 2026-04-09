@@ -46,7 +46,7 @@ describe('verifyAccessToken', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: 'Invalid token payload',
+      error: 'Payload del token inválido',
       status: 401,
     })
   })
@@ -61,7 +61,7 @@ describe('verifyAccessToken', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: 'Invalid token payload',
+      error: 'Payload del token inválido',
       status: 401,
     })
   })
@@ -85,7 +85,7 @@ describe('verifyAccessToken', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: 'Token verification failed',
+      error: 'Verificación de token fallida',
       status: 401,
     })
   })

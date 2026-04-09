@@ -3,7 +3,7 @@ import type { EvaTokenPayload } from '../types'
 
 export function getEvaPayload(c: Context): EvaTokenPayload {
   const payload = c.get('evaPayload') as EvaTokenPayload | undefined
-  if (!payload) throw new Error('evaAuth middleware not applied')
+  if (!payload) throw new Error('Middleware evaAuth no aplicado')
   return payload
 }
 

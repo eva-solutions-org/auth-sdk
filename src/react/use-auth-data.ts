@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { EvaAuthError } from '../errors'
 import { useAuthContext } from './eva-auth-provider'
 import { authFetch } from './auth-fetch'
@@ -16,6 +16,7 @@ export const useAuthData = <T>(path: string): AuthDataResult<T> => {
   const [data, setData] = useState<T | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<EvaAuthError | null>(null)
+  const refetchControllerRef = useRef<AbortController | null>(null)
 
   const fetchData = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true)
@@ -48,7 +49,12 @@ export const useAuthData = <T>(path: string): AuthDataResult<T> => {
     return () => controller.abort()
   }, [isAuthenticated, fetchData])
 
-  const refetch = useCallback(() => { fetchData() }, [fetchData])
+  const refetch = useCallback(() => {
+    refetchControllerRef.current?.abort()
+    const controller = new AbortController()
+    refetchControllerRef.current = controller
+    fetchData(controller.signal)
+  }, [fetchData])
 
   return { data, isLoading, error, refetch }
 }

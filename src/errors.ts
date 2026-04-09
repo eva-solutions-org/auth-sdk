@@ -23,10 +23,10 @@ export const parseErrorResponse = async (
     const body: unknown = await response.json()
     if (typeof body === 'object' && body !== null && 'error' in body) {
       const { error } = body as { error: string }
-      return { error: typeof error === 'string' ? error : 'Unknown error', status: response.status }
+      return { error: typeof error === 'string' ? error : 'Error desconocido', status: response.status }
     }
-    return { error: response.statusText || 'Unknown error', status: response.status }
+    return { error: response.statusText || 'Error desconocido', status: response.status }
   } catch {
-    return { error: response.statusText || 'Unknown error', status: response.status }
+    return { error: response.statusText || 'Error desconocido', status: response.status }
   }
 }

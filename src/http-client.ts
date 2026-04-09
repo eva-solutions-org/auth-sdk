@@ -1,6 +1,11 @@
+import { z } from 'zod'
 import { HEADERS, getAuthServiceUrl } from './constants'
 import { parseErrorResponse } from './errors'
 import type { EvaUser, EvaSession, EvaEmpresa, Result, TokenPair, DeviceInfo } from './types'
+
+const AuthServiceResponseSchema = z.object({
+  data: z.unknown(),
+})
 
 type FetchOptions = {
   method?: string
@@ -38,12 +43,17 @@ const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<R
       return { ok: false, error: err.error, status: err.status }
     }
 
-    const json = (await res.json()) as { data: T }
+    const json: unknown = await res.json()
+    const parsed = AuthServiceResponseSchema.safeParse(json)
+    if (!parsed.success) {
+      return { ok: false, error: 'Estructura de respuesta inválida', status: 502 }
+    }
+    const data = parsed.data.data as T
     const tokens = extractTokens(res.headers)
 
-    return { ok: true, data: { ...json.data, ...(tokens ? { tokens } : {}) } }
+    return { ok: true, data: { ...data, ...(tokens ? { tokens } : {}) } }
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Network error'
+    const message = err instanceof Error ? err.message : 'Error de red'
     return { ok: false, error: message, status: 0 }
   }
 }

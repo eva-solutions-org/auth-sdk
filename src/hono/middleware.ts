@@ -2,6 +2,9 @@ import type { MiddlewareHandler } from 'hono'
 import { verifyAccessToken } from '../jwt'
 import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../cookies'
 import { createHttpClient } from '../http-client'
+import type { Result, TokenPair } from '../types'
+
+let pendingRefresh: Promise<Result<{ user: { id: string }; tokens: TokenPair }>> | null = null
 
 export function evaAuth(): MiddlewareHandler {
   const client = createHttpClient()
@@ -20,16 +23,19 @@ export function evaAuth(): MiddlewareHandler {
     }
 
     if (refreshToken) {
-      const refreshResult = await client.refresh({ refreshToken })
+      if (!pendingRefresh) {
+        pendingRefresh = client.refresh({ refreshToken }).finally(() => { pendingRefresh = null })
+      }
+      const refreshResult = await pendingRefresh
       if (refreshResult.ok && refreshResult.data.tokens) {
         const verifyResult = await verifyAccessToken(refreshResult.data.tokens.accessToken)
         if (verifyResult.ok) {
           c.set('evaPayload', verifyResult.data)
-          await next()
           const cookieHeaders = setTokenCookies(refreshResult.data.tokens)
           for (const cookie of cookieHeaders) {
             c.header('Set-Cookie', cookie, { append: true })
           }
+          await next()
           return
         }
       }

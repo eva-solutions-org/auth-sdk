@@ -153,7 +153,7 @@ describe('POST /refresh', () => {
     const res = await app.request('/refresh', { method: 'POST' })
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'No refresh token' })
+    expect(await res.json()).toEqual({ error: 'Token de refresco no encontrado' })
   })
 
   it('rota cookies cuando refresh es exitoso', async () => {
@@ -222,7 +222,7 @@ describe('GET /me', () => {
     const res = await app.request('/me')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'No access token' })
+    expect(await res.json()).toEqual({ error: 'Token de acceso no encontrado' })
   })
 })
 

@@ -1,3 +1,5 @@
+import { env } from './env'
+
 export const HEADERS = {
   AUTHORIZATION: 'authorization',
   REFRESH_TOKEN: 'x-eva-refresh-token',
@@ -22,7 +24,5 @@ export const JWT_CONFIG = {
 } as const
 
 export const getAuthServiceUrl = (): string => {
-  const url = process.env.EVA_AUTH_URL
-  if (!url) throw new Error('EVA_AUTH_URL environment variable is not set')
-  return url.replace(/\/$/, '')
+  return env.EVA_AUTH_URL.replace(/\/$/, '')
 }

@@ -33,7 +33,9 @@
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "oxlint .",
-    "fmt": "oxfmt --write src/"
+    "fmt": "oxfmt --write src/",
+    "type-check": "tsc --noEmit",
+    "prepublishOnly": "pnpm run type-check && pnpm run test:run && pnpm run build"
   },
   "peerDependencies": {
     "hono": ">=4.0.0",
@@ -48,8 +50,10 @@
     }
   },
   "dependencies": {
+    "@t3-oss/env-core": "^0.13.11",
     "bowser": "^2.14.0",
-    "jose": "^6.0.0"
+    "jose": "^6.0.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.5.2",

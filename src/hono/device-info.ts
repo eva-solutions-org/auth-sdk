@@ -9,6 +9,6 @@ export function parseDeviceInfo(request: Request): DeviceInfo {
     deviceType: parsed.platform?.type || 'desktop',
     os: parsed.os?.name || 'Unknown',
     browser: parsed.browser?.name || 'Unknown',
-    userAgent,
+    userAgent: userAgent.slice(0, 500),
   }
 }

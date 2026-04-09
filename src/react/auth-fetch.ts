@@ -1,4 +1,13 @@
+import { z } from 'zod'
 import type { Result } from '../types'
+
+const ApiResponseSchema = z.object({
+  data: z.unknown(),
+})
+
+const ErrorResponseSchema = z.object({
+  error: z.string(),
+})
 
 export const authFetch = async <T>(url: string, options?: RequestInit): Promise<Result<T>> => {
   try {
@@ -9,13 +18,19 @@ export const authFetch = async <T>(url: string, options?: RequestInit): Promise<
     })
 
     if (!res.ok) {
-      const body = await res.json().catch(() => ({})) as Record<string, unknown>
-      return { ok: false, error: (body.error as string) || res.statusText, status: res.status }
+      const body: unknown = await res.json().catch(() => ({}))
+      const errorParsed = ErrorResponseSchema.safeParse(body)
+      const errorMessage = errorParsed.success ? errorParsed.data.error : res.statusText
+      return { ok: false, error: errorMessage, status: res.status }
     }
 
-    const json = await res.json() as { data: T }
-    return { ok: true, data: json.data }
+    const json: unknown = await res.json()
+    const parsed = ApiResponseSchema.safeParse(json)
+    if (!parsed.success) {
+      return { ok: false, error: 'Estructura de respuesta inválida', status: 502 }
+    }
+    return { ok: true, data: parsed.data.data as T }
   } catch {
-    return { ok: false, error: 'Network error', status: 0 }
+    return { ok: false, error: 'Error de red', status: 0 }
   }
 }

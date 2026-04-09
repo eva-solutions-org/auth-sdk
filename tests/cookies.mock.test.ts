@@ -1,12 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
 import { COOKIES, COOKIE_MAX_AGE } from '../src/constants'
 import { createTokenPair } from './helpers/fixtures'
 
-const originalEnv = process.env.NODE_ENV
+const mockEnv = vi.hoisted(() => ({
+  EVA_AUTH_URL: 'http://auth.test',
+  NODE_ENV: 'production',
+}))
+
+vi.mock('../src/env', () => ({
+  env: mockEnv,
+}))
+
+import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
 
 beforeEach(() => {
-  process.env.NODE_ENV = 'production'
+  mockEnv.NODE_ENV = 'production'
 })
 
 describe('readTokensFromCookies', () => {
@@ -78,7 +86,7 @@ describe('setTokenCookies', () => {
   })
 
   it('incluye Secure cuando NODE_ENV no es local', () => {
-    process.env.NODE_ENV = 'production'
+    mockEnv.NODE_ENV = 'production'
     const tokens = createTokenPair()
     const cookies = setTokenCookies(tokens)
 
@@ -88,7 +96,7 @@ describe('setTokenCookies', () => {
   })
 
   it('NO incluye Secure cuando NODE_ENV es local', () => {
-    process.env.NODE_ENV = 'local'
+    mockEnv.NODE_ENV = 'local'
     const tokens = createTokenPair()
     const cookies = setTokenCookies(tokens)
 
