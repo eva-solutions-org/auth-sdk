@@ -47,9 +47,9 @@ Si el cache supera 25 horas sin actualización exitosa → **verificación recha
 
 ### Token refresh
 
-`Map<string, Promise>` a nivel de módulo, keyed por `refreshToken`. Si múltiples requests llegan con access token expirado, solo una ejecuta el refresh. Las demás esperan el resultado. → [ADR-004](decisions.md)
+`Map<string, Promise>` a nivel de módulo en `refresh-dedup.ts`, keyed por `refreshToken`. Si múltiples requests llegan con access token expirado, solo una ejecuta el refresh. Las demás esperan el resultado. → [ADR-004](decisions.md)
 
-Aplica en: `hono/middleware.ts`, `generic/verify.ts`.
+Aplica en: `hono/middleware.ts`, `generic/verify.ts` (ambos consumen `refresh-dedup.ts`).
 
 ### JWKS fetch
 

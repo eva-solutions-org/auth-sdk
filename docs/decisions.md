@@ -163,3 +163,25 @@ Antes el flag `Secure` se decidía leyendo `NODE_ENV` de `process.env` en runtim
 - Elimina la dependencia de `process.env` en runtime
 - Development con HTTPS es lo esperado — solo `local` necesita la excepción
 - Evita configuraciones inseguras accidentales en staging o pre-producción
+
+---
+
+## ADR-008: createEvaAuth() como punto de extensión
+
+**Fecha**: 2026-04-09
+**Estado**: Aceptada
+
+### Contexto
+
+`createEvaAuth()` actualmente es un wrapper trivial sobre `createHttpClient()`. Podría parecer innecesario.
+
+### Decisión
+
+Se mantiene `createEvaAuth()` como API pública del SDK. Es el punto de entrada intencional para consumidores que necesitan acceso directo al cliente HTTP.
+
+### Justificación
+
+- Provee un punto de extensión estable si el SDK añade configuración futura (logger, rate limiter, plugins)
+- La firma sin parámetros es consistente con el modelo build-time (ADR-006)
+- `createHttpClient()` es un detalle de implementación; `createEvaAuth()` es la API pública semántica
+- El costo es mínimo (una función, una indirección)

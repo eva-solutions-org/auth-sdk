@@ -66,26 +66,27 @@ Comunicación con el navegador del usuario:
 
 ```
 src/
-├── client.ts          # createEvaAuth(), inicialización del SDK (sin parámetros)
+├── client.ts          # createEvaAuth(), punto de entrada público del SDK → ADR-008
 ├── config.ts          # Constantes build-time: AUTH_URL y ENV (horneadas por tsup define)
 ├── types.ts           # Todos los tipos exportados
-├── errors.ts          # EvaAuthError
+├── errors.ts          # EvaAuthError, createAuthError, isAuthError
 ├── constants.ts       # HEADERS, COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
+├── refresh-dedup.ts   # Deduplicación de refresh compartida (Map por refreshToken)
 ├── jwks.ts            # JWKS fetch, cache, ETag/304, dedup con pendingFetch
 ├── jwt.ts             # verifyAccessToken con jose
 ├── cookies.ts         # Lectura/escritura de cookies (decodeURIComponent en parsing)
-├── http-client.ts     # Cliente HTTP tipado contra Auth Service (timeout 10s)
+├── http-client.ts     # Cliente HTTP tipado contra Auth Service (timeout 10s, validación de IDs)
 ├── index.ts           # Barrel file del root
 │
 ├── hono/
-│   ├── middleware.ts   # evaAuth() middleware (dedup refresh con Map por refreshToken)
+│   ├── middleware.ts   # evaAuth() middleware (usa refresh-dedup)
 │   ├── auth-routes.ts  # evaAuthRoutes() sub-router (safe status cast con Set)
 │   ├── device-info.ts  # parseDeviceInfo con bowser
 │   ├── helpers.ts      # getEvaPayload, getSessionId
 │   └── index.ts        # Barrel file
 │
 ├── generic/
-│   ├── verify.ts       # verifyRequest (Web API Request, dedup refresh con Map)
+│   ├── verify.ts       # verifyRequest (Web API Request, usa refresh-dedup)
 │   └── index.ts        # Barrel file (re-exporta setTokenCookies, clearTokenCookies desde cookies.ts)
 │
 └── react/
@@ -95,7 +96,7 @@ src/
     ├── use-sessions.ts        # useSessions hook
     ├── use-empresas.ts        # useEmpresas hook
     ├── use-auth-data.ts       # Hook base para data fetching
-    ├── auth-fetch.ts          # authFetch utility
+    ├── auth-fetch.ts          # authFetch utility (timeout 30s, errores diferenciados)
     └── index.ts               # Barrel file
 ```
 

@@ -98,6 +98,40 @@ Retorna `void`.
 | `PrivacyState` | Estado de privacidad |
 | `EvaAuthError` | Error tipado del SDK |
 
+### Error utilities
+
+#### `createAuthError(error, status)`
+
+Crea un objeto `EvaAuthError` tipado.
+
+```ts
+import { createAuthError } from '@eva/auth-sdk'
+
+const err = createAuthError('Token expirado', 401)
+// { error: 'Token expirado', status: 401 }
+```
+
+Retorna `EvaAuthError`.
+
+---
+
+#### `isAuthError(value)`
+
+Type guard que verifica si un valor es un `EvaAuthError`.
+
+```ts
+import { isAuthError } from '@eva/auth-sdk'
+
+const result = await someOperation()
+if (!result.ok && isAuthError(result)) {
+  console.log(result.error, result.status) // type-safe
+}
+```
+
+Retorna `value is EvaAuthError`.
+
+---
+
 ### Constantes
 
 | Constante | Descripción |
@@ -337,3 +371,11 @@ if (result.ok) {
 ```
 
 Retorna `Promise<Result<T>>`.
+
+Timeout de **30 segundos**. Distingue errores:
+
+| Error | `status` | Descripción |
+|-------|----------|-------------|
+| `'Tiempo de espera agotado'` | `0` | Timeout de 30s excedido |
+| `'Solicitud cancelada'` | `0` | Abortada externamente (ej: unmount) |
+| `'Error de red'` | `0` | Otro error de conexión |

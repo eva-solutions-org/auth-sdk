@@ -90,8 +90,12 @@ const getUserEmpresas = (params: { accessToken: string }): Promise<Result<EvaEmp
 const getSessions = (params: { accessToken: string }): Promise<Result<EvaSession[]>> =>
   authFetch('sessions', { accessToken: params.accessToken })
 
-const deleteSession = (params: { accessToken: string; sessionId: string }): Promise<Result<{ message: string }>> =>
-  authFetch(`sessions/${params.sessionId}`, { method: 'DELETE', accessToken: params.accessToken })
+const deleteSession = (params: { accessToken: string; sessionId: string }): Promise<Result<{ message: string }>> => {
+  if (!/^[\w-]+$/.test(params.sessionId)) {
+    return Promise.resolve({ ok: false, error: 'ID de sesión inválido', status: 400 })
+  }
+  return authFetch(`sessions/${params.sessionId}`, { method: 'DELETE', accessToken: params.accessToken })
+}
 
 const deleteAllSessions = (params: { refreshToken: string }): Promise<Result<{ message: string; count: number }>> =>
   authFetch('sessions', { method: 'DELETE', refreshToken: params.refreshToken })

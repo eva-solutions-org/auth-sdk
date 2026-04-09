@@ -13,7 +13,10 @@ const LoginSchema = z.object({
   code: z.string().min(1),
 })
 
-const UpdateUserSchema = z.record(z.string(), z.unknown())
+const UpdateUserSchema = z.record(z.string(), z.unknown()).refine(
+  obj => Object.keys(obj).length > 0,
+  'Cuerpo de actualización vacío',
+)
 
 type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502 | 503
 
@@ -24,9 +27,10 @@ const errorResponse = (c: { json: (data: unknown, status: ErrorStatus) => Respon
   return c.json({ error }, safeStatus)
 }
 
+const client = createHttpClient()
+
 export function evaAuthRoutes() {
   const app = new Hono()
-  const client = createHttpClient()
 
   // POST /get-code
   app.post('/get-code', async (c) => {
