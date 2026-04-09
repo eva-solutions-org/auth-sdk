@@ -9,12 +9,18 @@ import {
   createErrorResponse,
 } from './helpers/fixtures'
 
+vi.mock('../src/config', () => ({
+  getAuthUrl: () => 'http://auth.test',
+  getEvaEnv: () => 'production' as const,
+  AUTH_URL: 'http://auth.test',
+  ENV: 'production',
+}))
+
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch
 
 beforeEach(() => {
   mockFetch.mockReset()
-  process.env.EVA_AUTH_URL = 'http://auth.test'
 })
 
 const client = createHttpClient()

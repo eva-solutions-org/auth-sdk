@@ -1,4 +1,4 @@
-import { env } from './env'
+import { getAuthUrl } from './config'
 
 export const HEADERS = {
   AUTHORIZATION: 'authorization',
@@ -24,5 +24,5 @@ export const JWT_CONFIG = {
 } as const
 
 export const getAuthServiceUrl = (): string => {
-  return env.EVA_AUTH_URL.replace(/\/$/, '')
+  return getAuthUrl().replace(/\/$/, '')
 }

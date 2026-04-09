@@ -35,7 +35,7 @@ Los errores del Auth Service se propagan **transparentes** al frontend. El SDK a
 | Elemento | Convención | Ejemplo |
 |----------|------------|---------|
 | Exports | Inglés | `getUser`, `createEvaAuth`, `EvaUser` |
-| Archivos | kebab-case | `auth-routes.ts`, `token-rotation.ts` |
+| Archivos | kebab-case | `auth-routes.ts`, `http-client.ts` |
 | Funciones | camelCase | `readTokensFromCookies`, `verifyAccessToken` |
 | Types | PascalCase | `EvaTokenPayload`, `AuthContextValue` |
 | Constantes | UPPER_SNAKE | `HEADERS`, `COOKIES`, `JWT_CONFIG` |
@@ -75,7 +75,6 @@ tests/
 ├── hono-middleware.mock.test.ts
 ├── jwks.mock.test.ts
 ├── jwt.mock.test.ts
-├── setup.ts
 └── helpers/
     └── fixtures.ts
 ```
@@ -107,3 +106,4 @@ tests/
 - **Target**: ES2022
 - **Entry points**: 4 (`index`, `hono`, `react`, `generic`)
 - **External**: hono, react, react-dom
+- **Build-time config**: `EVA_BUILD_ENV` controla constantes horneadas vía `tsup define` (URL del Auth Service, entorno)

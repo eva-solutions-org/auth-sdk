@@ -29,13 +29,17 @@
   ],
   "scripts": {
     "build": "tsup",
+    "build:local": "cross-env EVA_BUILD_ENV=local tsup",
+    "build:dev": "cross-env EVA_BUILD_ENV=development tsup",
+    "build:prod": "cross-env EVA_BUILD_ENV=production tsup",
     "dev": "tsup --watch",
     "test": "vitest",
     "test:run": "vitest run",
     "lint": "oxlint .",
     "fmt": "oxfmt --write src/",
     "type-check": "tsc --noEmit",
-    "prepublishOnly": "pnpm run type-check && pnpm run test:run && pnpm run build"
+    "prepublishOnly": "pnpm run type-check && pnpm run test:run && pnpm run build:prod",
+    "pack:local": "pnpm run build:local && pnpm pack"
   },
   "peerDependencies": {
     "hono": ">=4.0.0",
@@ -50,7 +54,6 @@
     }
   },
   "dependencies": {
-    "@t3-oss/env-core": "^0.13.11",
     "bowser": "^2.14.0",
     "jose": "^6.0.0",
     "zod": "^4.3.6"
@@ -58,8 +61,9 @@
   "devDependencies": {
     "@types/node": "^25.5.2",
     "@types/react": "^19.0.0",
+    "cross-env": "^10.1.0",
     "hono": "^4.7.0",
-    "oxlint": "latest",
+    "oxlint": "^1.59.0",
     "react": "^19.0.0",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",

@@ -1,20 +1,109 @@
 # Configuración
 
-## Variables de entorno
+## Modelo build-time
 
-| Variable | Requerida | Descripción |
-|----------|-----------|-------------|
-| `EVA_AUTH_URL` | **Sí** | URL base del Auth Service. Sin trailing slash. Ej: `https://auth.proyecto-global.com` |
-| `NODE_ENV` | No | Afecta el flag `Secure` de cookies. Solo `local` desactiva Secure. |
+El SDK **no lee variables de entorno en runtime**. Toda la configuración (URL del Auth Service y entorno) se hornea como constantes en el paquete al momento del build vía `tsup define`.
 
-### Comportamiento de `NODE_ENV`
+El consumidor **no configura nada**. Instala la versión correcta del SDK y listo.
 
-| Valor | Cookie Secure |
-|-------|---------------|
+---
+
+## Cómo funciona
+
+`tsup.config.ts` contiene un map interno de URLs por entorno:
+
+```ts
+const envUrls = {
+  local: 'http://localhost:4000',
+  development: 'https://auth-dev.example.com',
+  production: 'https://auth.example.com',
+}
+```
+
+La variable `EVA_BUILD_ENV` controla qué valores se hornean:
+
+```ts
+define: {
+  __EVA_AUTH_URL__: JSON.stringify(envUrls[env]),
+  __EVA_ENV__: JSON.stringify(env),
+}
+```
+
+Dentro del SDK, `config.ts` expone las constantes ya resueltas — no hay lectura de `process.env` en runtime.
+
+---
+
+## Scripts de build
+
+| Script | Comando | Entorno horneado | URL horneada |
+|--------|---------|------------------|--------------|
+| `pnpm build:local` | `cross-env EVA_BUILD_ENV=local tsup` | `local` | `http://localhost:4000` |
+| `pnpm build:dev` | `cross-env EVA_BUILD_ENV=development tsup` | `development` | `https://auth-dev.example.com` |
+| `pnpm build:prod` | `cross-env EVA_BUILD_ENV=production tsup` | `production` | `https://auth.example.com` |
+| `pnpm pack:local` | `build:local` + `pnpm pack` | `local` | `http://localhost:4000` |
+
+`pnpm build` (sin sufijo) usa `production` por defecto.
+
+---
+
+## Cómo consume el SDK el usuario final
+
+### Producción
+
+```bash
+npm install @eva/auth-sdk
+```
+
+El paquete publicado en npm se construye con `build:prod` — trae las constantes de producción horneadas.
+
+### Desarrollo local
+
+```bash
+# En el repo del SDK
+pnpm pack:local
+# Genera eva-auth-sdk-x.x.x.tgz
+
+# En el proyecto consumidor
+npm install ../path/to/eva-auth-sdk-x.x.x.tgz
+```
+
+### En código
+
+No hay paso de inicialización obligatorio. El middleware y las rutas funcionan directamente:
+
+```ts
+import { evaAuth, evaAuthRoutes } from '@eva/auth-sdk/hono'
+
+app.route('/auth', evaAuthRoutes())
+app.use('/api/*', evaAuth())
+```
+
+Sin parámetros, sin env vars, sin configuración. Todo viene horneado.
+
+#### Uso avanzado: acceso directo al client
+
+Si necesitás hacer llamadas directas al Auth Service (fuera del middleware), podés obtener el HTTP client:
+
+```ts
+import { createEvaAuth } from '@eva/auth-sdk'
+
+const { client } = createEvaAuth()
+const result = await client.refresh({ refreshToken })
+```
+
+Esto es opcional — el flujo normal no lo requiere.
+
+---
+
+## Cookie Secure flag
+
+Se decide por el entorno horneado en build-time:
+
+| Entorno (build-time) | Cookie Secure |
+|-----------------------|---------------|
 | `local` | `false` |
 | `development` | `true` |
 | `production` | `true` |
-| (cualquier otro) | `true` |
 
 ---
 
@@ -25,7 +114,7 @@
 | `eva_access_token` | 900 (15 min) | Sí | Sí* | Lax | `/` |
 | `eva_refresh_token` | 2592000 (30 días) | Sí | Sí* | Lax | `/` |
 
-\* `Secure=false` solo cuando `NODE_ENV=local`.
+\* `Secure=false` solo cuando el SDK se construyó con `EVA_BUILD_ENV=local`.
 
 ---
 
@@ -84,7 +173,11 @@ import { EvaAuthProvider } from '@eva/auth-sdk/react'
 
 function App() {
   return (
-    <EvaAuthProvider basePath="/auth" onAuthChange={(auth) => console.log('Auth:', auth)}>
+    <EvaAuthProvider
+      basePath="/auth"
+      apiUrl="https://api.proyecto-global.com"
+      onAuthChange={(auth) => console.log('Auth:', auth)}
+    >
       <MyApp />
     </EvaAuthProvider>
   )
@@ -92,3 +185,5 @@ function App() {
 ```
 
 El `basePath` debe coincidir con el prefijo donde se montó `evaAuthRoutes()` en el backend.
+
+El `apiUrl` es opcional: si se proporciona, se antepone a `basePath`. Útil cuando el frontend se comunica con un backend en otro dominio.

@@ -4,6 +4,13 @@ import { evaAuth } from '../src/hono/middleware'
 import { verifyAccessToken } from '../src/jwt'
 import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
 
+vi.mock('../src/config', () => ({
+  getAuthUrl: () => 'http://auth.test',
+  getEvaEnv: () => 'production' as const,
+  AUTH_URL: 'http://auth.test',
+  ENV: 'production',
+}))
+
 vi.mock('../src/jwt', () => ({
   verifyAccessToken: vi.fn(),
 }))
@@ -33,7 +40,6 @@ function createTestApp() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  process.env.EVA_AUTH_URL = 'http://auth.test'
 })
 
 describe('evaAuth middleware', () => {

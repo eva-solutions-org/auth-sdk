@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
 import { createTokenPair, createUser } from './helpers/fixtures'
 
+vi.mock('../src/config', () => ({
+  getAuthUrl: () => 'http://auth.test',
+  getEvaEnv: () => 'production' as const,
+  AUTH_URL: 'http://auth.test',
+  ENV: 'production',
+}))
+
 const { mockGetCode, mockLogin, mockRefresh, mockLogout, mockGetUser, mockUpdateUser, mockDeleteUser, mockGetUserEmpresas, mockGetSessions, mockDeleteSession, mockDeleteAllSessions } = vi.hoisted(() => ({
   mockGetCode: vi.fn(),
   mockLogin: vi.fn(),
@@ -53,7 +60,6 @@ let app: ReturnType<typeof evaAuthRoutes>
 
 beforeEach(() => {
   vi.clearAllMocks()
-  process.env.EVA_AUTH_URL = 'http://auth.test'
   app = evaAuthRoutes()
 })
 

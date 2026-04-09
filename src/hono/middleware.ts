@@ -4,7 +4,7 @@ import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../co
 import { createHttpClient } from '../http-client'
 import type { Result, TokenPair } from '../types'
 
-let pendingRefresh: Promise<Result<{ user: { id: string }; tokens: TokenPair }>> | null = null
+const pendingRefreshes = new Map<string, Promise<Result<{ user: { id: string }; tokens: TokenPair }>>>()
 
 export function evaAuth(): MiddlewareHandler {
   const client = createHttpClient()
@@ -23,10 +23,13 @@ export function evaAuth(): MiddlewareHandler {
     }
 
     if (refreshToken) {
-      if (!pendingRefresh) {
-        pendingRefresh = client.refresh({ refreshToken }).finally(() => { pendingRefresh = null })
+      if (!pendingRefreshes.has(refreshToken)) {
+        const promise = client.refresh({ refreshToken }).finally(() => {
+          pendingRefreshes.delete(refreshToken)
+        })
+        pendingRefreshes.set(refreshToken, promise)
       }
-      const refreshResult = await pendingRefresh
+      const refreshResult = await pendingRefreshes.get(refreshToken)!
       if (refreshResult.ok && refreshResult.data.tokens) {
         const verifyResult = await verifyAccessToken(refreshResult.data.tokens.accessToken)
         if (verifyResult.ok) {

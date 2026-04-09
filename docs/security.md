@@ -8,7 +8,7 @@ Tokens **NUNCA** accesibles por JavaScript en el frontend. Ambas cookies (`eva_a
 
 ## Cookie Secure
 
-`Secure=true` siempre, excepto cuando `NODE_ENV=local`.
+`Secure=true` siempre, excepto cuando el SDK se construyó con `EVA_BUILD_ENV=local`.
 
 En `development` el flag es `true` — se espera HTTPS incluso en desarrollo. Ver [decisions.md](decisions.md).
 
@@ -49,9 +49,40 @@ Si el cache supera 25 horas sin actualización exitosa, la verificación se **re
 
 ## Token rotation y deduplicación
 
-El middleware deduplica refresh requests concurrentes usando una **Promise compartida a nivel de módulo**. Si múltiples requests llegan con un access token expirado simultáneamente, solo una ejecuta el refresh contra el Auth Service. Las demás esperan el resultado de la primera.
+El middleware deduplica refresh requests concurrentes usando un **`Map<string, Promise>` a nivel de módulo**, keyed por `refreshToken`. Si múltiples requests llegan con un access token expirado simultáneamente, solo una ejecuta el refresh contra el Auth Service. Las demás esperan el resultado de la primera.
+
+Este patrón se aplica en `hono/middleware.ts` y `generic/verify.ts`.
 
 Esto evita race conditions donde múltiples requests intentan usar el mismo refresh token.
+
+---
+
+## Request timeouts
+
+Todas las llamadas de red del SDK tienen timeouts explícitos vía `AbortSignal.timeout()`:
+
+| Operación | Timeout |
+|-----------|--------|
+| HTTP Client (Auth Service) | 10 segundos |
+| JWKS fetch | 5 segundos |
+
+---
+
+## JWKS fetch dedup
+
+El módulo `jwks.ts` deduplica fetches concurrentes del JWKS usando una variable `pendingFetch` a nivel de módulo. Si múltiples verificaciones necesitan refrescar el JWKS simultáneamente, solo se ejecuta un fetch.
+
+---
+
+## Cookie parsing seguro
+
+Los valores de cookies se decodifican con `decodeURIComponent()` durante el parsing para manejar correctamente tokens con caracteres especiales codificados.
+
+---
+
+## Safe status cast en auth-routes
+
+El sub-router de auth usa un `Set` de status codes HTTP conocidos. Si el Auth Service responde con un status inesperado, se usa `500` como fallback en lugar de hacer un cast directo (`as ErrorStatus`).
 
 ---
 

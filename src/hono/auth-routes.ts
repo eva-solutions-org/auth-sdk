@@ -17,8 +17,12 @@ const UpdateUserSchema = z.record(z.string(), z.unknown())
 
 type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502 | 503
 
-const errorResponse = (c: { json: (data: unknown, status: ErrorStatus) => Response }, error: string, status: number) =>
-  c.json({ error }, status as ErrorStatus)
+const KNOWN_ERROR_STATUSES = new Set<number>([400, 401, 403, 404, 409, 429, 500, 502, 503])
+
+const errorResponse = (c: { json: (data: unknown, status: ErrorStatus) => Response }, error: string, status: number) => {
+  const safeStatus = KNOWN_ERROR_STATUSES.has(status) ? (status as ErrorStatus) : 500
+  return c.json({ error }, safeStatus)
+}
 
 export function evaAuthRoutes() {
   const app = new Hono()

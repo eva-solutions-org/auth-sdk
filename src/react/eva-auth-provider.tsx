@@ -24,12 +24,13 @@ export type AuthContextValue = AuthState & {
 export type EvaAuthProviderProps = {
   children: ReactNode
   basePath?: string
+  apiUrl?: string
   onAuthChange?: (authenticated: boolean) => void
 }
 
 // ── Context ────────────────────────────────────────────
 
-export const AuthContext = createContext<AuthContextValue | null>(null)
+const AuthContext = createContext<AuthContextValue | null>(null)
 
 export const useAuthContext = () => {
   const ctx = useContext(AuthContext)
@@ -41,7 +42,12 @@ export const useAuthContext = () => {
 
 const RETRY_DELAYS = [1000, 2000, 4000]
 
-export const EvaAuthProvider = ({ children, basePath = '/auth', onAuthChange }: EvaAuthProviderProps) => {
+export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthChange }: EvaAuthProviderProps) => {
+  const urlBase = useMemo(() => {
+    if (!apiUrl) return basePath
+    return `${apiUrl.replace(/\/$/, '')}${basePath}`
+  }, [apiUrl, basePath])
+
   const [state, setState] = useState<AuthState>({
     isAuthenticated: false,
     isLoading: true,
@@ -66,7 +72,7 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', onAuthChange }: 
 
     const checkSession = async () => {
       for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
-        const result = await authFetch<unknown>(`${basePath}/refresh`, {
+        const result = await authFetch<unknown>(`${urlBase}/refresh`, {
           method: 'POST',
           signal: controller.signal,
         })
@@ -98,7 +104,7 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', onAuthChange }: 
 
     checkSession()
     return () => controller.abort()
-  }, [basePath])
+  }, [urlBase])
 
   const setAuthenticated = useCallback((value: boolean) => {
     setState(prev => ({ ...prev, isAuthenticated: value, error: null }))
@@ -106,35 +112,35 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', onAuthChange }: 
 
   const login = useMemo(() => ({
     getCode: (params: { phone: string }) =>
-      authFetch<{ message: string }>(`${basePath}/get-code`, {
+      authFetch<{ message: string }>(`${urlBase}/get-code`, {
         method: 'POST',
         body: JSON.stringify(params),
       }),
     verify: async (params: { phone: string; code: string }) => {
-      const result = await authFetch<{ user: { id: string } }>(`${basePath}/login`, {
+      const result = await authFetch<{ user: { id: string } }>(`${urlBase}/login`, {
         method: 'POST',
         body: JSON.stringify(params),
       })
       if (result.ok) setState({ isAuthenticated: true, isLoading: false, error: null })
       return result
     },
-  }), [basePath])
+  }), [urlBase])
 
   const logout = useCallback(async () => {
-    const result = await authFetch<{ message: string }>(`${basePath}/logout`, {
+    const result = await authFetch<{ message: string }>(`${urlBase}/logout`, {
       method: 'POST',
     })
     if (result.ok) setState({ isAuthenticated: false, isLoading: false, error: null })
     return result
-  }, [basePath])
+  }, [urlBase])
 
   const value = useMemo<AuthContextValue>(() => ({
     ...state,
     login,
     logout,
     setAuthenticated,
-    basePath,
-  }), [state, login, logout, setAuthenticated, basePath])
+    basePath: urlBase,
+  }), [state, login, logout, setAuthenticated, urlBase])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

@@ -274,9 +274,9 @@ if (result.ok) console.log(result.data.items)
 
 ---
 
-## HTTP Client directo
+## HTTP Client directo (opcional)
 
-Para comunicación server-to-server (sin cookies, usando headers directamente):
+Para comunicación directa server-to-server con el Auth Service (sin cookies, usando headers). Esto es **opcional** — el flujo normal usa `evaAuth()` y `evaAuthRoutes()` directamente.
 
 ```ts
 import { createEvaAuth } from '@eva/auth-sdk'
@@ -318,12 +318,9 @@ await client.health()
 
 ## Configuración
 
-### Variables de entorno
+El SDK **no requiere configuración por parte del consumidor**. Toda la configuración (URL del Auth Service y entorno) se hornea como constantes en el paquete al momento del build. Instalás la versión correcta y listo.
 
-| Variable | Requerida | Descripción |
-|----------|-----------|-------------|
-| `EVA_AUTH_URL` | **Sí** | URL base del Auth Service (ej: `https://auth.proyecto.com`) |
-| `NODE_ENV` | No | Si es `"local"`, las cookies se setean sin flag `Secure` (para desarrollo `http://`) |
+Ver [docs/configuration.md](docs/configuration.md) para detalles del modelo build-time.
 
 ### Constantes
 

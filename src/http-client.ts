@@ -7,6 +7,8 @@ const AuthServiceResponseSchema = z.object({
   data: z.unknown(),
 })
 
+const AUTH_SERVICE_TIMEOUT = 10_000
+
 type FetchOptions = {
   method?: string
   accessToken?: string
@@ -35,6 +37,7 @@ const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<R
     const res = await fetch(`${getAuthServiceUrl()}/${path}`, {
       method,
       headers,
+      signal: AbortSignal.timeout(AUTH_SERVICE_TIMEOUT),
       ...(body ? { body: JSON.stringify(body) } : {}),
     })
 

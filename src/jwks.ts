@@ -11,6 +11,9 @@ let cachedEtag: string | null = null
 let cachedAt = 0
 const CACHE_TTL = 86400 * 1000
 const CACHE_MAX_TTL = 86400 * 1000 + 3600 * 1000
+const JWKS_FETCH_TIMEOUT = 5_000
+
+let pendingFetch: Promise<void> | null = null
 
 export async function fetchJwks(): Promise<void> {
   const url = `${getAuthServiceUrl()}/.well-known/jwks.json`
@@ -22,7 +25,7 @@ export async function fetchJwks(): Promise<void> {
 
   let res: Response
   try {
-    res = await fetch(url, { headers })
+    res = await fetch(url, { headers, signal: AbortSignal.timeout(JWKS_FETCH_TIMEOUT) })
   } catch {
     if (cachedKey) return
     throw new Error('Error al obtener JWKS y no hay clave en caché')
@@ -61,8 +64,11 @@ export async function getPublicKey(): Promise<CryptoKey> {
   const isStale = !cachedKey || (Date.now() - cachedAt > CACHE_TTL)
 
   if (isStale) {
+    if (!pendingFetch) {
+      pendingFetch = fetchJwks().finally(() => { pendingFetch = null })
+    }
     try {
-      await fetchJwks()
+      await pendingFetch
     } catch (err) {
       if (!cachedKey || Date.now() - cachedAt > CACHE_MAX_TTL) {
         throw err
@@ -81,4 +87,5 @@ export function clearJwksCache(): void {
   cachedKey = null
   cachedEtag = null
   cachedAt = 0
+  pendingFetch = null
 }

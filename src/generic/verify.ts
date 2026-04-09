@@ -1,12 +1,15 @@
 import { verifyAccessToken } from '../jwt'
 import { readTokensFromCookies, setTokenCookies } from '../cookies'
 import { createHttpClient } from '../http-client'
-import type { EvaTokenPayload, Result } from '../types'
+import type { EvaTokenPayload, Result, TokenPair } from '../types'
 
 type VerifyResult = {
   payload: EvaTokenPayload
   newCookies?: string[]
 }
+
+const client = createHttpClient()
+const pendingRefreshes = new Map<string, Promise<Result<{ user: { id: string }; tokens: TokenPair }>>>()
 
 export async function verifyRequest(request: Request): Promise<Result<VerifyResult>> {
   const cookieHeader = request.headers.get('cookie')
@@ -21,7 +24,14 @@ export async function verifyRequest(request: Request): Promise<Result<VerifyResu
     return { ok: false, error: 'Tokens no válidos', status: 401 }
   }
 
-  const refreshResult = await createHttpClient().refresh({ refreshToken })
+  if (!pendingRefreshes.has(refreshToken)) {
+    const promise = client.refresh({ refreshToken }).finally(() => {
+      pendingRefreshes.delete(refreshToken)
+    })
+    pendingRefreshes.set(refreshToken, promise)
+  }
+
+  const refreshResult = await pendingRefreshes.get(refreshToken)!
 
   if (!refreshResult.ok) {
     return { ok: false, error: refreshResult.error, status: 401 }

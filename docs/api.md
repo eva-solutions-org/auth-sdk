@@ -8,7 +8,9 @@ Entry point principal. Core del SDK.
 
 #### `createEvaAuth()`
 
-Inicializa una instancia del SDK.
+Obtiene acceso directo al HTTP client para llamadas server-to-server al Auth Service. **Uso avanzado** — el flujo normal usa `evaAuth()` middleware y `evaAuthRoutes()` directamente, sin necesidad de llamar a esta función.
+
+No recibe parámetros. La URL del Auth Service y el entorno se hornean en build-time.
 
 ```ts
 const { client } = createEvaAuth()
@@ -78,6 +80,8 @@ clearJwksCache()
 ```
 
 Retorna `void`.
+
+---
 
 ---
 
@@ -172,6 +176,8 @@ Retorna `EvaTokenPayload`. Lanza error si el middleware no está aplicado.
 
 ### `getEvaUser(c)`
 
+> ⚠️ **DEPRECATED** — Usa `getEvaPayload()` en su lugar.
+
 Alias de `getEvaPayload`.
 
 ```ts
@@ -227,12 +233,12 @@ Retorna `Promise<Result<{ payload, newCookies? }>>`.
 
 ---
 
-### `handleTokenRotation(tokens: TokenPair)`
+### `setTokenCookies(tokens: TokenPair)`
 
 Genera headers `Set-Cookie` para setear ambos tokens como cookies.
 
 ```ts
-const { setCookieHeaders } = handleTokenRotation(tokens)
+const { setCookieHeaders } = setTokenCookies(tokens)
 // setCookieHeaders: string[]
 ```
 
@@ -240,12 +246,12 @@ Retorna `{ setCookieHeaders: string[] }`.
 
 ---
 
-### `handleLogoutCookies()`
+### `clearTokenCookies()`
 
 Genera headers `Set-Cookie` para limpiar las cookies de auth.
 
 ```ts
-const { setCookieHeaders } = handleLogoutCookies()
+const { setCookieHeaders } = clearTokenCookies()
 ```
 
 Retorna `{ setCookieHeaders: string[] }`.
@@ -272,6 +278,7 @@ import { EvaAuthProvider } from '@eva/auth-sdk/react'
 |------|------|-----------|-------------|
 | `children` | `ReactNode` | Sí | Componentes hijos |
 | `basePath` | `string` | No | Prefijo de las rutas de auth (default: `/auth`) |
+| `apiUrl` | `string` | No | URL base del backend. Si se proporciona, se antepone a `basePath`. Útil cuando el frontend se comunica con un backend en otro dominio. |
 | `onAuthChange` | `(auth) => void` | No | Callback cuando cambia el estado de auth |
 
 ---

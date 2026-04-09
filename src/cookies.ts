@@ -1,9 +1,9 @@
 import { COOKIES, COOKIE_MAX_AGE } from './constants'
+import { getEvaEnv } from './config'
 import type { TokenPair } from './types'
-import { env } from './env'
 
 function isSecureCookie(): boolean {
-  return env.NODE_ENV !== 'local'
+  return getEvaEnv() !== 'local'
 }
 
 function getCookieOptions() {
@@ -48,7 +48,7 @@ export function readTokensFromCookies(cookieHeader: string | null): Partial<Toke
   const cookies = Object.fromEntries(
     cookieHeader.split(';').map(c => {
       const [k, ...v] = c.trim().split('=')
-      return [k, v.join('=')]
+      return [k, decodeURIComponent(v.join('='))]
     })
   )
 

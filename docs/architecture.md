@@ -54,7 +54,8 @@ Comunicación con el navegador del usuario:
 - No parsea tokens
 - No gestiona refresh
 - No configura CORS para tokens
-- No conoce la URL del Auth Service (solo la variable de entorno)
+- No conoce la URL del Auth Service (viene horneada en el SDK)
+- No configura variables de entorno
 - No gestiona la public key
 
 ---
@@ -63,27 +64,27 @@ Comunicación con el navegador del usuario:
 
 ```
 src/
-├── client.ts          # createEvaAuth, inicialización
+├── client.ts          # createEvaAuth(), inicialización del SDK (sin parámetros)
+├── config.ts          # Constantes build-time: AUTH_URL y ENV (horneadas por tsup define)
 ├── types.ts           # Todos los tipos exportados
 ├── errors.ts          # EvaAuthError
 ├── constants.ts       # HEADERS, COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
-├── jwks.ts            # JWKS fetch, cache, ETag/304
+├── jwks.ts            # JWKS fetch, cache, ETag/304, dedup con pendingFetch
 ├── jwt.ts             # verifyAccessToken con jose
-├── cookies.ts         # Lectura/escritura de cookies
-├── http-client.ts     # Cliente HTTP tipado contra Auth Service
+├── cookies.ts         # Lectura/escritura de cookies (decodeURIComponent en parsing)
+├── http-client.ts     # Cliente HTTP tipado contra Auth Service (timeout 10s)
 ├── index.ts           # Barrel file del root
 │
 ├── hono/
-│   ├── middleware.ts   # evaAuth() middleware
-│   ├── auth-routes.ts  # evaAuthRoutes() sub-router
+│   ├── middleware.ts   # evaAuth() middleware (dedup refresh con Map por refreshToken)
+│   ├── auth-routes.ts  # evaAuthRoutes() sub-router (safe status cast con Set)
 │   ├── device-info.ts  # parseDeviceInfo con bowser
-│   ├── helpers.ts      # getEvaPayload, getEvaUser, getSessionId
+│   ├── helpers.ts      # getEvaPayload, getEvaUser (@deprecated), getSessionId
 │   └── index.ts        # Barrel file
 │
 ├── generic/
-│   ├── verify.ts           # verifyRequest (Web API Request)
-│   ├── token-rotation.ts   # handleTokenRotation, handleLogoutCookies
-│   └── index.ts            # Barrel file
+│   ├── verify.ts       # verifyRequest (Web API Request, dedup refresh con Map)
+│   └── index.ts        # Barrel file (re-exporta setTokenCookies, clearTokenCookies desde cookies.ts)
 │
 └── react/
     ├── eva-auth-provider.tsx  # EvaAuthProvider context
@@ -105,7 +106,7 @@ src/
 | `@eva/auth-sdk` | Core: client, types, errors, constantes, JWT, JWKS |
 | `@eva/auth-sdk/hono` | Middleware, auth routes, helpers, device-info |
 | `@eva/auth-sdk/react` | Provider, hooks, authFetch |
-| `@eva/auth-sdk/generic` | verify, token-rotation (framework-agnostic) |
+| `@eva/auth-sdk/generic` | verify, cookies (setTokenCookies, clearTokenCookies) — framework-agnostic |
 
 ---
 
@@ -122,4 +123,5 @@ src/
 
 - **Runtime**: Edge + Node.js (cero dependencias de Node.js)
 - **Build**: tsup (ESM + CJS), target ES2022
+- **Build-time config**: `EVA_BUILD_ENV` controla qué constantes se hornean (`AUTH_URL`, `ENV`) vía `tsup define`
 - **Declarations**: `.d.ts` generados automáticamente
