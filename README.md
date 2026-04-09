@@ -1,37 +1,73 @@
-# @eva/auth-sdk
+<p align="center">
+  <h1 align="center">🔐 @eva/auth-sdk</h1>
+  <p align="center">SDK de autenticación end-to-end para el Proyecto Global</p>
+</p>
 
-![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue?logo=typescript&logoColor=white)
-
-SDK de autenticación end-to-end para el Proyecto Global. Maneja login OTP, sesiones, refresh automático de tokens, y gestión de cookies HttpOnly — todo listo para conectar frontend (React) con backend (Hono) y el Auth Service.
+<p align="center">
+  <img src="https://img.shields.io/badge/TypeScript-5.8-blue?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/jose-v6-purple?logo=jsonwebtokens&logoColor=white" alt="jose" />
+  <img src="https://img.shields.io/badge/ES256-ECDSA_P--256-green" alt="ES256" />
+  <img src="https://img.shields.io/badge/Hono-≥4-orange?logo=hono&logoColor=white" alt="Hono" />
+  <img src="https://img.shields.io/badge/React-≥18-61DAFB?logo=react&logoColor=white" alt="React" />
+  <img src="https://img.shields.io/badge/Edge_+_Node.js-ready-brightgreen" alt="Edge + Node.js" />
+  <img src="https://img.shields.io/badge/version-0.1.0-informational" alt="version" />
+</p>
 
 ---
 
-## TL;DR
+SDK TypeScript que resuelve autenticación **completa** entre frontend (React) y backend (Hono) contra el Auth Service del Proyecto Global. Gestiona login OTP, sesiones, refresh automático de tokens, cookies HttpOnly y verificación JWT — **sin que el consumidor configure nada**.
 
-- **Backend**: monta rutas de auth y middleware en Hono con 2 líneas.
-- **Frontend**: envuelve tu app con `<EvaAuthProvider>` y usa hooks (`useAuth`, `useUser`, etc.).
-- **Tokens**: el SDK maneja cookies HttpOnly, refresh automático y rotación — tu código nunca toca JWTs directamente.
-
----
-
-## Instalación
-
-```bash
-pnpm add @eva/auth-sdk
 ```
-
-Peers opcionales según lo que uses:
-
-```bash
-pnpm add hono    # si usas el entry point /hono
-pnpm add react   # si usas el entry point /react
+React (browser) ←── cookies HttpOnly ──→ Hono (tu backend + SDK) ←── headers custom ──→ Auth Service
 ```
 
 ---
 
-## Quick Start
+## 📑 Tabla de contenidos
 
-### Backend (Hono)
+- [✨ Características](#-características)
+- [⚡ Quick Start](#-quick-start)
+- [📦 Instalación](#-instalación)
+- [🧩 Entry Points](#-entry-points)
+- [🏗️ Arquitectura](#️-arquitectura)
+- [🔧 Configuración](#-configuración)
+- [🖥️ Backend: Hono](#️-backend-hono)
+- [🌐 Backend: Generic](#-backend-generic)
+- [⚛️ Frontend: React](#️-frontend-react)
+- [📚 API Reference](#-api-reference)
+- [🛡️ Seguridad](#️-seguridad)
+- [📐 Convenciones](#-convenciones)
+- [🧪 Testing](#-testing)
+- [🔨 Scripts](#-scripts)
+- [📝 Decisiones técnicas](#-decisiones-técnicas)
+- [🗂️ Estructura del proyecto](#️-estructura-del-proyecto)
+- [🤝 Desarrollo local](#-desarrollo-local)
+- [📄 Licencia](#-licencia)
+
+---
+
+## ✨ Características
+
+| Feature | Descripción |
+|---------|-------------|
+| 🔑 **Login OTP** | Flujo completo de autenticación con código OTP por teléfono |
+| 🍪 **Cookies HttpOnly** | Tokens almacenados en cookies seguras, nunca expuestos a JavaScript |
+| 🔄 **Auto-refresh** | Tokens se renuevan automáticamente cuando expiran, transparente al usuario |
+| 🛡️ **JWT ES256** | Verificación local con ECDSA P-256 via `jose` v6 |
+| 📡 **JWKS con cache** | Public key cacheada 24h con ETag/304 y hard max TTL de 25h |
+| 🚀 **Zero-config** | URL del Auth Service y entorno horneados en build-time. Sin env vars en runtime |
+| ⚡ **Edge + Node.js** | Compatible con cualquier runtime (Cloudflare Workers, Vercel Edge, Node.js) |
+| 🧩 **4 entry points** | Core, Hono, React y Generic — importá solo lo que necesites |
+| 🔒 **Dedup de refresh** | Requests concurrentes con token expirado comparten un solo refresh |
+| 📱 **Device info** | Parsing de User-Agent server-side con bowser |
+| 🏢 **Gestión completa** | Usuarios, sesiones, empresas — todo resuelto |
+| ✅ **Result Pattern** | Errores como valores, nunca excepciones para flujos de negocio |
+
+---
+
+## ⚡ Quick Start
+
+### Backend (Hono) — 3 líneas
 
 ```ts
 import { Hono } from 'hono'
@@ -39,15 +75,10 @@ import { evaAuth, evaAuthRoutes } from '@eva/auth-sdk/hono'
 
 const app = new Hono()
 
-// Rutas públicas de auth: /auth/get-code, /auth/login, /auth/logout, etc.
-app.route('/auth', evaAuthRoutes())
-
-// Rutas protegidas
-app.use('/api/*', evaAuth())
+app.route('/auth', evaAuthRoutes())  // Rutas de auth listas
+app.use('/api/*', evaAuth())         // Proteger rutas
 
 app.get('/api/saludo', (c) => c.json({ msg: 'Estás autenticado' }))
-
-export default app
 ```
 
 ### Frontend (React)
@@ -65,10 +96,10 @@ function App() {
 
 function Home() {
   const { isAuthenticated, isLoading, login, logout } = useAuth()
-  const { user } = useUser()
+  const { data: user } = useUser()
 
   if (isLoading) return <p>Cargando...</p>
-  if (!isAuthenticated) return <LoginForm login={login} />
+  if (!isAuthenticated) return <button onClick={() => login.getCode('+51999999999')}>Login</button>
 
   return (
     <div>
@@ -81,9 +112,39 @@ function Home() {
 
 ---
 
-## Arquitectura
+## 📦 Instalación
 
-El SDK actúa como intermediario entre dos capas de transporte distintas:
+```bash
+pnpm add @eva/auth-sdk
+```
+
+Peer dependencies opcionales según lo que uses:
+
+```bash
+pnpm add hono    # si usas @eva/auth-sdk/hono
+pnpm add react   # si usas @eva/auth-sdk/react
+```
+
+---
+
+## 🧩 Entry Points
+
+El SDK expone 4 entry points independientes. Importá solo lo que necesites — el tree-shaking se encarga del resto.
+
+| Import | Contenido | Peer requerido |
+|--------|-----------|----------------|
+| `@eva/auth-sdk` | Core: client factory, tipos, constantes, JWT, JWKS, errores | — |
+| `@eva/auth-sdk/hono` | Middleware `evaAuth()`, rutas `evaAuthRoutes()`, helpers | `hono >=4` |
+| `@eva/auth-sdk/react` | `EvaAuthProvider`, hooks (`useAuth`, `useUser`, etc.), `authFetch` | `react >=18` |
+| `@eva/auth-sdk/generic` | `verifyRequest()`, `setTokenCookies()`, `clearTokenCookies()` — framework-agnostic | — |
+
+---
+
+## 🏗️ Arquitectura
+
+### Modelo de dos capas
+
+El SDK actúa como intermediario entre dos capas de transporte completamente distintas:
 
 ```
 ┌──────────┐     cookies HttpOnly      ┌──────────────────┐    headers custom     ┌──────────────┐
@@ -92,27 +153,85 @@ El SDK actúa como intermediario entre dos capas de transporte distintas:
 └──────────┘                            └──────────────────┘  authorization: Bearer└──────────────┘
 ```
 
-- **Frontend → Backend**: cookies HttpOnly (`eva_access_token`, `eva_refresh_token`). El browser las envía automáticamente. Tu código React nunca ve los tokens.
-- **Backend → Auth Service**: headers custom (`authorization`, `x-eva-refresh-token`). El SDK los arma internamente.
+**Capa 1 — Frontend ↔ Backend** (cookies HttpOnly):
+
+| Cookie | Contenido | Flags |
+|--------|-----------|-------|
+| `eva_access_token` | JWT ES256 | HttpOnly, Secure, SameSite=Lax, Path=/ |
+| `eva_refresh_token` | `session_id:token` | HttpOnly, Secure, SameSite=Lax, Path=/ |
+
+**Capa 2 — SDK ↔ Auth Service** (headers custom):
+
+| Header | Dirección | Contenido |
+|--------|-----------|-----------|
+| `Authorization` | → Request | `Bearer {accessToken}` |
+| `X-Eva-Refresh-Token` | → Request | `session_id:refreshToken` |
+| `x-eva-new-access-token` | ← Response | Nuevo JWT (si rotado) |
+| `x-eva-new-refresh-token` | ← Response | Nuevo refresh token (si rotado) |
+
+### Flujo completo de autenticación
+
+```
+1. Frontend → POST /auth/login { phone, code }
+2. SDK → POST /login al Auth Service (headers custom + device info)
+3. Auth Service valida → responde con tokens en headers custom
+4. SDK traduce headers → cookies HttpOnly en response al frontend
+5. Browser almacena cookies automáticamente
+
+6. Frontend → GET /api/datos (cookies viajan automáticas)
+7. Middleware evaAuth() lee cookies → verifica JWT localmente (ES256)
+8. JWT válido → inyecta payload en context → next()
+9. JWT expirado → SDK usa refresh cookie → POST /login/refresh al Auth Service
+10. Auth Service rota tokens → SDK actualiza cookies → next()
+11. Frontend recibe response con cookies actualizadas (transparente)
+```
+
+### Lo que el consumidor NO hace
+
+- ❌ No configura cookies
+- ❌ No parsea tokens
+- ❌ No gestiona refresh
+- ❌ No configura CORS para tokens
+- ❌ No conoce la URL del Auth Service
+- ❌ No gestiona la public key
+- ❌ No configura variables de entorno
+
+> 📖 Documentación completa: [docs/architecture.md](docs/architecture.md)
 
 ---
 
-## Entry Points
+## 🔧 Configuración
 
-| Import | Contenido | Peer requerido |
-|--------|-----------|----------------|
-| `@eva/auth-sdk` | Client factory, tipos, constantes, JWT utils, error helpers | — |
-| `@eva/auth-sdk/hono` | Middleware `evaAuth()`, `evaAuthRoutes()`, helpers | `hono >=4` |
-| `@eva/auth-sdk/generic` | `verifyRequest()`, `handleTokenRotation()` para cualquier framework | — |
-| `@eva/auth-sdk/react` | `EvaAuthProvider`, hooks de auth, `authFetch` | `react >=18` |
+### Modelo build-time (zero-config para el consumidor)
+
+El SDK **no lee variables de entorno en runtime**. Toda la configuración se hornea como constantes al momento del build via `tsup define`.
+
+```ts
+// tsup.config.ts — map interno de URLs por entorno
+const envUrls = {
+  local: 'http://localhost:4000',
+  development: 'https://auth-dev.example.com',
+  production: 'https://auth.example.com',
+}
+```
+
+| Variable de build | Propósito | Valores |
+|-------------------|-----------|---------|
+| `EVA_BUILD_ENV` | Selecciona entorno | `local` / `development` / `production` |
+| `__EVA_AUTH_URL__` | URL del Auth Service (horneada) | Según `EVA_BUILD_ENV` |
+| `__EVA_ENV__` | Entorno actual (horneado) | Según `EVA_BUILD_ENV` |
+
+El consumidor final simplemente instala el SDK y lo usa. Sin parámetros, sin env vars, sin inicialización.
+
+> 📖 Documentación completa: [docs/configuration.md](docs/configuration.md)
 
 ---
 
-## Backend: Hono
+## 🖥️ Backend: Hono
 
-### `evaAuth()` — Middleware
+### `evaAuth()` — Middleware de protección
 
-Verifica el access token de las cookies. Si expiró, intenta refresh automático. Si falla, retorna `401`.
+Verifica access token → auto-refresh si expiró → inyecta payload en context → actualiza cookies.
 
 ```ts
 import { evaAuth, getEvaPayload, getSessionId } from '@eva/auth-sdk/hono'
@@ -125,9 +244,9 @@ app.get('/api/profile', (c) => {
 })
 ```
 
-### `evaAuthRoutes()` — Rutas de auth
+### `evaAuthRoutes()` — Rutas de auth completas
 
-Monta un sub-app Hono con todas las rutas de autenticación:
+Sub-router Hono con todos los endpoints de autenticación:
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
@@ -151,24 +270,23 @@ app.route('/auth', evaAuthRoutes())
 
 | Función | Retorna | Descripción |
 |---------|---------|-------------|
-| `getEvaPayload(c)` | `EvaTokenPayload` | Payload JWT del middleware |
+| `getEvaPayload(c)` | `EvaTokenPayload` | Payload JWT del context |
 | `getSessionId(c)` | `string` | ID de la sesión actual |
 | `parseDeviceInfo(request)` | `DeviceInfo` | Parsea User-Agent (dispositivo, OS, browser) |
 
 ---
 
-## Backend: Generic
+## 🌐 Backend: Generic
 
-Para frameworks que no son Hono (Express, Fastify, etc.):
+Para frameworks que no son Hono (Express, Fastify, etc.) — usa Web API estándar (`Request`).
 
-### `verifyRequest(request: Request)`
+### `verifyRequest(request)`
 
 Verifica tokens desde un `Request` estándar. Hace refresh automático si el access token expiró.
 
 ```ts
 import { verifyRequest } from '@eva/auth-sdk/generic'
 
-// En cualquier framework que te dé un Request
 const result = await verifyRequest(request)
 
 if (!result.ok) {
@@ -177,48 +295,47 @@ if (!result.ok) {
 
 const { payload, newCookies } = result.data
 // payload.id, payload.sessionId
-
-// Si hubo refresh, setear las nuevas cookies
-const response = new Response(JSON.stringify({ userId: payload.id }))
-if (newCookies) {
-  for (const cookie of newCookies) {
-    response.headers.append('Set-Cookie', cookie)
-  }
-}
+// newCookies: string[] | undefined (Set-Cookie headers si hubo refresh)
 ```
 
-### `handleTokenRotation(tokens)` / `handleLogoutCookies()`
-
-Helpers para generar headers `Set-Cookie`:
+### `setTokenCookies(tokens)` / `clearTokenCookies()`
 
 ```ts
-import { handleTokenRotation, handleLogoutCookies } from '@eva/auth-sdk/generic'
+import { setTokenCookies, clearTokenCookies } from '@eva/auth-sdk/generic'
 
-// Después de un refresh exitoso
-const { setCookieHeaders } = handleTokenRotation(tokens)
+// Setear cookies después de un login/refresh exitoso
+const setCookieHeaders = setTokenCookies({ accessToken, refreshToken })
 
-// En logout
-const { setCookieHeaders } = handleLogoutCookies()
+// Limpiar cookies en logout
+const clearHeaders = clearTokenCookies()
 ```
 
 ---
 
-## Frontend: React
+## ⚛️ Frontend: React
 
-### `<EvaAuthProvider>`
+### `EvaAuthProvider`
 
-Envuelve tu app. Hace silent refresh al montar para verificar si hay sesión activa.
+Context provider que gestiona el estado de autenticación. Ejecuta silent refresh al montar.
 
 ```tsx
-<EvaAuthProvider basePath="/auth" onAuthChange={(auth) => console.log('Auth:', auth)}>
-  {children}
+import { EvaAuthProvider } from '@eva/auth-sdk/react'
+
+<EvaAuthProvider
+  basePath="/auth"
+  apiUrl="https://api.proyecto-global.com"
+  onAuthChange={(auth) => console.log('Auth:', auth)}
+>
+  <App />
 </EvaAuthProvider>
 ```
 
-| Prop | Tipo | Default | Descripción |
-|------|------|---------|-------------|
-| `basePath` | `string` | `"/auth"` | Prefijo de las rutas de auth en tu backend |
-| `onAuthChange` | `(auth: boolean) => void` | — | Callback cuando cambia el estado de autenticación |
+| Prop | Tipo | Requerido | Descripción |
+|------|------|-----------|-------------|
+| `children` | `ReactNode` | Sí | Componentes hijos |
+| `basePath` | `string` | No | Prefijo de rutas auth (default: `/auth`) |
+| `apiUrl` | `string` | No | URL base del backend (para cross-domain) |
+| `onAuthChange` | `(auth) => void` | No | Callback ante cambios de estado |
 
 ### Hooks
 
@@ -227,123 +344,328 @@ Envuelve tu app. Hace silent refresh al montar para verificar si hay sesión act
 ```ts
 const { isAuthenticated, isLoading, error, login, logout } = useAuth()
 
-// Solicitar código
-await login.getCode({ phone: '+51999999999' })
+// Login OTP en dos pasos
+await login.getCode(phone)
+await login.verify(phone, code)
 
-// Verificar código
-const result = await login.verify({ phone: '+51999999999', code: '123456' })
-
-// Cerrar sesión
+// Logout
 await logout()
 ```
 
-#### `useUser()`
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `isAuthenticated` | `boolean` | Si hay sesión activa |
+| `isLoading` | `boolean` | Operación en curso |
+| `error` | `string \| null` | Último error |
+| `login.getCode` | `(phone) => Promise` | Solicita código OTP |
+| `login.verify` | `(phone, code) => Promise` | Verifica código |
+| `logout` | `() => Promise` | Cierra sesión |
+
+#### `useUser()` / `useSessions()` / `useEmpresas()`
 
 ```ts
-const { user, isLoading, error, refetch } = useUser()
-// user: EvaUser | null
+const { data, isLoading, error } = useUser()      // EvaUser
+const { data, isLoading, error } = useSessions()   // EvaSession[]
+const { data, isLoading, error } = useEmpresas()    // EvaEmpresa[]
 ```
 
-#### `useSessions()`
+### `authFetch<T>(url, options?)`
 
-```ts
-const { sessions, isLoading, closeSession, closeAllOther, refetch } = useSessions()
-
-await closeSession('session-id')
-await closeAllOther()
-```
-
-#### `useEmpresas()`
-
-```ts
-const { empresas, isLoading, error, refetch } = useEmpresas()
-// empresas: EvaEmpresa[] | null
-```
-
-### `authFetch`
-
-Fetch wrapper que incluye `credentials: 'include'` y parsea la respuesta al tipo `Result<T>`:
+Fetch wrapper con `credentials: 'include'`, `Content-Type: application/json` y timeout de 30s.
 
 ```ts
 import { authFetch } from '@eva/auth-sdk/react'
 
-const result = await authFetch<{ items: Item[] }>('/api/items')
-if (result.ok) console.log(result.data.items)
+const result = await authFetch<EvaUser>('/auth/me')
+if (result.ok) console.log(result.data)
 ```
 
 ---
 
-## HTTP Client directo (opcional)
+## 📚 API Reference
 
-Para comunicación directa server-to-server con el Auth Service (sin cookies, usando headers). Esto es **opcional** — el flujo normal usa `evaAuth()` y `evaAuthRoutes()` directamente.
+### Core (`@eva/auth-sdk`)
 
-```ts
-import { createEvaAuth } from '@eva/auth-sdk'
+**Funciones:**
 
-const { client } = createEvaAuth()
+| Función | Retorna | Descripción |
+|---------|---------|-------------|
+| `createEvaAuth()` | `{ client }` | Acceso directo al HTTP client (uso avanzado) |
+| `createHttpClient()` | `EvaHttpClient` | Cliente HTTP tipado contra Auth Service |
+| `verifyAccessToken(token)` | `Promise<Result<EvaTokenPayload>>` | Verifica JWT localmente |
+| `getPublicKey()` | `Promise<CryptoKey>` | Obtiene public key del JWKS (cacheada) |
+| `fetchJwks()` | `Promise<void>` | Fuerza fetch del JWKS |
+| `clearJwksCache()` | `void` | Limpia cache local del JWKS |
+| `createAuthError(error, status)` | `EvaAuthError` | Crea error tipado |
+| `isAuthError(value)` | `value is EvaAuthError` | Type guard |
 
-// Todos los métodos del client retornan Result<T>
-const result = await client.getUser({ accessToken: 'eyJ...' })
-if (result.ok) console.log(result.data) // EvaUser
-
-await client.getCode({ phone: '+51999999999' })
-await client.login({ phone: '+51999999999', code: '123456', ...deviceInfo })
-await client.refresh({ refreshToken: '...' })
-await client.logout({ refreshToken: '...' })
-await client.getSessions({ accessToken: '...' })
-await client.getUserEmpresas({ accessToken: '...' })
-await client.health()
-```
-
----
-
-## Tipos exportados
+**Tipos exportados:**
 
 | Tipo | Descripción |
 |------|-------------|
-| `EvaUser` | Usuario: `id`, `phone`, `name`, `lastName`, `email`, `dni`, `stateActivity`, `statePrivacy`, `createdAt` |
-| `EvaSession` | Sesión: `sessionId`, `deviceType`, `os`, `browser`, `ipAddress`, `createdAt`, `current` |
-| `EvaEmpresa` | Empresa: `id`, `ruc`, `razonSocial`, `slug`, `direccion`, `celular`, `email`, `img` |
-| `EvaTokenPayload` | Payload JWT: `id`, `sessionId` |
-| `TokenPair` | `{ accessToken, refreshToken }` |
-| `DeviceInfo` | `{ deviceType, os, browser, userAgent }` |
-| `Result<T>` | `{ ok: true, data: T }` \| `{ ok: false, error: string, status: number }` |
-| `EvaAuthError` | Error tipado del SDK |
+| `EvaUser` | Datos del usuario autenticado |
+| `EvaSession` | Sesión activa del usuario |
+| `EvaEmpresa` | Empresa asociada al usuario |
+| `EvaTokenPayload` | Claims del JWT: `{ id, sessionId }` |
+| `Result<T>` | `{ ok: true, data: T } \| { ok: false, error, status }` |
+| `TokenPair` | Par de access + refresh token |
+| `DeviceInfo` | Info parseada del User-Agent |
 | `ActivityState` | `'activo' \| 'ausente' \| 'ocupado' \| 'desconectado'` |
 | `PrivacyState` | `'publico' \| 'amigos' \| 'invisible'` |
-| `EvaHttpClient` | Tipo del client retornado por `createHttpClient()` |
+| `EvaAuthError` | `{ error: string, status: number }` |
+
+**Constantes:**
+
+| Constante | Contenido |
+|-----------|-----------|
+| `HEADERS` | Nombres de headers custom del protocolo Eva |
+| `COOKIES` | Nombres de cookies (`eva_access_token`, `eva_refresh_token`) |
+| `COOKIE_MAX_AGE` | TTL de cookies (access: 900s, refresh: 2592000s) |
+| `JWT_CONFIG` | Configuración de verificación (issuer, audience, algorithms) |
+
+> 📖 Referencia completa con ejemplos: [docs/api.md](docs/api.md)
 
 ---
 
-## Configuración
+## 🛡️ Seguridad
 
-El SDK **no requiere configuración por parte del consumidor**. Toda la configuración (URL del Auth Service y entorno) se hornea como constantes en el paquete al momento del build. Instalás la versión correcta y listo.
+### Cookies
 
-Ver [docs/configuration.md](docs/configuration.md) para detalles del modelo build-time.
+| Cookie | Max-Age | HttpOnly | Secure | SameSite | Path |
+|--------|---------|----------|--------|----------|------|
+| `eva_access_token` | 900 (15 min) | ✅ | ✅* | Lax | `/` |
+| `eva_refresh_token` | 2592000 (30 días) | ✅ | ✅* | Lax | `/` |
 
-### Constantes
+> \* `Secure=false` solo en `EVA_BUILD_ENV=local`. En `development` y `production` → `Secure=true`.
 
-```ts
-import { HEADERS, COOKIES, COOKIE_MAX_AGE, JWT_CONFIG } from '@eva/auth-sdk'
+### JWT Verification
 
-COOKIES.ACCESS_TOKEN   // "eva_access_token"
-COOKIES.REFRESH_TOKEN  // "eva_refresh_token"
-COOKIE_MAX_AGE.ACCESS_TOKEN   // 900 (15 min)
-COOKIE_MAX_AGE.REFRESH_TOKEN  // 2592000 (30 días)
-JWT_CONFIG.ALGORITHM   // "ES256"
-JWT_CONFIG.ISSUER      // "auth-service"
-JWT_CONFIG.AUDIENCE    // "proyecto-global"
-```
+- **Algoritmo**: ES256 (ECDSA P-256)
+- **Claims validados**: `iss=auth-service`, `aud=proyecto-global`, `exp`, `nbf`
+- **Verificación**: local con public key del JWKS — sin llamada al Auth Service
+
+### JWKS Cache
+
+| Parámetro | Valor |
+|-----------|-------|
+| Cache TTL | 24 horas |
+| Max TTL (grace period) | 25 horas |
+| Revalidación | ETag / HTTP 304 |
+
+Después de 25h sin actualización exitosa → **verificación rechazada**. No se usa key potencialmente revocada.
+
+### Deduplicación de requests
+
+- **Token refresh**: `Map<string, Promise>` keyed por refresh token. Requests concurrentes comparten un solo refresh.
+- **JWKS fetch**: variable `pendingFetch` a nivel de módulo. Múltiples verificaciones simultáneas → solo un fetch.
+
+### Timeouts
+
+| Operación | Timeout |
+|-----------|---------|
+| HTTP Client (Auth Service) | 10 segundos |
+| JWKS fetch | 5 segundos |
+| `authFetch` (React) | 30 segundos |
+
+### Validación de input
+
+- JSON parsing con error diferenciado antes de validación Zod
+- `phone` y `code`: validación de tipo y formato
+- User-Agent truncado a 500 caracteres
+- Safe status cast con `Set` de status codes HTTP conocidos
+
+> 📖 Documentación completa: [docs/security.md](docs/security.md)
 
 ---
 
-## Development
+## 📐 Convenciones
+
+| Aspecto | Regla |
+|---------|-------|
+| **Paradigma** | Funcional puro — objetos + funciones, **sin clases** |
+| **Errores** | Result Pattern (`Result<T>`). Nunca `throw` para flujos de negocio |
+| **Naming exports** | Inglés (`getUser`, `EvaUser`) |
+| **Archivos** | kebab-case (`auth-routes.ts`) |
+| **Funciones** | camelCase (`verifyAccessToken`) |
+| **Types** | PascalCase (`EvaTokenPayload`) |
+| **Constantes** | UPPER_SNAKE (`COOKIE_MAX_AGE`) |
+| **Imports** | Siempre desde barrel files, nunca archivos internos |
+| **Tests** | Un archivo `.mock.test.ts` por módulo |
+
+> 📖 Guía completa: [docs/conventions.md](docs/conventions.md)
+
+---
+
+## 🧪 Testing
 
 ```bash
-pnpm install        # instalar dependencias
-pnpm build          # compilar con tsup
-pnpm dev            # build en watch mode
-pnpm test           # correr tests con vitest (watch)
-pnpm test:run       # correr tests una vez
-pnpm lint           # lint con oxlint
+pnpm test         # Vitest en modo watch
+pnpm test:run     # Vitest single run
 ```
+
+**Estructura de tests:**
+
+```
+tests/
+├── client.mock.test.ts
+├── cookies.mock.test.ts
+├── hono-auth-routes.mock.test.ts
+├── hono-middleware.mock.test.ts
+├── jwks.mock.test.ts
+├── jwt.mock.test.ts
+└── helpers/
+    └── fixtures.ts
+```
+
+- Runner: **Vitest**
+- Mocking: `vi.mock()`
+- Fixtures compartidas en `tests/helpers/fixtures.ts`
+
+---
+
+## 🔨 Scripts
+
+| Script | Comando | Descripción |
+|--------|---------|-------------|
+| `pnpm build` | `tsup` | Build producción (default) |
+| `pnpm build:local` | `cross-env EVA_BUILD_ENV=local tsup` | Build con URL local |
+| `pnpm build:dev` | `cross-env EVA_BUILD_ENV=development tsup` | Build con URL development |
+| `pnpm build:prod` | `cross-env EVA_BUILD_ENV=production tsup` | Build con URL producción |
+| `pnpm dev` | `tsup --watch` | Build en modo watch |
+| `pnpm test` | `vitest` | Tests en modo watch |
+| `pnpm test:run` | `vitest run` | Tests single run |
+| `pnpm lint` | `oxlint .` | Linting con oxlint |
+| `pnpm fmt` | `oxfmt --write src/` | Formateo con oxfmt |
+| `pnpm type-check` | `tsc --noEmit` | Verificación de tipos |
+| `pnpm pack:local` | `build:local` + `pnpm pack` | Genera `.tgz` para consumo local |
+
+---
+
+## 📝 Decisiones técnicas
+
+| ADR | Decisión | Resumen |
+|-----|----------|---------|
+| ADR-001 | Error propagation transparente | Errores del Auth Service pasan sin sanitizar al frontend |
+| ADR-002 | Cookie Secure en development | `Secure=true` en development (se espera HTTPS). Solo `local` lo desactiva |
+| ADR-003 | Paradigma funcional | Funciones + objetos, sin clases. Result Pattern para errores |
+| ADR-004 | Auto-refresh con dedup | `Map<string, Promise>` evita race conditions en refresh concurrentes |
+| ADR-005 | JWKS cache con hard max TTL | 24h cache + 1h grace. Después de 25h → verificación rechazada |
+| ADR-006 | Constantes build-time | URL y entorno horneados via `tsup define`. Zero-config en runtime |
+| ADR-007 | Cookie Secure por build-time | Flag Secure decidido por `__EVA_ENV__`, no por `process.env` |
+| ADR-008 | createEvaAuth() como extensión | Punto de entrada estable para acceso directo al client |
+
+> 📖 Registro completo con contexto y justificación: [docs/decisions.md](docs/decisions.md)
+
+---
+
+## 🗂️ Estructura del proyecto
+
+```
+src/
+├── index.ts               # Barrel — core exports
+├── client.ts              # createEvaAuth()
+├── config.ts              # Constantes build-time (AUTH_URL, ENV)
+├── types.ts               # Todos los tipos exportados
+├── errors.ts              # EvaAuthError, createAuthError, isAuthError
+├── constants.ts           # HEADERS, COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
+├── refresh-dedup.ts       # Deduplicación de refresh (Map por refreshToken)
+├── jwks.ts                # JWKS fetch, cache, ETag/304
+├── jwt.ts                 # verifyAccessToken con jose
+├── cookies.ts             # Lectura/escritura de cookies HttpOnly
+├── http-client.ts         # Cliente HTTP tipado contra Auth Service
+│
+├── hono/                  # Entry point: @eva/auth-sdk/hono
+│   ├── index.ts           # Barrel
+│   ├── middleware.ts       # evaAuth() middleware
+│   ├── auth-routes.ts     # evaAuthRoutes() sub-router
+│   ├── device-info.ts     # parseDeviceInfo con bowser
+│   └── helpers.ts         # getEvaPayload, getSessionId
+│
+├── generic/               # Entry point: @eva/auth-sdk/generic
+│   ├── index.ts           # Barrel
+│   └── verify.ts          # verifyRequest (Web API Request)
+│
+└── react/                 # Entry point: @eva/auth-sdk/react
+    ├── index.ts           # Barrel
+    ├── eva-auth-provider.tsx  # Context provider
+    ├── use-auth.ts        # useAuth hook
+    ├── use-user.ts        # useUser hook
+    ├── use-sessions.ts    # useSessions hook
+    ├── use-empresas.ts    # useEmpresas hook
+    ├── use-auth-data.ts   # Hook base para data fetching
+    └── auth-fetch.ts      # authFetch utility
+```
+
+---
+
+## 🤝 Desarrollo local
+
+### Setup
+
+```bash
+git clone <repo-url>
+cd auth-sdk
+pnpm install
+```
+
+### Workflow
+
+```bash
+pnpm dev           # Build en modo watch
+pnpm test          # Tests en modo watch
+pnpm type-check    # Verificar tipos
+pnpm lint          # Linting
+```
+
+### Consumir localmente en otro proyecto
+
+```bash
+# En el repo del SDK
+pnpm pack:local
+# Genera eva-auth-sdk-0.1.0.tgz
+
+# En el proyecto consumidor
+pnpm add ../path/to/eva-auth-sdk-0.1.0.tgz
+```
+
+### Publicación
+
+```bash
+pnpm prepublishOnly  # type-check + tests + build:prod
+npm publish
+```
+
+---
+
+## 📖 Documentación
+
+| Documento | Contenido |
+|-----------|-----------|
+| [docs/api.md](docs/api.md) | Referencia completa de API por entry point |
+| [docs/architecture.md](docs/architecture.md) | Modelo de dos capas, flujo completo, estructura de módulos |
+| [docs/configuration.md](docs/configuration.md) | Modelo build-time, scripts de build, setup |
+| [docs/conventions.md](docs/conventions.md) | Paradigma, naming, Result Pattern, barrel files |
+| [docs/decisions.md](docs/decisions.md) | Registro de decisiones arquitectónicas (ADRs) |
+| [docs/security.md](docs/security.md) | Cookies, JWT, JWKS cache, dedup, validación |
+
+---
+
+## 🔗 Stack técnico
+
+| Dependencia | Versión | Propósito |
+|-------------|---------|-----------|
+| **TypeScript** | 5.8 | Tipado estricto |
+| **jose** | 6.x | JWT verification y JWKS (ES256/ECDSA P-256) |
+| **zod** | 4.x | Validación de input |
+| **bowser** | 2.x | User-Agent parsing |
+| **tsup** | 8.x | Build (ESM + CJS, declarations) |
+| **vitest** | 3.x | Testing |
+| **oxlint** | latest | Linting |
+| **hono** | ≥4 (peer, opcional) | Integración backend |
+| **react** | ≥18 (peer, opcional) | Integración frontend |
+
+---
+
+## 📄 Licencia
+
+Uso interno — Proyecto Global.
