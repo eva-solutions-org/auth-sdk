@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { EvaAuthError } from '../errors'
 import { useAuthContext } from './eva-auth-provider'
+import type { EvaError } from '../types'
 import { authFetch } from './auth-fetch'
 
 type AuthDataResult<T> = {
   data: T | null
   isLoading: boolean
-  error: EvaAuthError | null
+  error: EvaError | null
   refetch: () => void
 }
 
@@ -15,7 +15,7 @@ export const useAuthData = <T>(path: string): AuthDataResult<T> => {
 
   const [data, setData] = useState<T | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<EvaAuthError | null>(null)
+  const [error, setError] = useState<EvaError | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
 
   const fetchData = useCallback(async (signal?: AbortSignal) => {
@@ -31,7 +31,7 @@ export const useAuthData = <T>(path: string): AuthDataResult<T> => {
         setError(null)
       } else {
         setData(null)
-        setError({ error: result.error, status: result.status })
+        setError(result.error)
       }
     } finally {
       if (!signal?.aborted) setIsLoading(false)

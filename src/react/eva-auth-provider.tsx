@@ -1,6 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react'
-import type { Result } from '../types'
-import type { EvaAuthError } from '../errors'
+import type { Result, EvaError } from '../types'
 import { authFetch } from './auth-fetch'
 
 // ── Types ──────────────────────────────────────────────
@@ -8,7 +7,7 @@ import { authFetch } from './auth-fetch'
 export type AuthState = {
   isAuthenticated: boolean
   isLoading: boolean
-  error: EvaAuthError | null
+  error: EvaError | null
 }
 
 export type AuthContextValue = AuthState & {
@@ -71,7 +70,7 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthCh
     const controller = new AbortController()
 
     const checkSession = async () => {
-      let lastError = 'Error de red'
+      let lastError: EvaError = { kind: 'sdk', reason: 'network', message: 'Error de red', status: 0 }
       for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
         const result = await authFetch<unknown>(`${urlBase}/refresh`, {
           method: 'POST',
@@ -85,14 +84,14 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthCh
           return
         }
 
-        if (result.status === 401) {
+        if (result.error.status === 401) {
           setState({ isAuthenticated: false, isLoading: false, error: null })
           return
         }
 
         // Errores de cliente (4xx) no son recuperables con retry
-        if (result.status >= 400 && result.status < 500) {
-          setState({ isAuthenticated: false, isLoading: false, error: { error: result.error, status: result.status } })
+        if (result.error.status >= 400 && result.error.status < 500) {
+          setState({ isAuthenticated: false, isLoading: false, error: result.error })
           return
         }
 
@@ -107,7 +106,7 @@ export const EvaAuthProvider = ({ children, basePath = '/auth', apiUrl, onAuthCh
       setState({
         isAuthenticated: false,
         isLoading: false,
-        error: { error: lastError, status: 0 },
+        error: lastError,
       })
     }
 
