@@ -12,8 +12,8 @@ import {
 vi.mock('../src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
   getEvaEnv: () => 'production' as const,
-  AUTH_URL: 'http://auth.test',
-  ENV: 'production',
+  getCookieDomain: () => undefined,
+  configureEvaAuth: vi.fn(),
 }))
 
 const mockFetch = vi.fn()
@@ -77,16 +77,17 @@ describe('getCode', () => {
 
   it('retorna error cuando Auth Service responde 429', async () => {
     mockFetch.mockResolvedValueOnce(
-      createErrorResponse('Too many requests', 429),
+      createErrorResponse('Too many requests', 429, 'rate_limited'),
     )
 
     const result = await client.getCode({ phone: '+51999999999' })
 
-    expect(result).toEqual({
-      ok: false,
-      error: 'Too many requests',
-      status: 429,
-    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('api')
+    expect(result.error.message).toBe('Too many requests')
+    expect(result.error.status).toBe(429)
+    expect((result.error as { kind: 'api'; code: string }).code).toBe('rate_limited')
   })
 })
 
@@ -164,16 +165,17 @@ describe('refresh', () => {
 
   it('retorna error cuando refresh token es inválido (401)', async () => {
     mockFetch.mockResolvedValueOnce(
-      createErrorResponse('Invalid refresh token', 401),
+      createErrorResponse('Invalid refresh token', 401, 'unauthorized'),
     )
 
     const result = await client.refresh({ refreshToken: 'bad-token' })
 
-    expect(result).toEqual({
-      ok: false,
-      error: 'Invalid refresh token',
-      status: 401,
-    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('api')
+    expect(result.error.message).toBe('Invalid refresh token')
+    expect(result.error.status).toBe(401)
+    expect((result.error as { kind: 'api'; code: string }).code).toBe('unauthorized')
   })
 })
 
@@ -222,10 +224,11 @@ describe('network errors', () => {
 
     const result = await client.health()
 
-    expect(result).toEqual({
-      ok: false,
-      error: 'Failed to fetch',
-      status: 0,
-    })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('sdk')
+    expect(result.error.message).toBe('Failed to fetch')
+    expect(result.error.status).toBe(0)
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('network')
   })
 })

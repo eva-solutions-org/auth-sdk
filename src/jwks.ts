@@ -1,19 +1,24 @@
 import { importJWK } from 'jose'
 import { z } from 'zod'
 import { getAuthServiceUrl } from './constants'
+import {
+  cachedKey,
+  cachedEtag,
+  cachedAt,
+  pendingFetch,
+  clearCache,
+  setCached,
+  refreshCachedAt,
+  setPendingFetch,
+} from './jwks-cache'
 
 const JwksResponseSchema = z.object({
   keys: z.array(z.record(z.string(), z.unknown())).min(1),
 })
 
-let cachedKey: CryptoKey | null = null
-let cachedEtag: string | null = null
-let cachedAt = 0
 const CACHE_TTL = 86400 * 1000
 const CACHE_MAX_TTL = 86400 * 1000 + 3600 * 1000
 const JWKS_FETCH_TIMEOUT = 5_000
-
-let pendingFetch: Promise<void> | null = null
 
 export async function fetchJwks(): Promise<void> {
   const url = `${getAuthServiceUrl()}/.well-known/jwks.json`
@@ -32,7 +37,7 @@ export async function fetchJwks(): Promise<void> {
   }
 
   if (res.status === 304 && cachedKey) {
-    cachedAt = Date.now()
+    refreshCachedAt(Date.now())
     return
   }
 
@@ -55,9 +60,7 @@ export async function fetchJwks(): Promise<void> {
   if (!(key instanceof CryptoKey)) {
     throw new Error('Se esperaba CryptoKey de la importación JWKS')
   }
-  cachedKey = key
-  cachedEtag = res.headers.get('etag')
-  cachedAt = Date.now()
+  setCached(key, res.headers.get('etag'), Date.now())
 }
 
 export async function getPublicKey(): Promise<CryptoKey> {
@@ -65,7 +68,8 @@ export async function getPublicKey(): Promise<CryptoKey> {
 
   if (isStale) {
     if (!pendingFetch) {
-      pendingFetch = fetchJwks().finally(() => { pendingFetch = null })
+      const fetch$ = fetchJwks().finally(() => { setPendingFetch(null) })
+      setPendingFetch(fetch$)
     }
     try {
       await pendingFetch
@@ -83,9 +87,7 @@ export async function getPublicKey(): Promise<CryptoKey> {
   return cachedKey
 }
 
+/** Limpia el cache JWKS (cachedKey, cachedEtag, cachedAt, pendingFetch). */
 export function clearJwksCache(): void {
-  cachedKey = null
-  cachedEtag = null
-  cachedAt = 0
-  pendingFetch = null
+  clearCache()
 }

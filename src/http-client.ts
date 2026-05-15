@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { HEADERS, getAuthServiceUrl } from './constants'
-import { parseErrorResponse } from './errors'
+import { parseErrorResponse } from './schemas'
 import type { EvaUser, EvaSession, EvaEmpresa, Result, TokenPair, DeviceInfo } from './types'
 
 const AuthServiceResponseSchema = z.object({
@@ -42,14 +42,17 @@ const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<R
     })
 
     if (!res.ok) {
-      const err = await parseErrorResponse(res)
-      return { ok: false, error: err.error, status: err.status }
+      const body = await res.json().catch(() => null)
+      return { ok: false, error: parseErrorResponse(res.status, body) }
     }
 
     const json: unknown = await res.json()
     const parsed = AuthServiceResponseSchema.safeParse(json)
     if (!parsed.success) {
-      return { ok: false, error: 'Estructura de respuesta inválida', status: 502 }
+      return {
+        ok: false,
+        error: { kind: 'sdk', reason: 'malformed', message: 'Estructura de respuesta inválida', status: 502 },
+      }
     }
     const data = parsed.data.data as T
     const tokens = extractTokens(res.headers)
@@ -57,7 +60,10 @@ const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<R
     return { ok: true, data: { ...data, ...(tokens ? { tokens } : {}) } }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Error de red'
-    return { ok: false, error: message, status: 0 }
+    return {
+      ok: false,
+      error: { kind: 'sdk', reason: 'network', message, status: 0 },
+    }
   }
 }
 
@@ -92,7 +98,10 @@ const getSessions = (params: { accessToken: string }): Promise<Result<EvaSession
 
 const deleteSession = (params: { accessToken: string; sessionId: string }): Promise<Result<{ message: string }>> => {
   if (!/^[\w-]+$/.test(params.sessionId)) {
-    return Promise.resolve({ ok: false, error: 'ID de sesión inválido', status: 400 })
+    return Promise.resolve({
+      ok: false,
+      error: { kind: 'sdk', reason: 'malformed', message: 'ID de sesión inválido', status: 400 },
+    })
   }
   return authFetch(`sessions/${params.sessionId}`, { method: 'DELETE', accessToken: params.accessToken })
 }
