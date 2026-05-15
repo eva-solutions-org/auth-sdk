@@ -41,8 +41,8 @@ export const createAuthServiceResponse = (
   return new Response(JSON.stringify({ data }), { status: 200, headers })
 }
 
-export const createErrorResponse = (error: string, status: number) =>
-  new Response(JSON.stringify({ error }), {
+export const createErrorResponse = (message: string, status: number, code = 'error') =>
+  new Response(JSON.stringify({ error: { code, message } }), {
     status,
     headers: { 'content-type': 'application/json' },
   })

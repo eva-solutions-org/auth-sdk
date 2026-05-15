@@ -5,8 +5,11 @@ import { createTokenPair, createUser } from './helpers/fixtures'
 vi.mock('../src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
   getEvaEnv: () => 'production' as const,
-  AUTH_URL: 'http://auth.test',
-  ENV: 'production',
+  getCookieDomain: () => undefined,
+  configureEvaAuth: vi.fn(),
+  getErrorMessages: vi.fn().mockReturnValue(undefined),
+  validateErrorMessagesInput: vi.fn().mockImplementation((x: unknown) => x),
+  getErrorWire: vi.fn().mockReturnValue('api'),
 }))
 
 const { mockGetCode, mockLogin, mockRefresh, mockLogout, mockGetUser, mockUpdateUser, mockDeleteUser, mockGetUserEmpresas, mockGetSessions, mockDeleteSession, mockDeleteAllSessions } = vi.hoisted(() => ({
@@ -79,7 +82,10 @@ describe('POST /get-code', () => {
   })
 
   it('retorna error cuando Auth Service responde error', async () => {
-    mockGetCode.mockResolvedValue({ ok: false, error: 'Teléfono inválido', status: 400 })
+    mockGetCode.mockResolvedValue({
+      ok: false,
+      error: { kind: 'api', code: 'validation_error', message: 'Teléfono inválido', status: 400 },
+    })
 
     const res = await app.request('/get-code', {
       method: 'POST',
@@ -88,7 +94,7 @@ describe('POST /get-code', () => {
     })
 
     expect(res.status).toBe(400)
-    expect(await res.json()).toEqual({ error: 'Teléfono inválido' })
+    expect(await res.json()).toEqual({ error: { code: 'validation_error', message: 'Teléfono inválido' } })
   })
 })
 
@@ -139,7 +145,10 @@ describe('POST /login', () => {
   })
 
   it('retorna error si login falla', async () => {
-    mockLogin.mockResolvedValue({ ok: false, error: 'Código incorrecto', status: 401 })
+    mockLogin.mockResolvedValue({
+      ok: false,
+      error: { kind: 'api', code: 'unauthorized', message: 'Código incorrecto', status: 401 },
+    })
 
     const res = await app.request('/login', {
       method: 'POST',
@@ -148,7 +157,7 @@ describe('POST /login', () => {
     })
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'Código incorrecto' })
+    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Código incorrecto' } })
   })
 })
 
@@ -159,7 +168,8 @@ describe('POST /refresh', () => {
     const res = await app.request('/refresh', { method: 'POST' })
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'Token de refresco no encontrado' })
+    // ADR-012: tokenNotFound es la key unificada para acceso/refresh ausente
+    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token de acceso no encontrado' } })
   })
 
   it('rota cookies cuando refresh es exitoso', async () => {
@@ -228,7 +238,7 @@ describe('GET /me', () => {
     const res = await app.request('/me')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: 'Token de acceso no encontrado' })
+    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token de acceso no encontrado' } })
   })
 })
 
@@ -249,5 +259,31 @@ describe('DELETE /sessions', () => {
     expect(setCookies).toContain('clear-access')
     expect(setCookies).toContain('clear-refresh')
     expect(await res.json()).toEqual({ data: { message: 'Todas las sesiones cerradas' } })
+  })
+})
+
+// ─── errorMessages override local (T-44) ─────────────────────────────────────
+
+import { evaAuthRoutes } from '../src/hono/auth-routes'
+
+describe('evaAuthRoutes — errorMessages override (T-44)', () => {
+  it('override local tokenNotFound aplicado en GET /me', async () => {
+    vi.mocked(readTokensFromCookies).mockReturnValue({} as any)
+    const customApp = evaAuthRoutes({ errorMessages: { tokenNotFound: 'Token missing' } })
+
+    const res = await customApp.request('/me')
+
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token missing' } })
+  })
+
+  it('sin override — default tokenNotFound en español (regression-lock)', async () => {
+    vi.mocked(readTokensFromCookies).mockReturnValue({} as any)
+    const defaultApp = evaAuthRoutes()
+
+    const res = await defaultApp.request('/me')
+
+    expect(res.status).toBe(401)
+    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token de acceso no encontrado' } })
   })
 })
