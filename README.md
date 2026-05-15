@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/badge/Hono-≥4-orange?logo=hono&logoColor=white" alt="Hono" />
   <img src="https://img.shields.io/badge/React-≥18-61DAFB?logo=react&logoColor=white" alt="React" />
   <img src="https://img.shields.io/badge/Edge_+_Node.js-ready-brightgreen" alt="Edge + Node.js" />
-  <img src="https://img.shields.io/badge/version-0.1.0-informational" alt="version" />
+  <img src="https://img.shields.io/badge/version-1.0.0-informational" alt="version" />
 </p>
 
 ---
@@ -29,6 +29,8 @@ React (browser) ←── cookies HttpOnly ──→ Hono (tu backend + SDK) ←
 - [⚡ Quick Start](#-quick-start)
 - [📦 Instalación](#-instalación)
 - [🧩 Entry Points](#-entry-points)
+- [Breaking changes en 1.0.0](#breaking-changes-en-100)
+- [🔍 Error handling](#-error-handling)
 - [🏗️ Arquitectura](#️-arquitectura)
 - [🔧 Configuración](#-configuración)
 - [🖥️ Backend: Hono](#️-backend-hono)
@@ -55,9 +57,9 @@ React (browser) ←── cookies HttpOnly ──→ Hono (tu backend + SDK) ←
 | 🔄 **Auto-refresh** | Tokens se renuevan automáticamente cuando expiran, transparente al usuario |
 | 🛡️ **JWT ES256** | Verificación local con ECDSA P-256 via `jose` v6 |
 | 📡 **JWKS con cache** | Public key cacheada 24h con ETag/304 y hard max TTL de 25h |
-| 🚀 **Zero-config** | URL del Auth Service y entorno horneados en build-time. Sin env vars en runtime |
+| 🚀 **Zero-config o runtime** | URL y entorno horneados en build-time (fallback). Override via `configureEvaAuth()` o `EVA_AUTH_URL` env |
 | ⚡ **Edge + Node.js** | Compatible con cualquier runtime (Cloudflare Workers, Vercel Edge, Node.js) |
-| 🧩 **4 entry points** | Core, Hono, React y Generic — importá solo lo que necesites |
+| 🧩 **8 entry points** | Core, Hono, React, Generic, OpenAPI, Webhooks, Admin, S2S — importá solo lo que necesites |
 | 🔒 **Dedup de refresh** | Requests concurrentes con token expirado comparten un solo refresh |
 | 📱 **Device info** | Parsing de User-Agent server-side con bowser |
 | 🏢 **Gestión completa** | Usuarios, sesiones, empresas — todo resuelto |
@@ -80,6 +82,37 @@ app.use('/api/*', evaAuth())         // Proteger rutas
 
 app.get('/api/saludo', (c) => c.json({ msg: 'Estás autenticado' }))
 ```
+
+### Backend (Hono) — con claims extra tipados
+
+Si el JWT del Auth Service incluye claims adicionales (`phone`, `empresaId`, `role`, etc.), puedes acceder a ellos de forma tipada con validación runtime:
+
+```ts
+import { z } from 'zod'
+import { Hono } from 'hono'
+import { evaAuth } from '@eva/auth-sdk/hono'
+
+// 1. Definir schema de los claims extra que esperas
+const myClaims = z.object({
+  phone: z.string(),
+  empresaId: z.string().uuid(),
+})
+
+// 2. Pasar el schema a evaAuth — TExtra se infiere automáticamente
+const auth = evaAuth({ extraClaimsSchema: myClaims })
+
+const app = new Hono()
+app.use('/api/*', auth)
+
+app.get('/api/me', (c) => {
+  // c.var.evaPayload: EvaTokenPayload<{ phone: string; empresaId: string }>
+  const { id, sessionId, phone, empresaId } = c.var.evaPayload
+  return c.json({ id, phone, empresaId })
+  // Si el JWT no trae phone o empresaId con los tipos correctos → 401 automático
+})
+```
+
+Sin `extraClaimsSchema`, el payload es solo `{ id, sessionId }` (comportamiento predeterminado — los claims extra del JWT se descartan por seguridad).
 
 ### Frontend (React)
 
@@ -129,14 +162,127 @@ pnpm add react   # si usas @eva/auth-sdk/react
 
 ## 🧩 Entry Points
 
-El SDK expone 4 entry points independientes. Importá solo lo que necesites — el tree-shaking se encarga del resto.
+El SDK expone 8 entry points independientes. Importá solo lo que necesites — el tree-shaking se encarga del resto.
 
 | Import | Contenido | Peer requerido |
 |--------|-----------|----------------|
-| `@eva/auth-sdk` | Core: client factory, tipos, constantes, JWT, JWKS, errores | — |
-| `@eva/auth-sdk/hono` | Middleware `evaAuth()`, rutas `evaAuthRoutes()`, helpers | `hono >=4` |
-| `@eva/auth-sdk/react` | `EvaAuthProvider`, hooks (`useAuth`, `useUser`, etc.), `authFetch` | `react >=18` |
-| `@eva/auth-sdk/generic` | `verifyRequest()`, `setTokenCookies()`, `clearTokenCookies()` — framework-agnostic | — |
+| `@eva/auth-sdk` | Core: client factory, tipos, constantes, JWT, JWKS, error system | — |
+| `@eva/auth-sdk/hono` | Middleware `evaAuth()`, rutas `evaAuthRoutes()`, helpers, cookies, headers | `hono >=4` |
+| `@eva/auth-sdk/react` | `EvaAuthProvider`, hooks (`useAuth`, `useUser`, etc.), `authFetch`, cookies | `react >=18` |
+| `@eva/auth-sdk/generic` | `verifyRequest()`, `setTokenCookies()`, `clearTokenCookies()`, cookies, headers | — |
+| `@eva/auth-sdk/hono-openapi` | `evaAuthOpenAPIRoutes()` — variante OpenAPI 3.1 con `/doc` integrado | `hono >=4`, `@hono/zod-openapi >=1.3.0` |
+| `@eva/auth-sdk/webhooks` | `verifyWebhookSignature()`, `EVENT_CODES`, tipos de webhook | — |
+| `@eva/auth-sdk/admin` | `createAdminClient()` — gestión de service clients y restauración de usuarios | — |
+| `@eva/auth-sdk/s2s` | `createS2SClient()` — llamadas internas con firma HMAC S2S automática | — |
+
+---
+
+## Breaking changes en 1.0.0
+
+> Si venís de 0.x, revisá la [Migration Guide completa](docs/migration.md).
+
+Los cambios más impactantes son:
+
+**1. `Result<T>.error` ahora es `EvaError` (no `string`)**
+
+```typescript
+// Antes (0.x):
+if (!result.ok) return c.text(result.error, result.status)
+
+// Después (1.0.0) — opción mínima:
+import { getMessage } from '@eva/auth-sdk'
+if (!result.ok) return c.text(getMessage(result.error), result.error.status)
+
+// Después (1.0.0) — con narrowing completo:
+if (!result.ok) {
+  if (result.error.kind === 'api') {
+    // result.error.code disponible — comparar con ERROR_CODES
+  } else {
+    // result.error.reason disponible — enum cerrado SdkErrorReason
+  }
+}
+```
+
+**2. Wire HTTP del SDK cambia a shape del API (default)**
+
+Los handlers Hono ahora emiten `{ "error": { "code": "...", "message": "..." } }` por defecto.
+Para mantener el shape legacy: `configureEvaAuth({ errorWire: 'string' })`.
+
+**3. `EvaAuthError` eliminado**
+
+`EvaAuthError`, `createAuthError`, `isAuthError` no existen en 1.0.0.
+
+---
+
+## 🔍 Error handling
+
+El SDK exporta helpers semánticos para inspeccionar errores **sin conocer los internals**. El consumidor no debe inspeccionar `err.kind` ni comparar contra `ERROR_CODES` directamente — use los helpers exportados.
+
+### Tipos de error
+
+| Tipo | Discriminante | Campos clave |
+|------|---------------|--------------|
+| `EvaApiError` | `kind: 'api'` | `code: ErrorCode`, `message: string`, `status: number` |
+| `EvaSdkError` | `kind: 'sdk'` | `reason: SdkErrorReason`, `message: string`, `status: number` |
+| `EvaError` | — | `EvaApiError \| EvaSdkError` (discriminated union) |
+
+### Helpers disponibles
+
+```ts
+import {
+  // Branch guards
+  isApiError, isSdkError,
+  // Generic matchers
+  matchError, matchSdkReason,
+  // API shortcuts (12)
+  isNotFound, isUnauthorized, isForbidden, isConflict,
+  isValidationError, isRateLimited, isGone, isUnprocessableEntity,
+  isBadRequest, isInternalError, isServiceUnavailable, isAccountStateLocked,
+  // SDK shortcuts (6)
+  isNetworkError, isTokenInvalid, isAuthRequired,
+  isRefreshNoTokens, isVerifyFailed, isMalformed,
+} from '@eva/auth-sdk'
+```
+
+### Uso con shortcut (`isNotFound`)
+
+```ts
+import { isNotFound } from '@eva/auth-sdk'
+
+const r = await client.getUser(id)
+if (!r.ok && isNotFound(r.error)) {
+  // user no existe — soft-delete local
+}
+```
+
+### Uso con matcher genérico (`matchError`)
+
+Útil para feature-specific codes (como los del módulo admin) que no tienen shortcut propio:
+
+```ts
+import { matchError, ERROR_CODES } from '@eva/auth-sdk'
+
+if (!r.ok && matchError(r.error, ERROR_CODES.conflict)) {
+  // recurso en conflicto
+}
+
+// También funciona con codes feature-specific (ErrorCode es semiabierto)
+if (!r.ok && matchError(r.error, 'service_client_already_exists')) {
+  // lógica específica del admin
+}
+```
+
+### Uso con error de red (`isNetworkError`)
+
+```ts
+import { isNetworkError } from '@eva/auth-sdk'
+
+if (!r.ok && isNetworkError(r.error)) {
+  // fallo transitorio — reintentar con backoff
+}
+```
+
+> **Nota**: El consumidor NO debe inspeccionar `err.kind` ni comparar contra `ERROR_CODES` directamente. Use los helpers exportados — proveen narrowing TS automático y aíslan al consumidor de los internals del SDK.
 
 ---
 
@@ -202,9 +348,126 @@ El SDK actúa como intermediario entre dos capas de transporte completamente dis
 
 ## 🔧 Configuración
 
+### Quick start con runtime config
+
+El SDK soporta configuración en runtime: un mismo tarball puede apuntar a diferentes entornos sin rebuild.
+
+```ts
+// boot.ts — llamar antes del primer request
+import { configureEvaAuth } from '@eva/auth-sdk'
+
+configureEvaAuth({
+  authUrl: process.env.EVA_AUTH_URL,        // URL del Auth Service (override programático)
+  cookieDomain: process.env.COOKIE_DOMAIN, // ej: '.miempresa.com' para subdominios
+})
+```
+
+Si no se llama `configureEvaAuth()`, el SDK usa las constantes horneadas en build-time (backward compatible).
+
+### Mensajes de error personalizados
+
+Para internacionalizar o adaptar los mensajes de error, pasá `errorMessages` a `configureEvaAuth` (global) o a cualquier función que pueda retornar errores (local):
+
+```ts
+// Global — afecta todo el SDK
+configureEvaAuth({
+  errorMessages: {
+    authRequired: 'Authentication required',
+    tokenExpired: 'Session expired — please log in again',
+    tokenNotFound: 'No auth token provided',
+  },
+})
+```
+
+```ts
+// Local — solo esta instancia del middleware
+app.use('/api/*', evaAuth({
+  errorMessages: { authRequired: 'Por favor iniciá sesión' },
+}))
+
+// Local — solo estas rutas
+app.route('/auth', evaAuthRoutes({
+  errorMessages: { loginFailed: 'Credenciales incorrectas' },
+}))
+```
+
+Precedencia: **local > global > defaults en español**. Ver [docs/configuration.md](docs/configuration.md#mensajes-de-error-personalizados) para la tabla completa de keys.
+
+### Variante OpenAPI
+
+```ts
+import { OpenAPIHono } from '@hono/zod-openapi'
+import { evaAuthOpenAPIRoutes } from '@eva/auth-sdk/hono-openapi'
+
+// El padre DEBE ser OpenAPIHono para que /doc funcione
+const app = new OpenAPIHono()
+app.route('/auth', evaAuthOpenAPIRoutes())
+
+// Spec OpenAPI 3.1 disponible en /doc
+app.get('/doc', (c) => c.json(app.getOpenAPI31Document({
+  openapi: '3.1.0',
+  info: { title: 'Eva Auth API', version: '1.0.0' },
+})))
+```
+
+```bash
+# Peer dependency requerida
+npm install @hono/zod-openapi
+```
+
+### Acceso a cookies desde cualquier entry point
+
+`readTokensFromCookies`, `COOKIES`, `COOKIE_MAX_AGE` y `HEADERS` se re-exportan desde los 4 entry points:
+
+```ts
+import { readTokensFromCookies, COOKIES, COOKIE_MAX_AGE, HEADERS } from '@eva/auth-sdk/hono'
+import { readTokensFromCookies, COOKIES, COOKIE_MAX_AGE, HEADERS } from '@eva/auth-sdk/generic'
+import { readTokensFromCookies, COOKIES, COOKIE_MAX_AGE } from '@eva/auth-sdk/react'
+import { readTokensFromCookies } from '@eva/auth-sdk'
+```
+
+### Deployment con subdominios
+
+Para compartir cookies de auth entre `app.miempresa.com` y `api.miempresa.com`:
+
+```ts
+// boot.ts del backend (Hono + SDK)
+import { configureEvaAuth, createEvaAuth } from '@eva/auth-sdk'
+import { evaAuth, evaAuthRoutes } from '@eva/auth-sdk/hono'
+import { Hono } from 'hono'
+
+// 1. Configurar al arrancar, antes de registrar rutas
+configureEvaAuth({
+  authUrl: process.env.EVA_AUTH_URL ?? 'https://auth.miempresa.com',
+  cookieDomain: '.miempresa.com',   // punto leading = todos los subdominios
+})
+
+// 2. Montar rutas normalmente
+const app = new Hono()
+app.route('/auth', evaAuthRoutes())
+app.use('/api/*', evaAuth())
+
+export default app
+```
+
+Con esto:
+- `POST /auth/login` → `Set-Cookie: eva_access_token=...; Domain=.miempresa.com; HttpOnly; ...`
+- `POST /auth/logout` → `Set-Cookie: eva_access_token=; Domain=.miempresa.com; Max-Age=0; ...`
+- La cookie es accesible desde `app.miempresa.com` y cualquier subdominio.
+
+### Variables de entorno runtime
+
+| Variable | Nivel de precedencia | Descripción |
+|----------|----------------------|-------------|
+| `configureEvaAuth({ authUrl })` | 1 (máxima) | Override programático — para Cloudflare Workers, tests |
+| `process.env.EVA_AUTH_URL` | 2 | Variable de entorno en runtime (con guard para Edge runtimes sin `process`) |
+| `__EVA_AUTH_URL__` (build-time) | 3 (fallback) | Constante horneada por tsup `define` |
+
+Si `EVA_AUTH_URL` contiene un valor inválido (protocolo no soportado, URL mal formada), el SDK emite `console.warn` y cae al build-time fallback sin lanzar.
+
 ### Modelo build-time (zero-config para el consumidor)
 
-El SDK **no lee variables de entorno en runtime**. Toda la configuración se hornea como constantes al momento del build via `tsup define`.
+Sigue siendo válido: si el consumidor NO llama `configureEvaAuth()`, el SDK usa las constantes horneadas.
 
 ```ts
 // tsup.config.ts — map interno de URLs por entorno
@@ -220,8 +483,6 @@ const envUrls = {
 | `EVA_BUILD_ENV` | Selecciona entorno | `local` / `development` / `production` |
 | `__EVA_AUTH_URL__` | URL del Auth Service (horneada) | Según `EVA_BUILD_ENV` |
 | `__EVA_ENV__` | Entorno actual (horneado) | Según `EVA_BUILD_ENV` |
-
-El consumidor final simplemente instala el SDK y lo usa. Sin parámetros, sin env vars, sin inicialización.
 
 > 📖 Documentación completa: [docs/configuration.md](docs/configuration.md)
 
@@ -396,8 +657,10 @@ if (result.ok) console.log(result.data)
 | `getPublicKey()` | `Promise<CryptoKey>` | Obtiene public key del JWKS (cacheada) |
 | `fetchJwks()` | `Promise<void>` | Fuerza fetch del JWKS |
 | `clearJwksCache()` | `void` | Limpia cache local del JWKS |
-| `createAuthError(error, status)` | `EvaAuthError` | Crea error tipado |
-| `isAuthError(value)` | `value is EvaAuthError` | Type guard |
+| `getMessage(err)` | `string` | Extrae el mensaje de un `EvaError` |
+| `verifyWebhookSignature(params)` | `Promise<boolean>` | Verifica firma HMAC-SHA256 de webhook |
+| `createAdminClient(config)` | `AdminClient` | Cliente para endpoints `/admin/*` |
+| `createS2SClient(config)` | `S2SClient` | Cliente S2S con firma automática |
 
 **Tipos exportados:**
 
@@ -407,12 +670,17 @@ if (result.ok) console.log(result.data)
 | `EvaSession` | Sesión activa del usuario |
 | `EvaEmpresa` | Empresa asociada al usuario |
 | `EvaTokenPayload` | Claims del JWT: `{ id, sessionId }` |
-| `Result<T>` | `{ ok: true, data: T } \| { ok: false, error, status }` |
+| `Result<T>` | `{ ok: true, data: T } \| { ok: false, error: EvaError }` |
+| `EvaApiError` | Error del API: `{ kind: 'api', code, message, status }` |
+| `EvaSdkError` | Error del SDK: `{ kind: 'sdk', reason, message, status }` |
+| `EvaError` | `EvaApiError \| EvaSdkError` — discriminated union |
+| `CoreErrorCode` | Unión cerrada de 12 codes core del API |
+| `ErrorCode` | `CoreErrorCode \| (string & {})` — abierto para feature codes |
+| `SdkErrorReason` | Enum cerrado de 6 reasons del SDK |
 | `TokenPair` | Par de access + refresh token |
 | `DeviceInfo` | Info parseada del User-Agent |
 | `ActivityState` | `'activo' \| 'ausente' \| 'ocupado' \| 'desconectado'` |
 | `PrivacyState` | `'publico' \| 'amigos' \| 'invisible'` |
-| `EvaAuthError` | `{ error: string, status: number }` |
 
 **Constantes:**
 
@@ -422,6 +690,9 @@ if (result.ok) console.log(result.data)
 | `COOKIES` | Nombres de cookies (`eva_access_token`, `eva_refresh_token`) |
 | `COOKIE_MAX_AGE` | TTL de cookies (access: 900s, refresh: 2592000s) |
 | `JWT_CONFIG` | Configuración de verificación (issuer, audience, algorithms) |
+| `ERROR_CODES` | 12 error codes core del Auth Service |
+| `SDK_ERROR_REASONS` | 6 reasons internos del SDK |
+| `EVENT_CODES` | 11 event codes de webhooks del Auth Service |
 
 > 📖 Referencia completa con ejemplos: [docs/api.md](docs/api.md)
 
@@ -499,8 +770,9 @@ Después de 25h sin actualización exitosa → **verificación rechazada**. No s
 ## 🧪 Testing
 
 ```bash
-pnpm test         # Vitest en modo watch
-pnpm test:run     # Vitest single run
+pnpm test           # Vitest en modo watch
+pnpm test:run       # Vitest single run
+pnpm test:types     # Vitest typecheck (*.test-d.ts)
 ```
 
 **Estructura de tests:**
@@ -508,17 +780,22 @@ pnpm test:run     # Vitest single run
 ```
 tests/
 ├── client.mock.test.ts
+├── configure-eva-auth.mock.test.ts
 ├── cookies.mock.test.ts
+├── generic-verify.mock.test.ts
 ├── hono-auth-routes.mock.test.ts
 ├── hono-middleware.mock.test.ts
 ├── jwks.mock.test.ts
 ├── jwt.mock.test.ts
+├── reserved-claims.test.ts    # RFC 7519 + OIDC Core 1.0 compliance
+├── types.test-d.ts            # Type tests con expectTypeOf
 └── helpers/
     └── fixtures.ts
 ```
 
 - Runner: **Vitest**
 - Mocking: `vi.mock()`
+- Type tests: `expect-type` con `vitest typecheck`
 - Fixtures compartidas en `tests/helpers/fixtures.ts`
 
 ---
@@ -534,6 +811,7 @@ tests/
 | `pnpm dev` | `tsup --watch` | Build en modo watch |
 | `pnpm test` | `vitest` | Tests en modo watch |
 | `pnpm test:run` | `vitest run` | Tests single run |
+| `pnpm test:types` | `vitest typecheck` | Type tests (`*.test-d.ts`) |
 | `pnpm lint` | `oxlint .` | Linting con oxlint |
 | `pnpm fmt` | `oxfmt --write src/` | Formateo con oxfmt |
 | `pnpm type-check` | `tsc --noEmit` | Verificación de tipos |
@@ -550,9 +828,18 @@ tests/
 | ADR-003 | Paradigma funcional | Funciones + objetos, sin clases. Result Pattern para errores |
 | ADR-004 | Auto-refresh con dedup | `Map<string, Promise>` evita race conditions en refresh concurrentes |
 | ADR-005 | JWKS cache con hard max TTL | 24h cache + 1h grace. Después de 25h → verificación rechazada |
-| ADR-006 | Constantes build-time | URL y entorno horneados via `tsup define`. Zero-config en runtime |
+| ADR-006 | Constantes build-time | URL y entorno horneados via `tsup define`. Fallback final — parcialmente reemplazado por ADR-010 |
 | ADR-007 | Cookie Secure por build-time | Flag Secure decidido por `__EVA_ENV__`, no por `process.env` |
 | ADR-008 | createEvaAuth() como extensión | Punto de entrada estable para acceso directo al client |
+| ADR-009 | Cookie Domain runtime | `configureEvaAuth({ cookieDomain })` inyecta `Domain=` en cookies. Defensa anti-injection incluida |
+| ADR-010 | Auth URL runtime override | Precedencia `configureEvaAuth > EVA_AUTH_URL env > build-time`. Whitelist `http/https`, invalidación JWKS |
+| ADR-011 | Generic EvaTokenPayload + schema validation | `EvaTokenPayload<TExtra>` con `extraClaimsSchema` inline opcional. Sin schema → solo `{id, sessionId}`. Con schema → tipo TS + validación runtime end-to-end |
+| ADR-012 | Sistema i18n de mensajes de error | 16 keys, precedencia local > global > default, `resolveErrorMessages`, Zod validation en config, `buildAuthHandlers` factory, entry point `/hono-openapi` separado, `createRoute` + double assertion para handlers genéricos |
+| D-02 v3 | EvaError discriminated union | `Result<T>.error` cambia de `string` a `EvaApiError \| EvaSdkError`. Breaking change → bump 0.1.0 → 1.0.0 |
+| D-07 | Catálogo ERROR_CODES — 12 entries | SDK replica el `as const` runtime del API (incluyendo `account_state_locked`) |
+| D-08 | Dual type CoreErrorCode/ErrorCode | `ErrorCode = CoreErrorCode \| (string & {})` — autocomplete para 12 cores + apertura para feature-specific codes |
+| D-13 v2 | errorWire configurable, default 'api' | SDK emite `{ error: { code, message } }` por default. Override `errorWire: 'string'` para compat 0.x |
+| D-09 v2 | Hard delete src/errors.ts | Sin @deprecated. `EvaAuthError`, `createAuthError`, `isAuthError` eliminados directamente |
 
 > 📖 Registro completo con contexto y justificación: [docs/decisions.md](docs/decisions.md)
 
@@ -564,26 +851,53 @@ tests/
 src/
 ├── index.ts               # Barrel — core exports
 ├── client.ts              # createEvaAuth()
-├── config.ts              # Constantes build-time (AUTH_URL, ENV)
-├── types.ts               # Todos los tipos exportados
-├── errors.ts              # EvaAuthError, createAuthError, isAuthError
+├── config.ts              # Runtime config: authUrl, cookieDomain, errorMessages, errorWire
+├── error-messages.ts      # EvaErrorMessages, DEFAULT_ERROR_MESSAGES, resolveErrorMessages
+├── error-codes.ts         # ERROR_CODES (12), SDK_ERROR_REASONS (6), tipos CoreErrorCode/ErrorCode/SdkErrorReason
+├── get-message.ts         # getMessage(err: EvaError): string
+├── schemas.ts             # Schemas Zod + parseErrorResponse sync
+├── auth-handlers.ts       # buildAuthHandlers() — factory de 11 handlers
+├── types.ts               # EvaApiError, EvaSdkError, EvaError, Result<T>, tipos exportados
 ├── constants.ts           # HEADERS, COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
 ├── refresh-dedup.ts       # Deduplicación de refresh (Map por refreshToken)
-├── jwks.ts                # JWKS fetch, cache, ETag/304
+├── jwks-cache.ts          # JWKS cache con ETag/304
+├── jwks.ts                # JWKS fetch, getPublicKey, clearJwksCache
 ├── jwt.ts                 # verifyAccessToken con jose
+├── jwt-claims.ts          # assertSchemaNoReservedKeys, RESERVED_JWT_CLAIMS
 ├── cookies.ts             # Lectura/escritura de cookies HttpOnly
 ├── http-client.ts         # Cliente HTTP tipado contra Auth Service
 │
 ├── hono/                  # Entry point: @eva/auth-sdk/hono
 │   ├── index.ts           # Barrel
-│   ├── middleware.ts       # evaAuth() middleware
-│   ├── auth-routes.ts     # evaAuthRoutes() sub-router
+│   ├── middleware.ts      # evaAuth() middleware
+│   ├── auth-routes.ts     # evaAuthRoutes() — delega a buildAuthHandlers
 │   ├── device-info.ts     # parseDeviceInfo con bowser
 │   └── helpers.ts         # getEvaPayload, getSessionId
+│
+├── hono-openapi/          # Entry point: @eva/auth-sdk/hono-openapi
+│   └── index.ts           # evaAuthOpenAPIRoutes() — OpenAPIHono con 11 rutas documentadas
 │
 ├── generic/               # Entry point: @eva/auth-sdk/generic
 │   ├── index.ts           # Barrel
 │   └── verify.ts          # verifyRequest (Web API Request)
+│
+├── webhooks/              # Entry point: @eva/auth-sdk/webhooks
+│   ├── index.ts           # Barrel
+│   ├── verify-signature.ts # verifyWebhookSignature (HMAC-SHA256)
+│   ├── constants.ts       # WEBHOOK_TIMESTAMP_WINDOW_SECONDS, EVENT_CODES
+│   └── types.ts           # WebhookPayload, WebhookSubscription, etc.
+│
+├── admin/                 # Entry point: @eva/auth-sdk/admin
+│   ├── index.ts           # Barrel
+│   ├── client.ts          # createAdminClient() factory
+│   └── types.ts           # AdminClientConfig, ServiceClientPublic, etc.
+│
+├── s2s/                   # Entry point: @eva/auth-sdk/s2s
+│   ├── index.ts           # Barrel
+│   ├── client.ts          # createS2SClient() factory
+│   ├── sign.ts            # buildS2SCanonicalString, signS2SRequest
+│   ├── constants.ts       # S2S_TIMESTAMP_WINDOW_SECONDS
+│   └── types.ts           # S2SClientConfig, S2SCanonicalParts, etc.
 │
 └── react/                 # Entry point: @eva/auth-sdk/react
     ├── index.ts           # Barrel
@@ -622,10 +936,10 @@ pnpm lint          # Linting
 ```bash
 # En el repo del SDK
 pnpm pack:local
-# Genera eva-auth-sdk-0.1.0.tgz
+# Genera eva-auth-sdk-1.0.0.tgz
 
 # En el proyecto consumidor
-pnpm add ../path/to/eva-auth-sdk-0.1.0.tgz
+pnpm add ../path/to/eva-auth-sdk-1.0.0.tgz
 ```
 
 ### Publicación
@@ -643,10 +957,11 @@ npm publish
 |-----------|-----------|
 | [docs/api.md](docs/api.md) | Referencia completa de API por entry point |
 | [docs/architecture.md](docs/architecture.md) | Modelo de dos capas, flujo completo, estructura de módulos |
-| [docs/configuration.md](docs/configuration.md) | Modelo build-time, scripts de build, setup |
+| [docs/configuration.md](docs/configuration.md) | Modelo build-time, scripts de build, setup, errorWire |
 | [docs/conventions.md](docs/conventions.md) | Paradigma, naming, Result Pattern, barrel files |
 | [docs/decisions.md](docs/decisions.md) | Registro de decisiones arquitectónicas (ADRs) |
 | [docs/security.md](docs/security.md) | Cookies, JWT, JWKS cache, dedup, validación |
+| [docs/migration.md](docs/migration.md) | Guía de migración 0.x → 1.0.0 (breaking changes, before/after) |
 
 ---
 
