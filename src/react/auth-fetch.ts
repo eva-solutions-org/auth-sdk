@@ -5,7 +5,7 @@ import { SDK_ERROR_REASONS } from '../error-codes'
 import { parseErrorResponse } from '../schemas'
 
 const ApiResponseSchema = z.object({
-  data: z.unknown(),
+  data: z.unknown().optional(),
 })
 
 const FETCH_TIMEOUT = 30_000
