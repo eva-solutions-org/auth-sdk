@@ -11,7 +11,7 @@
     "src/s2s/index.ts"
   ],
   "out": "docs-site",
-  "theme": "@typhonjs-typedoc/typedoc-theme-dmt",
+  "theme": "default-modern",
   "plugin": ["@typhonjs-typedoc/typedoc-theme-dmt"],
   "exclude": ["**/*.test.ts", "**/*.test-d.ts", "**/tests/**", "**/__tests__/**"],
   "readme": "README.md",
@@ -20,5 +20,6 @@
   "excludePrivate": true,
   "excludeInternal": true,
   "githubPages": false,
-  "hideGenerator": true
+  "hideGenerator": true,
+  "intentionallyNotExported": ["AuthHandlerOptions", "VerifyResult", "EvaAuth", "EvaEnv"]
 }
