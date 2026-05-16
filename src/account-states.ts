@@ -6,7 +6,7 @@
  *
  * @example
  * ```ts
- * import { ACCOUNT_STATES } from '@eva/auth-sdk'
+ * import { ACCOUNT_STATES } from '@eva_solutions/auth-sdk'
  *
  * if (user.stateAccount === ACCOUNT_STATES.suspendido) {
  *   return res.status(403).json({ error: 'Cuenta suspendida' })

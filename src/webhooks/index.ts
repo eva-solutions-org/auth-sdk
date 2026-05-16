@@ -1,8 +1,8 @@
 /**
- * Entry point del módulo webhooks de @eva/auth-sdk.
+ * Entry point del módulo webhooks de @eva_solutions/auth-sdk.
  *
- * Importar desde '@eva/auth-sdk/webhooks':
- *   import { verifyWebhookSignature, EVENT_CODES } from '@eva/auth-sdk/webhooks'
+ * Importar desde '@eva_solutions/auth-sdk/webhooks':
+ *   import { verifyWebhookSignature, EVENT_CODES } from '@eva_solutions/auth-sdk/webhooks'
  *
  * REQ-EXPORTS-02 LOCKED.
  */

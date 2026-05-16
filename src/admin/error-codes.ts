@@ -6,7 +6,7 @@
  *
  * @example
  * ```ts
- * import { ADMIN_ERROR_CODES } from '@eva/auth-sdk/admin'
+ * import { ADMIN_ERROR_CODES } from '@eva_solutions/auth-sdk/admin'
  *
  * if (!result.ok && result.error.code === ADMIN_ERROR_CODES.service_client_already_exists) {
  *   return res.status(409).json({ error: 'El service client ya existe' })

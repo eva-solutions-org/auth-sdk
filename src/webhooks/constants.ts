@@ -18,7 +18,7 @@ export const WEBHOOK_TIMESTAMP_WINDOW_SECONDS = 300
  *
  * @example
  * ```ts
- * import { WEBHOOK_HEADERS } from '@eva/auth-sdk/webhooks'
+ * import { WEBHOOK_HEADERS } from '@eva_solutions/auth-sdk/webhooks'
  *
  * const sig = req.headers[WEBHOOK_HEADERS.SIGNATURE]
  * const id  = req.headers[WEBHOOK_HEADERS.ID]

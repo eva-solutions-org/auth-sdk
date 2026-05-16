@@ -22,7 +22,7 @@ export const USERS_BATCH_MAX_IDS = 100
  *
  * @example
  * ```ts
- * import { S2S_SCOPES } from '@eva/auth-sdk/s2s'
+ * import { S2S_SCOPES } from '@eva_solutions/auth-sdk/s2s'
  *
  * const client = await createServiceClient({
  *   scopes: [S2S_SCOPES.USERS_READ, S2S_SCOPES.WEBHOOKS_WRITE],
@@ -44,7 +44,7 @@ export type S2SScope = (typeof S2S_SCOPES)[keyof typeof S2S_SCOPES]
  *
  * @example
  * ```ts
- * import { S2S_RESPONSE_HEADERS } from '@eva/auth-sdk/s2s'
+ * import { S2S_RESPONSE_HEADERS } from '@eva_solutions/auth-sdk/s2s'
  *
  * const serverTime = response.headers.get(S2S_RESPONSE_HEADERS.SERVER_TIME)
  * ```

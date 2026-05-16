@@ -1,8 +1,8 @@
 /**
- * Entry point del módulo Admin de @eva/auth-sdk.
+ * Entry point del módulo Admin de @eva_solutions/auth-sdk.
  *
- * Importar desde '@eva/auth-sdk/admin':
- *   import { createAdminClient } from '@eva/auth-sdk/admin'
+ * Importar desde '@eva_solutions/auth-sdk/admin':
+ *   import { createAdminClient } from '@eva_solutions/auth-sdk/admin'
  *
  * REQ-EXPORTS-02 LOCKED.
  */

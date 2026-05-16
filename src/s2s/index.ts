@@ -1,8 +1,8 @@
 /**
- * Entry point del módulo S2S de @eva/auth-sdk.
+ * Entry point del módulo S2S de @eva_solutions/auth-sdk.
  *
- * Importar desde '@eva/auth-sdk/s2s':
- *   import { createS2SClient } from '@eva/auth-sdk/s2s'
+ * Importar desde '@eva_solutions/auth-sdk/s2s':
+ *   import { createS2SClient } from '@eva_solutions/auth-sdk/s2s'
  *
  * REQ-EXPORTS-02 LOCKED.
  */

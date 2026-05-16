@@ -3,7 +3,7 @@
  * Útil para migración gradual de 0.x → 1.0.0 donde result.error era string.
  *
  * Uso:
- *   import { getMessage } from '@eva/auth-sdk'
+ *   import { getMessage } from '@eva_solutions/auth-sdk'
  *   if (!result.ok) {
  *     console.error(getMessage(result.error))  // equivale a result.error.message
  *   }

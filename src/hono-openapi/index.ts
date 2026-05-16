@@ -1,5 +1,5 @@
 /**
- * Variante OpenAPIHono del SDK — entry point `@eva/auth-sdk/hono-openapi`.
+ * Variante OpenAPIHono del SDK — entry point `@eva_solutions/auth-sdk/hono-openapi`.
  *
  * Decisión B3 (ADR-012): usa `createRoute` + `app.openapi(route, handler)`.
  * `defineOpenAPIRoute` es para el método `openapiRoutes` (array API) — se eligió
@@ -18,7 +18,7 @@
  * @example
  * ```ts
  * import { OpenAPIHono } from '@hono/zod-openapi'
- * import { evaAuthOpenAPIRoutes } from '@eva/auth-sdk/hono-openapi'
+ * import { evaAuthOpenAPIRoutes } from '@eva_solutions/auth-sdk/hono-openapi'
  *
  * const app = new OpenAPIHono()  // ← CRÍTICO: OpenAPIHono, no Hono
  * app.route('/auth', evaAuthOpenAPIRoutes())
