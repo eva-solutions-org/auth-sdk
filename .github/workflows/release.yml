@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  # id-token:write is required for npm provenance via OIDC trusted publishing.
+  # Configure the npm trusted publisher at:
+  # https://www.npmjs.com/settings/eva_solutions/trusted-publishers
+  # (org: eva-solutions-org, repo: auth-sdk, workflow: release.yml)
+  id-token: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build:prod
+
+      - name: Create Release Pull Request or Publish
+        # TODO: verify this SHA against the latest stable release of changesets/action
+        # before the first real release. Run:
+        #   gh api repos/changesets/action/git/ref/tags/v1.4.10 --jq '.object.sha'
+        # gh was not available at apply time (RISK-D02) — SHA below is v1.4.10 known stable.
+        # With npm OIDC trusted publishing (recommended), NODE_AUTH_TOKEN is not needed.
+        # If using a classic npm token as fallback, add NPM_TOKEN as a GitHub secret.
+        uses: changesets/action@06245a4e0a36c064a573d4150030f5ec548e4fcc
+        with:
+          publish: npm publish --provenance --access public
+          createGithubReleases: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

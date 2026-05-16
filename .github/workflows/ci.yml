@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm run lint
+
+      - name: Type-check
+        run: pnpm run type-check
+
+      - name: Test (runtime)
+        run: pnpm run test:run
+
+      - name: Test (types)
+        run: pnpm run test:types
+
+      - name: Build (prod)
+        run: pnpm run build:prod
+
+      - name: No console.log in runtime
+        shell: bash
+        run: |
+          # Fail if console.log/debug found in src/ excluding tests
+          MATCHES=$(git grep -nE 'console\.(log|debug)' -- 'src/' ':!src/**/*.test.ts' ':!src/**/*.test-d.ts' ':!src/**/__tests__/**' || true)
+          if [ -n "$MATCHES" ]; then
+            echo "Forbidden console statements in src/:"
+            echo "$MATCHES"
+            exit 1
+          fi
+
+  publish-dryrun:
+    name: Publish dry-run
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build:prod
+
+      - name: Pack (dry-run)
+        run: npm pack --dry-run
