@@ -1,4 +1,6 @@
-# Migration Guide — @eva/auth-sdk 0.x → 1.0.0
+# Migration Guide — @eva_solutions/auth-sdk 0.x → 1.0.0
+
+> **Package scope rename (public release)**: The SDK was developed internally under a private name that was never published to npm. The public package is `@eva_solutions/auth-sdk`. If you were using a local tarball under the old internal name, update your `package.json` dependency to `@eva_solutions/auth-sdk`. See [ADR-014](adr-014-package-scope.md) for details.
 
 ## Resumen de breaking changes
 
@@ -8,7 +10,7 @@
 | 2 | `result.status` | Desaparece del branch `ok: false` — ahora es `result.error.status` |
 | 3 | `EvaAuthError` | Eliminado sin reemplazo (`src/errors.ts` hard-deleted) |
 | 4 | Wire HTTP del SDK | Cambia de `{ error: string }` a `{ error: { code, message } }` (default configurable) |
-| 5 | Nuevos entry points | `@eva/auth-sdk/webhooks`, `@eva/auth-sdk/admin`, `@eva/auth-sdk/s2s` |
+| 5 | Nuevos entry points | `@eva_solutions/auth-sdk/webhooks`, `@eva_solutions/auth-sdk/admin`, `@eva_solutions/auth-sdk/s2s` |
 | 6 | `ERROR_CODES` | Ahora tiene 12 entries (antes 11 — se agregó `account_state_locked`) |
 
 ---
@@ -29,7 +31,7 @@ if (!result.ok) {
 ### Después (1.0.0) — opción mínima (helper)
 
 ```typescript
-import { getMessage } from '@eva/auth-sdk'
+import { getMessage } from '@eva_solutions/auth-sdk'
 
 if (!result.ok) {
   return c.text(getMessage(result.error), result.error.status)
@@ -41,7 +43,7 @@ if (!result.ok) {
 ### Después (1.0.0) — narrowing completo
 
 ```typescript
-import { ERROR_CODES } from '@eva/auth-sdk'
+import { ERROR_CODES } from '@eva_solutions/auth-sdk'
 
 if (!result.ok) {
   if (result.error.kind === 'api') {
@@ -96,7 +98,7 @@ grep -rn "result\.status" src/
 ### Antes
 
 ```typescript
-import { EvaAuthError, createAuthError, isAuthError } from '@eva/auth-sdk'
+import { EvaAuthError, createAuthError, isAuthError } from '@eva_solutions/auth-sdk'
 
 const err = createAuthError('Token expirado', 401)
 // { error: 'Token expirado', status: 401 }
@@ -148,7 +150,7 @@ Cuando `evaAuth()` o `evaAuthRoutes()` rechazaban un request, emitían:
 Si tenés consumers que esperan el shape plano de 0.x:
 
 ```typescript
-import { configureEvaAuth } from '@eva/auth-sdk'
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 
 // Al boot, antes de registrar rutas:
 configureEvaAuth({ errorWire: 'string' })
@@ -164,13 +166,13 @@ En 1.0.0 se agregan tres entry points de paquete:
 
 ```typescript
 // Webhooks — verificar firmas de webhooks entrantes
-import { verifyWebhookSignature, EVENT_CODES } from '@eva/auth-sdk/webhooks'
+import { verifyWebhookSignature, EVENT_CODES } from '@eva_solutions/auth-sdk/webhooks'
 
 // Admin — gestión de service clients y restauración de usuarios
-import { createAdminClient } from '@eva/auth-sdk/admin'
+import { createAdminClient } from '@eva_solutions/auth-sdk/admin'
 
 // S2S — llamadas internas con firma HMAC automática
-import { createS2SClient } from '@eva/auth-sdk/s2s'
+import { createS2SClient } from '@eva_solutions/auth-sdk/s2s'
 ```
 
 Ver [docs/api.md](api.md) para referencia completa de cada módulo.

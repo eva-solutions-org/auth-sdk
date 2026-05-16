@@ -216,7 +216,7 @@ Validación anti-injection: `configureEvaAuth({ cookieDomain })` lanza `Error("c
 
 ### Alternativas descartadas
 
-- **A1 — parámetro `domain` en `setTokenCookies`/`clearTokenCookies`**: breaking change en las firmas públicas de `@eva/auth-sdk/generic`. Rechazado.
+- **A1 — parámetro `domain` en `setTokenCookies`/`clearTokenCookies`**: breaking change en las firmas públicas de `@eva_solutions/auth-sdk/generic`. Rechazado.
 - **A3 — factory pattern** (`createEvaAuth({ cookieDomain })`): refactor masivo de 4 entry points, contradice ADR-008. Rechazado.
 - **A4 — normalización RFC 6265** (leading dot, IDN): fuera de scope. El SDK acepta el valor tal cual; el consumidor es responsable del formato.
 
@@ -363,7 +363,7 @@ El SDK original usaba dos strings distintos: `'Token de acceso no encontrado'` y
 
 **(g) `/hono-openapi` como entry point separado**
 
-El entry point `@eva/auth-sdk/hono-openapi` es opcional y aislado. Consumers que NO usan OpenAPI no incluyen `@hono/zod-openapi` en su bundle (peer dep opcional). `splitting: true` en tsup previene duplicación de `auth-handlers.ts` en chunks ESM.
+El entry point `@eva_solutions/auth-sdk/hono-openapi` es opcional y aislado. Consumers que NO usan OpenAPI no incluyen `@hono/zod-openapi` en su bundle (peer dep opcional). `splitting: true` en tsup previene duplicación de `auth-handlers.ts` en chunks ESM.
 
 **(h) createRoute + double assertion `as unknown as RouteHandler<R>` — B3 revisado**
 
@@ -385,7 +385,7 @@ pnpm ≥8 no respeta consistentemente `peerDependenciesMeta.optional` (issues pn
 
 - Cero breaking: consumers sin override de errorMessages reciben comportamiento idéntico.
 - `evaAuthRoutes()` sin args: comportamiento idéntico al SDK anterior.
-- Nuevo entry `@eva/auth-sdk/hono-openapi`: opt-in, zero impacto en consumers existentes.
+- Nuevo entry `@eva_solutions/auth-sdk/hono-openapi`: opt-in, zero impacto en consumers existentes.
 - Re-exports adicionales en `/hono`, `/generic`, `/react`: aditivos, no reemplazan nada.
 
 ### Alternativas descartadas

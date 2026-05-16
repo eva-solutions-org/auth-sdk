@@ -1,6 +1,6 @@
 # Referencia de API
 
-## `@eva/auth-sdk`
+## `@eva_solutions/auth-sdk`
 
 Entry point principal. Core del SDK.
 
@@ -123,7 +123,7 @@ Retorna `void`.
 Helper de conveniencia para obtener el mensaje de un `EvaError`. Equivale a `err.message`. Útil para migración gradual desde 0.x.
 
 ```ts
-import { getMessage } from '@eva/auth-sdk'
+import { getMessage } from '@eva_solutions/auth-sdk'
 
 const result = await verifyRequest(req)
 if (!result.ok) {
@@ -154,7 +154,7 @@ Retorna `string`.
 | `S2S_RESPONSE_HEADERS` | Header de respuesta S2S: `SERVER_TIME` (`x-eva-server-time`). |
 | `USERS_BATCH_MAX_IDS` | Número máximo de IDs por llamada a `batchUsers` (100). El cliente valida este límite antes de hacer fetch. |
 
-### Re-exports desde `@eva/auth-sdk`
+### Re-exports desde `@eva_solutions/auth-sdk`
 
 | Export | Tipo | Descripción |
 |--------|------|-------------|
@@ -180,7 +180,7 @@ Retorna `string`.
 
 ---
 
-## `@eva/auth-sdk/hono`
+## `@eva_solutions/auth-sdk/hono`
 
 Integración con Hono. Middleware, rutas y helpers.
 
@@ -189,7 +189,7 @@ Integración con Hono. Middleware, rutas y helpers.
 Middleware que protege rutas. Lee cookies, verifica JWT, auto-refresh si expirado, inyecta payload en context, actualiza cookies.
 
 ```ts
-import { evaAuth } from '@eva/auth-sdk/hono'
+import { evaAuth } from '@eva_solutions/auth-sdk/hono'
 
 // Sin opciones
 app.use('/api/*', evaAuth())
@@ -218,7 +218,7 @@ Retorna `MiddlewareHandler<{ Variables: { evaPayload: EvaTokenPayload<TExtra> & 
 Sub-router con todos los endpoints de auth. Se monta como ruta en Hono.
 
 ```ts
-import { evaAuthRoutes } from '@eva/auth-sdk/hono'
+import { evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
 
 // Sin opciones
 app.route('/auth', evaAuthRoutes())
@@ -300,7 +300,7 @@ Retorna `DeviceInfo`.
 
 ---
 
-### Re-exports desde `@eva/auth-sdk/hono`
+### Re-exports desde `@eva_solutions/auth-sdk/hono`
 
 Además de sus propias funciones, el entry point `/hono` re-exporta los siguientes símbolos para evitar imports cruzados:
 
@@ -321,7 +321,7 @@ Además de sus propias funciones, el entry point `/hono` re-exporta los siguient
 
 ---
 
-## `@eva/auth-sdk/hono-openapi`
+## `@eva_solutions/auth-sdk/hono-openapi`
 
 Variante de las rutas de auth compatible con OpenAPI 3.1. Requiere `@hono/zod-openapi >=1.3.0` instalado en el proyecto consumidor.
 
@@ -333,7 +333,7 @@ Crea un `OpenAPIHono` con 11 rutas de auth documentadas según OpenAPI 3.1.
 
 ```ts
 import { OpenAPIHono } from '@hono/zod-openapi'
-import { evaAuthOpenAPIRoutes } from '@eva/auth-sdk/hono-openapi'
+import { evaAuthOpenAPIRoutes } from '@eva_solutions/auth-sdk/hono-openapi'
 
 const app = new OpenAPIHono()  // padre DEBE ser OpenAPIHono
 app.route('/auth', evaAuthOpenAPIRoutes())
@@ -353,7 +353,7 @@ Retorna `OpenAPIHono`.
 |--------|------|-------------|
 | `errorMessages` | `Partial<EvaErrorMessages>` | Override local de mensajes de error |
 
-### Re-exports desde `@eva/auth-sdk/hono-openapi`
+### Re-exports desde `@eva_solutions/auth-sdk/hono-openapi`
 
 | Export | Origen | Descripción |
 |--------|--------|-------------|
@@ -363,7 +363,7 @@ Retorna `OpenAPIHono`.
 
 ---
 
-## `@eva/auth-sdk/generic`
+## `@eva_solutions/auth-sdk/generic`
 
 Funciones framework-agnostic usando Web API estándar (`Request`).
 
@@ -427,7 +427,7 @@ Retorna `string[]`.
 
 ---
 
-### Re-exports desde `@eva/auth-sdk/generic`
+### Re-exports desde `@eva_solutions/auth-sdk/generic`
 
 | Export | Origen | Descripción |
 |--------|--------|-------------|
@@ -586,7 +586,7 @@ type SdkErrorReason =
 ### Narrowing por kind
 
 ```typescript
-import { ERROR_CODES, getMessage } from '@eva/auth-sdk'
+import { ERROR_CODES, getMessage } from '@eva_solutions/auth-sdk'
 
 const result = await verifyRequest(req)
 if (!result.ok) {
@@ -610,7 +610,7 @@ if (!result.ok) {
 ### Helper getMessage (migración gradual)
 
 ```typescript
-import { getMessage } from '@eva/auth-sdk'
+import { getMessage } from '@eva_solutions/auth-sdk'
 
 if (!result.ok) {
   console.error(getMessage(result.error))  // equivale a result.error.message
@@ -620,23 +620,23 @@ if (!result.ok) {
 ### ERROR_CODES — catálogo core
 
 ```typescript
-import { ERROR_CODES } from '@eva/auth-sdk'
+import { ERROR_CODES } from '@eva_solutions/auth-sdk'
 // ERROR_CODES.unauthorized, .not_found, .rate_limited, .conflict, etc.
 // 12 codes core. Solo aplican a kind: 'api'.
 ```
 
 ---
 
-## `@eva/auth-sdk/webhooks`
+## `@eva_solutions/auth-sdk/webhooks`
 
 Utilidades para verificar firmas de webhooks entrantes del Auth Service.
 
 ### `verifyWebhookSignature(params)`
 
 ```typescript
-import { verifyWebhookSignature } from '@eva/auth-sdk/webhooks'
+import { verifyWebhookSignature } from '@eva_solutions/auth-sdk/webhooks'
 // o desde el entry point principal:
-import { verifyWebhookSignature } from '@eva/auth-sdk'
+import { verifyWebhookSignature } from '@eva_solutions/auth-sdk'
 
 const isValid = await verifyWebhookSignature({
   rawBody: await req.text(),                                   // body raw como string, sin parsear
@@ -660,7 +660,7 @@ El SDK verifica que `|now - timestamp| <= 300` segundos (`WEBHOOK_TIMESTAMP_WIND
 ### `EVENT_CODES`
 
 ```typescript
-import { EVENT_CODES } from '@eva/auth-sdk/webhooks'
+import { EVENT_CODES } from '@eva_solutions/auth-sdk/webhooks'
 
 EVENT_CODES.USER_CREATED         // 'user.created'
 EVENT_CODES.USER_VERIFIED        // 'user.verified'
@@ -688,12 +688,12 @@ type WebhookPayload<TData = Record<string, unknown>> = {
 
 ---
 
-## `@eva/auth-sdk/admin`
+## `@eva_solutions/auth-sdk/admin`
 
 Para operaciones de administración de service clients y restauración de usuarios.
 
 ```typescript
-import { createAdminClient } from '@eva/auth-sdk/admin'
+import { createAdminClient } from '@eva_solutions/auth-sdk/admin'
 
 const admin = createAdminClient({
   adminPassword: process.env.EVA_ADMIN_PASSWORD!,
@@ -747,12 +747,12 @@ Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.
 
 ---
 
-## `@eva/auth-sdk/s2s`
+## `@eva_solutions/auth-sdk/s2s`
 
 Para llamadas internas al Auth Service autenticadas con HMAC S2S (SigV4-style).
 
 ```typescript
-import { createS2SClient } from '@eva/auth-sdk/s2s'
+import { createS2SClient } from '@eva_solutions/auth-sdk/s2s'
 
 const s2s = createS2SClient({
   clientId: 'mi-servicio',            // slug del service client
@@ -823,7 +823,7 @@ Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.
 
 ---
 
-## `@eva/auth-sdk/react`
+## `@eva_solutions/auth-sdk/react`
 
 Componentes y hooks para React.
 
@@ -832,7 +832,7 @@ Componentes y hooks para React.
 Context provider que gestiona el estado de autenticación. Ejecuta silent refresh al montar.
 
 ```tsx
-import { EvaAuthProvider } from '@eva/auth-sdk/react'
+import { EvaAuthProvider } from '@eva_solutions/auth-sdk/react'
 
 <EvaAuthProvider basePath="/auth" onAuthChange={(auth) => console.log(auth)}>
   <App />
@@ -933,7 +933,7 @@ Timeout de **30 segundos**. Distingue errores:
 
 ---
 
-### Re-exports desde `@eva/auth-sdk/react`
+### Re-exports desde `@eva_solutions/auth-sdk/react`
 
 | Export | Origen | Descripción |
 |--------|--------|-------------|

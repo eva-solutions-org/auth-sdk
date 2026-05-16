@@ -88,3 +88,21 @@ Auth-routes usa `Set` de status codes HTTP conocidos. Status inesperado → fall
 
 - Errores del Auth Service se propagan **sin sanitizar** al frontend → [ADR-001](decisions.md)
 - HTTP 429 (rate limiting) pasa **transparente** — el SDK no implementa rate limiting propio
+
+---
+
+## Reporting Vulnerabilities
+
+If you discover a security vulnerability in this SDK, please **do not open a public GitHub issue**.
+
+**Preferred channel**: Use GitHub Security Advisories to report privately:
+[https://github.com/eva-solutions-org/auth-sdk/security/advisories/new](https://github.com/eva-solutions-org/auth-sdk/security/advisories/new)
+
+**Alternate contact**: arturo.rodas.gonzales@gmail.com (PGP not required; plain email is fine for initial contact).
+
+**Response timeline**:
+- Acknowledgement: within 72 hours of report.
+- Status update: within 30 days.
+- Full resolution target: within 90 days (coordinated disclosure).
+
+We follow responsible disclosure — we will coordinate a fix and publish a GitHub Security Advisory before or simultaneously with any public disclosure.

@@ -1,8 +1,21 @@
 # Changelog
 
-Todas las versiones notables de `@eva/auth-sdk` están documentadas aquí.
+Todas las versiones notables de `@eva_solutions/auth-sdk` están documentadas aquí.
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/). Este proyecto adhiere a [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [1.0.0-public] — 2026-05-16
+
+### Changed
+
+- **Package scope rename**: internal name → `@eva_solutions/auth-sdk` for the public npm release. The original internal name was never published to npm; this is a branding change only. See [ADR-014](docs/adr-014-package-scope.md).
+- **Repository**: public at `github.com/eva-solutions-org/auth-sdk`.
+- **License**: MIT — see [LICENSE](LICENSE).
+- Community health files added: `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md`, `SECURITY.md`.
+- CI/CD workflows: `.github/workflows/ci.yml`, `.github/workflows/release.yml`.
+- npm provenance publishing via OIDC (GitHub Actions Trusted Publisher).
 
 ---
 
@@ -35,21 +48,21 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/). Este
 - **`ErrorCode`** — `CoreErrorCode | (string & {})` — tipo abierto para feature-specific codes con autocomplete.
 - **`SdkErrorReason`** — tipo de los 6 values de `SDK_ERROR_REASONS`.
 - **`getMessage(err: EvaError): string`** — helper de conveniencia para migración gradual desde 0.x. Equivale a `err.message`.
-- **`@eva/auth-sdk/webhooks`** — nuevo entry point con `verifyWebhookSignature`, `EVENT_CODES`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` y tipos.
-- **`@eva/auth-sdk/admin`** — nuevo entry point con `createAdminClient()` para gestión de service clients y restauración de usuarios.
-- **`@eva/auth-sdk/s2s`** — nuevo entry point con `createS2SClient()` para llamadas internas con firma HMAC S2S automática.
+- **`@eva_solutions/auth-sdk/webhooks`** — nuevo entry point con `verifyWebhookSignature`, `EVENT_CODES`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` y tipos.
+- **`@eva_solutions/auth-sdk/admin`** — nuevo entry point con `createAdminClient()` para gestión de service clients y restauración de usuarios.
+- **`@eva_solutions/auth-sdk/s2s`** — nuevo entry point con `createS2SClient()` para llamadas internas con firma HMAC S2S automática.
 - **`errorWire?: 'api' | 'string'`** en `configureEvaAuth()` — controla el shape HTTP que el SDK emite al rechazar requests. Default: `'api'`.
 - **`getErrorWire(): 'api' | 'string'`** — getter público de la config runtime `errorWire`.
-- **`EVENT_CODES`** — 11 event codes del Auth Service re-exportados desde `@eva/auth-sdk` y `@eva/auth-sdk/webhooks`.
-- **`ACCOUNT_STATES`** — catálogo `as const` de 6 estados de cuenta (`no_verificado`, `verificado`, `pendiente_de_verificacion`, `suspendido`, `baneado`, `eliminado`). Espejo de `src/core/constants/account-states.ts` del API. Re-exportado desde `@eva/auth-sdk`.
+- **`EVENT_CODES`** — 11 event codes del Auth Service re-exportados desde `@eva_solutions/auth-sdk` y `@eva_solutions/auth-sdk/webhooks`.
+- **`ACCOUNT_STATES`** — catálogo `as const` de 6 estados de cuenta (`no_verificado`, `verificado`, `pendiente_de_verificacion`, `suspendido`, `baneado`, `eliminado`). Espejo de `src/core/constants/account-states.ts` del API. Re-exportado desde `@eva_solutions/auth-sdk`.
 - **`AccountState`** — tipo union de los 6 literales de `ACCOUNT_STATES`. `RestoreUserResult.stateAccount` tipado como `AccountState`.
-- **`WEBHOOK_HEADERS`** — headers que el Auth Service incluye en cada webhook entregado: `SIGNATURE`, `ID`, `TIMESTAMP`. Re-exportado desde `@eva/auth-sdk/webhooks` y `@eva/auth-sdk`.
-- **`S2S_SCOPES`** — catálogo `as const` de scopes S2S reconocidos: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`. Re-exportado desde `@eva/auth-sdk/s2s` y `@eva/auth-sdk`.
+- **`WEBHOOK_HEADERS`** — headers que el Auth Service incluye en cada webhook entregado: `SIGNATURE`, `ID`, `TIMESTAMP`. Re-exportado desde `@eva_solutions/auth-sdk/webhooks` y `@eva_solutions/auth-sdk`.
+- **`S2S_SCOPES`** — catálogo `as const` de scopes S2S reconocidos: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`. Re-exportado desde `@eva_solutions/auth-sdk/s2s` y `@eva_solutions/auth-sdk`.
 - **`S2SScope`** — tipo union de los literales de `S2S_SCOPES`.
-- **`S2S_RESPONSE_HEADERS`** — header de respuesta S2S: `SERVER_TIME` (`x-eva-server-time`). Re-exportado desde `@eva/auth-sdk/s2s` y `@eva/auth-sdk`.
-- **`ADMIN_ERROR_CODES`** — códigos de error específicos del módulo Admin: `service_client_already_exists`, `service_client_not_found`. Re-exportado desde `@eva/auth-sdk/admin` y `@eva/auth-sdk`.
+- **`S2S_RESPONSE_HEADERS`** — header de respuesta S2S: `SERVER_TIME` (`x-eva-server-time`). Re-exportado desde `@eva_solutions/auth-sdk/s2s` y `@eva_solutions/auth-sdk`.
+- **`ADMIN_ERROR_CODES`** — códigos de error específicos del módulo Admin: `service_client_already_exists`, `service_client_not_found`. Re-exportado desde `@eva_solutions/auth-sdk/admin` y `@eva_solutions/auth-sdk`.
 - **`AdminErrorCode`** — tipo union de los literales de `ADMIN_ERROR_CODES`.
-- **`USERS_BATCH_MAX_IDS = 100`** — constante documentando el límite del API para `batchUsers`. Re-exportado desde `@eva/auth-sdk/s2s` y `@eva/auth-sdk`.
+- **`USERS_BATCH_MAX_IDS = 100`** — constante documentando el límite del API para `batchUsers`. Re-exportado desde `@eva_solutions/auth-sdk/s2s` y `@eva_solutions/auth-sdk`.
 - **Validación client-side en `batchUsers`** — si `ids.length > 100` retorna `Result ok:false` con `kind: 'sdk', reason: 'malformed'` sin hacer fetch.
 - **Validación client-side en `listWebhookDeliveries`** — si `limit` fuera de `[1, 100]` u `offset < 0`, retorna `Result ok:false` con `kind: 'sdk', reason: 'malformed'` sin hacer fetch.
 
@@ -87,7 +100,7 @@ Versión inicial del SDK.
 - Config build-time via `tsup define` (`__EVA_AUTH_URL__`, `__EVA_ENV__`).
 - Runtime config via `configureEvaAuth({ authUrl, cookieDomain, errorMessages })`.
 - Sistema i18n de 16 mensajes de error con precedencia local > global > default.
-- Entry point `@eva/auth-sdk/hono-openapi` con `evaAuthOpenAPIRoutes()`.
+- Entry point `@eva_solutions/auth-sdk/hono-openapi` con `evaAuthOpenAPIRoutes()`.
 - `EvaTokenPayload<TExtra>` genérico con validación opcional via `extraClaimsSchema`.
 - `RESERVED_JWT_CLAIMS` (RFC 7519 + OIDC Core 1.0) con fail-fast en extraClaimsSchema.
 - Auto-refresh con deduplicación via `Map<string, Promise>`.

@@ -1,8 +1,8 @@
-# Plan: @eva/auth-sdk
+# Plan: @eva_solutions/auth-sdk
 
 ## TL;DR
 
-SDK TypeScript que resuelve autenticación **end-to-end** para consumidores del Auth service del Proyecto Global. Dos capas de transporte:
+SDK TypeScript que resuelve autenticación **end-to-end** para consumidores del EVA Auth Service. Dos capas de transporte:
 
 ```
 React (frontend) ←── cookies HttpOnly ──→ Hono (backend + SDK) ←── headers custom ──→ Auth Service
@@ -16,7 +16,7 @@ El backend consumidor (Hono en Edge o Node) instala el SDK, monta el middleware,
 
 | Decisión | Valor |
 |---|---|
-| Registry | npm público `@eva/auth-sdk` |
+| Registry | npm público `@eva_solutions/auth-sdk` |
 | Scope | Completo (auth + user + sessions + empresas) |
 | Exports | Inglés (`getUser`, `EvaUser`, etc.) |
 | Module format | Dual ESM + CJS (primariamente ESM, `type: "module"`) |
@@ -276,15 +276,15 @@ Auth - SDK/
 
 | Entry point | Contenido | Ejemplo de import |
 |---|---|---|
-| `@eva/auth-sdk` | Client factory, types, errors, constantes | `import { createEvaAuth, type EvaUser } from '@eva/auth-sdk'` |
-| `@eva/auth-sdk/hono` | Middleware + auth routes + helpers | `import { evaAuth, evaAuthRoutes } from '@eva/auth-sdk/hono'` |
-| `@eva/auth-sdk/react` | Provider + hooks para React | `import { EvaAuthProvider, useAuth } from '@eva/auth-sdk/react'` |
-| `@eva/auth-sdk/generic` | Funciones para cualquier framework | `import { verifyRequest } from '@eva/auth-sdk/generic'` |
+| `@eva_solutions/auth-sdk` | Client factory, types, errors, constantes | `import { createEvaAuth, type EvaUser } from '@eva_solutions/auth-sdk'` |
+| `@eva_solutions/auth-sdk/hono` | Middleware + auth routes + helpers | `import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'` |
+| `@eva_solutions/auth-sdk/react` | Provider + hooks para React | `import { EvaAuthProvider, useAuth } from '@eva_solutions/auth-sdk/react'` |
+| `@eva_solutions/auth-sdk/generic` | Funciones para cualquier framework | `import { verifyRequest } from '@eva_solutions/auth-sdk/generic'` |
 
 ```jsonc
 // package.json (parcial)
 {
-  "name": "@eva/auth-sdk",
+  "name": "@eva_solutions/auth-sdk",
   "type": "module",
   "exports": {
     ".": {
@@ -396,7 +396,7 @@ Request del frontend llega al backend consumidor (cookies automáticas)
 El SDK provee un sub-router Hono listo para montar que resuelve los endpoints de auth que el frontend necesita. El backend consumidor solo hace:
 
 ```ts
-import { evaAuthRoutes } from '@eva/auth-sdk/hono'
+import { evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
 
 app.route('/auth', evaAuthRoutes())
 ```
@@ -441,8 +441,8 @@ Esto sigue el patrón de Auth0, Clerk y Firebase: server-side User-Agent parsing
 
 ```ts
 import { Hono } from 'hono'
-import { evaAuth, evaAuthRoutes } from '@eva/auth-sdk/hono'
-import { getEvaUser } from '@eva/auth-sdk/hono'
+import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
+import { getEvaUser } from '@eva_solutions/auth-sdk/hono'
 
 const app = new Hono()
 
@@ -466,14 +466,14 @@ export default app
 
 ## Módulo React: hooks para el frontend
 
-El entry point `@eva/auth-sdk/react` exporta un provider y hooks que resuelven la integración del frontend con las auth routes del backend. Las cookies HttpOnly son invisibles para JS — los hooks gestionan el estado derivado de las respuestas del servidor.
+El entry point `@eva_solutions/auth-sdk/react` exporta un provider y hooks que resuelven la integración del frontend con las auth routes del backend. Las cookies HttpOnly son invisibles para JS — los hooks gestionan el estado derivado de las respuestas del servidor.
 
 ### EvaAuthProvider
 
 Wrappea la app y gestiona el estado global de autenticación.
 
 ```tsx
-import { EvaAuthProvider } from '@eva/auth-sdk/react'
+import { EvaAuthProvider } from '@eva_solutions/auth-sdk/react'
 
 function App() {
   return (
@@ -552,7 +552,7 @@ return <span>Hola, {user.name}</span>
 **Backend (Hono):**
 ```ts
 import { Hono } from 'hono'
-import { evaAuth, evaAuthRoutes } from '@eva/auth-sdk/hono'
+import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
 
 const app = new Hono()
 app.route('/auth', evaAuthRoutes())
@@ -561,7 +561,7 @@ app.use('/api/*', evaAuth())
 
 **Frontend (React):**
 ```tsx
-import { EvaAuthProvider, useAuth, useUser } from '@eva/auth-sdk/react'
+import { EvaAuthProvider, useAuth, useUser } from '@eva_solutions/auth-sdk/react'
 
 function App() {
   return (
@@ -653,7 +653,7 @@ const { empresas, isLoading, error, refetch } = useEmpresas()
 Para casos donde el backend necesita llamar al Auth Service directamente (ej: background jobs, admin tasks):
 
 ```ts
-import { createEvaAuth } from '@eva/auth-sdk'
+import { createEvaAuth } from '@eva_solutions/auth-sdk'
 
 const eva = createEvaAuth()
 
@@ -725,12 +725,12 @@ eva.client.health()
 
 ## Componente React: EvaLoginForm
 
-Componente de login pre-armado, personalizable con Tailwind, exportado desde `@eva/auth-sdk/react`. Resuelve el flujo completo de phone → OTP sin que el consumidor escriba una línea de lógica de auth.
+Componente de login pre-armado, personalizable con Tailwind, exportado desde `@eva_solutions/auth-sdk/react`. Resuelve el flujo completo de phone → OTP sin que el consumidor escriba una línea de lógica de auth.
 
 ### Import y uso básico
 
 ```tsx
-import { EvaLoginForm } from '@eva/auth-sdk/react'
+import { EvaLoginForm } from '@eva_solutions/auth-sdk/react'
 
 function LoginPage() {
   return <EvaLoginForm />

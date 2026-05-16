@@ -2,7 +2,7 @@
 
 ## TL;DR
 
-SDK TypeScript que resuelve autenticación end-to-end para consumidores del Auth Service del Proyecto Global. El consumidor monta el SDK y obtiene login, logout, verificación JWT, auto-refresh y gestión de sesiones sin configurar nada manualmente.
+SDK TypeScript que resuelve autenticación end-to-end para consumidores del EVA Auth Service. El consumidor monta el SDK y obtiene login, logout, verificación JWT, auto-refresh y gestión de sesiones sin configurar nada manualmente.
 
 ---
 
@@ -106,10 +106,10 @@ src/
 
 | Import | Contenido |
 |--------|-----------|
-| `@eva/auth-sdk` | Core: client, types, errors, constantes, JWT, JWKS |
-| `@eva/auth-sdk/hono` | Middleware, auth routes, helpers, device-info |
-| `@eva/auth-sdk/react` | Provider, hooks, authFetch |
-| `@eva/auth-sdk/generic` | verify, cookies (setTokenCookies, clearTokenCookies) — framework-agnostic |
+| `@eva_solutions/auth-sdk` | Core: client, types, errors, constantes, JWT, JWKS |
+| `@eva_solutions/auth-sdk/hono` | Middleware, auth routes, helpers, device-info |
+| `@eva_solutions/auth-sdk/react` | Provider, hooks, authFetch |
+| `@eva_solutions/auth-sdk/generic` | verify, cookies (setTokenCookies, clearTokenCookies) — framework-agnostic |
 
 ---
 

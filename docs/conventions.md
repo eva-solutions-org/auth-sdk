@@ -50,10 +50,10 @@ Cada módulo tiene un `index.ts` que re-exporta todo lo público.
 
 ```ts
 // Correcto
-import { evaAuth } from '@eva/auth-sdk/hono'
+import { evaAuth } from '@eva_solutions/auth-sdk/hono'
 
 // Incorrecto
-import { evaAuth } from '@eva/auth-sdk/hono/middleware'
+import { evaAuth } from '@eva_solutions/auth-sdk/hono/middleware'
 ```
 
 ---

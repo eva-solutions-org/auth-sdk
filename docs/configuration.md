@@ -18,7 +18,7 @@ const auth = evaAuth()
 **Con schema**:
 ```ts
 import { z } from 'zod'
-import { evaAuth } from '@eva/auth-sdk/hono'
+import { evaAuth } from '@eva_solutions/auth-sdk/hono'
 
 const myClaims = z.object({
   phone: z.string(),
@@ -40,11 +40,11 @@ app.get('/api/me', (c) => {
 
 Si el JWT no tiene `phone` o `empresaId`, o los tiene con tipos incorrectos, el middleware retorna `401`. Sin cast. Sin silencio.
 
-### Uso en generic entry (`@eva/auth-sdk/generic`)
+### Uso en generic entry (`@eva_solutions/auth-sdk/generic`)
 
 ```ts
 import { z } from 'zod'
-import { verifyRequest } from '@eva/auth-sdk/generic'
+import { verifyRequest } from '@eva_solutions/auth-sdk/generic'
 
 const tierSchema = z.object({ tier: z.enum(['free', 'pro']) })
 
@@ -55,11 +55,11 @@ if (result.ok) {
 }
 ```
 
-### Uso en verify directo (`@eva/auth-sdk`)
+### Uso en verify directo (`@eva_solutions/auth-sdk`)
 
 ```ts
 import { z } from 'zod'
-import { verifyAccessToken } from '@eva/auth-sdk'
+import { verifyAccessToken } from '@eva_solutions/auth-sdk'
 
 const result = await verifyAccessToken(token, {
   extraClaimsSchema: z.object({ role: z.enum(['admin', 'user']) }),
@@ -126,8 +126,8 @@ Ver [ADR-011](decisions.md#adr-011-generic-evatokenpayload--optional-schema-vali
 A partir del change `deployment-flexibility`, el SDK ofrece `configureEvaAuth(opts)` para inyectar configuración en runtime sin necesidad de rebuild. Llamar al **boot**, antes del primer request.
 
 ```ts
-import { configureEvaAuth } from '@eva/auth-sdk'
-// También disponible desde @eva/auth-sdk/hono, /generic y /react
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
+// También disponible desde @eva_solutions/auth-sdk/hono, /generic y /react
 
 configureEvaAuth({
   authUrl: process.env.EVA_AUTH_URL,         // Override URL del Auth Service
@@ -193,11 +193,11 @@ Llamar `configureEvaAuth` **antes del primer request**. Las cookies ya emitidas 
 
 ```ts
 // boot.ts
-import { configureEvaAuth } from '@eva/auth-sdk'
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 configureEvaAuth({ cookieDomain: '.miempresa.com' })  // PRIMERO
 
 // app.ts
-import { evaAuth, evaAuthRoutes } from '@eva/auth-sdk/hono'
+import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
 app.route('/auth', evaAuthRoutes())   // DESPUÉS
 app.use('/api/*', evaAuth())
 ```
@@ -231,7 +231,7 @@ Compatible con el shape de 0.x. Para consumers que esperan mensaje plano.
 ### Configuración
 
 ```typescript
-import { configureEvaAuth } from '@eva/auth-sdk'
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 
 // Default (se puede omitir):
 configureEvaAuth({ errorWire: 'api' })
@@ -253,7 +253,7 @@ Cuando el rechazo es un error interno del SDK (no del API), el SDK mapea el reas
 | Error de red | `network` | `service_unavailable` |
 | Respuesta malformada | `malformed` | `bad_request` |
 
-> **Nota sobre OpenAPI**: el schema `ErrorResponseSchema` en `@eva/auth-sdk/hono-openapi` siempre refleja el shape `'api'` independientemente de la configuración `errorWire`. Si usas `errorWire: 'string'`, el wire real difiere del doc OpenAPI. Ver [ADR D-13 v2](decisions.md).
+> **Nota sobre OpenAPI**: el schema `ErrorResponseSchema` en `@eva_solutions/auth-sdk/hono-openapi` siempre refleja el shape `'api'` independientemente de la configuración `errorWire`. Si usas `errorWire: 'string'`, el wire real difiere del doc OpenAPI. Ver [ADR D-13 v2](decisions.md).
 
 ---
 
@@ -327,7 +327,7 @@ Dentro del SDK, `config.ts` expone las constantes ya resueltas — no hay lectur
 ### Producción
 
 ```bash
-npm install @eva/auth-sdk
+npm install @eva_solutions/auth-sdk
 ```
 
 El paquete publicado en npm se construye con `build:prod` — trae las constantes de producción horneadas.
@@ -348,7 +348,7 @@ npm install ../path/to/eva-auth-sdk-x.x.x.tgz
 No hay paso de inicialización obligatorio. El middleware y las rutas funcionan directamente:
 
 ```ts
-import { evaAuth, evaAuthRoutes } from '@eva/auth-sdk/hono'
+import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
 
 app.route('/auth', evaAuthRoutes())
 app.use('/api/*', evaAuth())
@@ -361,7 +361,7 @@ Sin parámetros, sin env vars, sin configuración. Todo viene horneado.
 Si necesitás hacer llamadas directas al Auth Service (fuera del middleware), podés obtener el HTTP client:
 
 ```ts
-import { createEvaAuth } from '@eva/auth-sdk'
+import { createEvaAuth } from '@eva_solutions/auth-sdk'
 
 const { client } = createEvaAuth()
 const result = await client.refresh({ refreshToken })
@@ -393,7 +393,7 @@ Todos los endpoints quedan bajo `/auth/*` (ej: `/auth/login`, `/auth/me`, `/auth
 
 ```ts
 import { Hono } from 'hono'
-import { evaAuth, evaAuthRoutes, getEvaPayload } from '@eva/auth-sdk/hono'
+import { evaAuth, evaAuthRoutes, getEvaPayload } from '@eva_solutions/auth-sdk/hono'
 
 const app = new Hono()
 
@@ -416,13 +416,13 @@ export default app
 ## Ejemplo: Setup con React
 
 ```tsx
-import { EvaAuthProvider } from '@eva/auth-sdk/react'
+import { EvaAuthProvider } from '@eva_solutions/auth-sdk/react'
 
 function App() {
   return (
     <EvaAuthProvider
       basePath="/auth"
-      apiUrl="https://api.proyecto-global.com"
+      apiUrl="https://api.your-app.com"
       onAuthChange={(auth) => console.log('Auth:', auth)}
     >
       <MyApp />
@@ -444,7 +444,7 @@ El SDK expone todos los mensajes de error como strings i18n-friendly. Podés sob
 ### Override global — `configureEvaAuth`
 
 ```ts
-import { configureEvaAuth } from '@eva/auth-sdk'
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 
 configureEvaAuth({
   errorMessages: {
@@ -463,7 +463,7 @@ Cada función que puede retornar un error acepta `errorMessages` como opción lo
 
 **Middleware `evaAuth`:**
 ```ts
-import { evaAuth } from '@eva/auth-sdk/hono'
+import { evaAuth } from '@eva_solutions/auth-sdk/hono'
 
 app.use('/api/*', evaAuth({
   errorMessages: { authRequired: 'Por favor iniciá sesión' },
@@ -472,7 +472,7 @@ app.use('/api/*', evaAuth({
 
 **Rutas `evaAuthRoutes`:**
 ```ts
-import { evaAuthRoutes } from '@eva/auth-sdk/hono'
+import { evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
 
 app.route('/auth', evaAuthRoutes({
   errorMessages: { loginFailed: 'Credenciales incorrectas' },
@@ -481,7 +481,7 @@ app.route('/auth', evaAuthRoutes({
 
 **`verifyRequest` (generic):**
 ```ts
-import { verifyRequest } from '@eva/auth-sdk/generic'
+import { verifyRequest } from '@eva_solutions/auth-sdk/generic'
 
 const result = await verifyRequest(req, {
   errorMessages: { tokenInvalid: 'Token inválido — renovar sesión' },
@@ -534,13 +534,13 @@ Ver [ADR-012](decisions.md#adr-012-sistema-i18n-de-mensajes-de-error) para el ra
 
 ## Variante OpenAPI
 
-El SDK ofrece una variante de las rutas de auth compatible con **OpenAPI 3.1** a través del entry point `@eva/auth-sdk/hono-openapi`. Retorna un `OpenAPIHono` con 11 endpoints documentados.
+El SDK ofrece una variante de las rutas de auth compatible con **OpenAPI 3.1** a través del entry point `@eva_solutions/auth-sdk/hono-openapi`. Retorna un `OpenAPIHono` con 11 endpoints documentados.
 
 > **Importante**: `evaAuthOpenAPIRoutes()` retorna un `OpenAPIHono`. Para que la documentación se genere correctamente en `/doc`, el app padre también debe ser `OpenAPIHono`. Si se monta sobre un `Hono` plain, los handlers funcionan pero la ruta `/doc` no estará disponible.
 
 ```ts
 import { OpenAPIHono } from '@hono/zod-openapi'
-import { evaAuthOpenAPIRoutes } from '@eva/auth-sdk/hono-openapi'
+import { evaAuthOpenAPIRoutes } from '@eva_solutions/auth-sdk/hono-openapi'
 
 // El padre DEBE ser OpenAPIHono para que /doc funcione
 const app = new OpenAPIHono()
@@ -614,7 +614,7 @@ Ver [ADR-012(g)](decisions.md#adr-012-sistema-i18n-de-mensajes-de-error) para el
 import { Hono } from 'hono'
 import { logger } from 'hono/logger'
 import { cors } from 'hono/cors'
-import { evaAuth, getEvaPayload } from '@eva/auth-sdk/hono'
+import { evaAuth, getEvaPayload } from '@eva_solutions/auth-sdk/hono'
 
 const app = new Hono()
 
@@ -673,7 +673,7 @@ Al testear handlers o middlewares que usan el SDK, es preferible mockear los mó
 import { vi } from 'vitest'
 
 // 1. Mock de config — evita dependencia de variables de entorno
-vi.mock('@eva/auth-sdk/src/config', () => ({
+vi.mock('@eva_solutions/auth-sdk/src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
   getEvaEnv: () => 'production' as const,
   getCookieDomain: () => undefined,
@@ -683,7 +683,7 @@ vi.mock('@eva/auth-sdk/src/config', () => ({
 }))
 
 // 2. Mock de cookies — control total sobre qué tokens "existen"
-vi.mock('@eva/auth-sdk/src/cookies', () => ({
+vi.mock('@eva_solutions/auth-sdk/src/cookies', () => ({
   readTokensFromCookies: vi.fn(),
   setTokenCookies: vi.fn().mockReturnValue(['access=tok; Path=/; HttpOnly']),
   clearTokenCookies: vi.fn().mockReturnValue(['access=; Max-Age=0']),
@@ -691,7 +691,7 @@ vi.mock('@eva/auth-sdk/src/cookies', () => ({
 
 // 3. Mock del HTTP client — simular respuestas del Auth Service
 const mockLogin = vi.fn()
-vi.mock('@eva/auth-sdk/src/http-client', () => ({
+vi.mock('@eva_solutions/auth-sdk/src/http-client', () => ({
   createHttpClient: vi.fn().mockReturnValue({ login: mockLogin, /* ... */ }),
 }))
 ```
@@ -699,7 +699,7 @@ vi.mock('@eva/auth-sdk/src/http-client', () => ({
 ### Simular tokens presentes/ausentes
 
 ```ts
-import { readTokensFromCookies } from '@eva/auth-sdk/src/cookies'
+import { readTokensFromCookies } from '@eva_solutions/auth-sdk/src/cookies'
 
 // Token presente
 vi.mocked(readTokensFromCookies).mockReturnValue({ accessToken: 'valid-token' } as any)
