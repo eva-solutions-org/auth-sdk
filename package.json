@@ -116,7 +116,7 @@
   },
   "dependencies": {
     "bowser": "^2.14.0",
-    "jose": "^6.0.0",
+    "jose": "^6.2.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
