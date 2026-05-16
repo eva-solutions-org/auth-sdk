@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Política: Dependabot únicamente para actualizar versiones de GitHub Actions
+  # (los SHAs pinneados en workflows requieren mantenimiento periódico).
+  # Las dependencias del package (npm) se manejan manualmente — ver docs/adr-015-no-dependabot.md
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: 'chore(ci)'
