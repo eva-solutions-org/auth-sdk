@@ -45,16 +45,8 @@ jobs:
       - name: Build (prod)
         run: pnpm run build:prod
 
-      - name: No console.log in runtime
-        shell: bash
-        run: |
-          # Fail if console.log/debug found in src/ excluding tests
-          MATCHES=$(git grep -nE 'console\.(log|debug)' -- 'src/' ':!src/**/*.test.ts' ':!src/**/*.test-d.ts' ':!src/**/__tests__/**' || true)
-          if [ -n "$MATCHES" ]; then
-            echo "Forbidden console statements in src/:"
-            echo "$MATCHES"
-            exit 1
-          fi
+      - name: No console.log/debug in runtime (AST-aware)
+        run: pnpm exec oxlint -D no-console --ignore-pattern 'src/**/*.test.ts' --ignore-pattern 'src/**/*.test-d.ts' --ignore-pattern 'src/**/__tests__/**' src/
 
   publish-dryrun:
     name: Publish dry-run
