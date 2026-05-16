@@ -1,0 +1,24 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "src/index.ts",
+    "src/hono/index.ts",
+    "src/generic/index.ts",
+    "src/react/index.ts",
+    "src/hono-openapi/index.ts",
+    "src/webhooks/index.ts",
+    "src/admin/index.ts",
+    "src/s2s/index.ts"
+  ],
+  "out": "docs-site",
+  "theme": "@typhonjs-typedoc/typedoc-theme-dmt",
+  "plugin": ["@typhonjs-typedoc/typedoc-theme-dmt"],
+  "exclude": ["**/*.test.ts", "**/*.test-d.ts", "**/tests/**", "**/__tests__/**"],
+  "readme": "README.md",
+  "name": "EVA Auth SDK",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "githubPages": false,
+  "hideGenerator": true
+}
