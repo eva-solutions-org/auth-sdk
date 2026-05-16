@@ -34,22 +34,6 @@ const mockServiceClient = {
 }
 
 // ---------------------------------------------------------------------------
-// Helper
-// ---------------------------------------------------------------------------
-
-function makeFetchMock(options: {
-  ok: boolean
-  status: number
-  body: unknown
-}): ReturnType<typeof vi.fn> {
-  return vi.fn().mockResolvedValue({
-    ok: options.ok,
-    status: options.status,
-    json: async () => options.body,
-  })
-}
-
-// ---------------------------------------------------------------------------
 // T-028: Tests del AdminClient
 // ---------------------------------------------------------------------------
 

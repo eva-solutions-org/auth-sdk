@@ -41,6 +41,7 @@ function validateAuthUrl(value: string, context: 'param' | 'env'): string | null
     if (context === 'param') {
       throw new Error(`EVA_AUTH_URL inválida: ${value}`)
     }
+    // oxlint-disable-next-line no-console -- intentional consumer-facing runtime warning
     console.warn(`[eva-auth-sdk] EVA_AUTH_URL inválida en process.env (${value}); usando build-time fallback`)
     return null
   }
@@ -48,6 +49,7 @@ function validateAuthUrl(value: string, context: 'param' | 'env'): string | null
     if (context === 'param') {
       throw new Error(`EVA_AUTH_URL inválida (protocolo no soportado: ${parsed.protocol}): ${value}`)
     }
+    // oxlint-disable-next-line no-console -- intentional consumer-facing runtime warning
     console.warn(
       `[eva-auth-sdk] EVA_AUTH_URL inválida en process.env (protocolo no soportado: ${parsed.protocol}); usando build-time fallback`,
     )

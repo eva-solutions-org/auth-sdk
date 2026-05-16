@@ -74,7 +74,7 @@ export function resolveErrorMessages(
   local?: Partial<EvaErrorMessages>,
   global?: Partial<EvaErrorMessages>,
 ): EvaErrorMessages {
-  return { ...DEFAULT_ERROR_MESSAGES, ...(global ?? {}), ...(local ?? {}) }
+  return { ...DEFAULT_ERROR_MESSAGES, ...global, ...local }
 }
 
 /**

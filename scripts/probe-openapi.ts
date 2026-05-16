@@ -156,6 +156,7 @@ parentApp.doc('/doc', {
 // Runtime verification
 // ============================================================
 
+// oxlint-disable no-console -- diagnostic script: all console output is intentional probe reporting
 async function runProbe() {
   console.log('=== T-00 Probe ===\n')
 
@@ -245,3 +246,4 @@ runProbe().catch(err => {
   console.error('PROBE ERROR:', err)
   process.exit(1)
 })
+// oxlint-enable no-console

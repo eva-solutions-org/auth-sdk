@@ -6,8 +6,6 @@ import { describe, it, expect } from 'vitest'
 import {
   ERROR_CODES,
   SDK_ERROR_REASONS,
-  type CoreErrorCode,
-  type SdkErrorReason,
 } from '../src/error-codes'
 import { parseErrorResponse } from '../src/schemas'
 

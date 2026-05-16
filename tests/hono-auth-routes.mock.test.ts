@@ -264,8 +264,6 @@ describe('DELETE /sessions', () => {
 
 // ─── errorMessages override local (T-44) ─────────────────────────────────────
 
-import { evaAuthRoutes } from '../src/hono/auth-routes'
-
 describe('evaAuthRoutes — errorMessages override (T-44)', () => {
   it('override local tokenNotFound aplicado en GET /me', async () => {
     vi.mocked(readTokensFromCookies).mockReturnValue({} as any)

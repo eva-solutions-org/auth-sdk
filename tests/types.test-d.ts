@@ -73,6 +73,7 @@ describe('evaAuth con schema', () => {
 describe('getEvaPayload', () => {
   it('con Context<Variables<{ phone }>> retorna EvaTokenPayload<{ phone: string }>', () => {
     type MyVars = EvaAuthVariables<{ phone: string }>
+    // oxlint-disable-next-line no-unused-vars -- type-level declaration required for type inference test (never used at runtime)
     declare const c: Context<{ Variables: MyVars }>
     type Result = ReturnType<typeof getEvaPayload<{ phone: string }>>
     expectTypeOf<Result>().toEqualTypeOf<EvaTokenPayload<{ phone: string }>>()
@@ -446,7 +447,6 @@ describe('Result ok:true no falla (REQ-RESULT-03)', () => {
 // ───── T-47: EvaErrorMessages + configureEvaAuth + evaAuthOpenAPIRoutes ─────
 
 import type { EvaErrorMessages } from '../src/error-messages'
-import type { ConfigureEvaAuthOptions } from '../src/config'
 import { evaAuthOpenAPIRoutes } from '../src/hono-openapi/index'
 import { OpenAPIHono } from '@hono/zod-openapi'
 
