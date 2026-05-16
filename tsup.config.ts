@@ -1,3 +1,12 @@
+/**
+ * tsup configuration for building the SDK.
+ *
+ * NOTE: `envUrls` values below are PLACEHOLDERS for build-time defaults.
+ * Consumers configure their actual Auth Service URL at runtime via
+ * `configureEvaAuth({ apiUrl: '...' })`. These values are NEVER used by
+ * published packages — they exist only to provide build-time defaults for
+ * local development of this SDK.
+ */
 import { defineConfig } from 'tsup'
 
 const env = (process.env.EVA_BUILD_ENV ?? 'production') as 'local' | 'development' | 'production'
@@ -23,6 +32,7 @@ export default defineConfig({
   dts: true,
   clean: true,
   splitting: true,
+  sourcemap: true,
   target: 'es2022',
   external: ['hono', 'react', 'react-dom', '@hono/zod-openapi'],
   treeshake: true,
