@@ -7,7 +7,7 @@ user-invocable: true
 ## Stack del proyecto
 
 - **Runtime**: Edge + Node.js
-- **Build**: tsup (ESM+CJS), target ES2022
+- **Build**: tsdown (ESM+CJS+DTS), target ES2022
 - **Lenguaje**: TypeScript (strict: true)
 - **JWT**: jose v6 (ES256)
 - **UA Parsing**: bowser

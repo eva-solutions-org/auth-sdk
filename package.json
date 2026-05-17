@@ -125,11 +125,11 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsup",
-    "build:local": "cross-env EVA_BUILD_ENV=local tsup",
-    "build:dev": "cross-env EVA_BUILD_ENV=development tsup",
-    "build:prod": "cross-env EVA_BUILD_ENV=production tsup",
-    "dev": "tsup --watch",
+    "build": "tsdown",
+    "build:local": "cross-env EVA_BUILD_ENV=local tsdown",
+    "build:dev": "cross-env EVA_BUILD_ENV=development tsdown",
+    "build:prod": "cross-env EVA_BUILD_ENV=production tsdown",
+    "dev": "tsdown --watch",
     "test": "vitest",
     "test:run": "vitest run",
     "test:types": "vitest run --typecheck.only",
@@ -176,9 +176,10 @@
     "hono": "^4.12.19",
     "oxlint": "^1.65.0",
     "react": "^19.2.6",
-    "tsup": "^8.5.1",
+    "tsdown": "^0.22.0",
     "typedoc": "^0.28.19",
     "typescript": "^6.0.3",
+    "unrun": "^0.3.0",
     "vitest": "^4.1.6"
   },
   "engines": {

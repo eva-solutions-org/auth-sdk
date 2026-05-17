@@ -1,5 +1,5 @@
 /**
- * tsup configuration for building the SDK.
+ * tsdown configuration for building the SDK.
  *
  * NOTE: `envUrls` values below are PLACEHOLDERS for build-time defaults.
  * Consumers configure their actual Auth Service URL at runtime via
@@ -7,7 +7,7 @@
  * published packages — they exist only to provide build-time defaults for
  * local development of this SDK.
  */
-import { defineConfig } from 'tsup'
+import { defineConfig } from 'tsdown'
 
 const env = (process.env.EVA_BUILD_ENV ?? 'production') as 'local' | 'development' | 'production'
 
@@ -31,11 +31,17 @@ export default defineConfig({
   format: ['esm', 'cjs'],
   dts: true,
   clean: true,
-  splitting: true,
   sourcemap: true,
   target: 'es2022',
-  external: ['hono', 'react', 'react-dom', '@hono/zod-openapi'],
   treeshake: true,
+  // splitting: not a tsdown option — Rolldown handles it automatically with multiple entries
+  // outExtensions: force .js/.d.ts for ESM (package.json "type":"module" would default to .mjs/.d.mts)
+  // and .cjs/.d.cts for CJS — matching the exports map exactly.
+  outExtensions: ({ format }) =>
+    format === 'cjs' ? { js: '.cjs', dts: '.d.cts' } : { js: '.js', dts: '.d.ts' },
+  deps: {
+    neverBundle: ['hono', 'react', 'react-dom', '@hono/zod-openapi'],
+  },
   define: {
     __EVA_AUTH_URL__: JSON.stringify(envUrls[env]),
     __EVA_ENV__: JSON.stringify(env),

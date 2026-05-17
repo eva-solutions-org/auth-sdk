@@ -286,7 +286,7 @@ El SDK **también soporta** configuración horneada en build-time para el caso z
 
 ## Cómo funciona
 
-`tsup.config.ts` contiene un map interno de URLs por entorno:
+`tsdown.config.ts` contiene un map interno de URLs por entorno:
 
 ```ts
 const envUrls = {
@@ -313,9 +313,9 @@ Dentro del SDK, `config.ts` expone las constantes ya resueltas — no hay lectur
 
 | Script | Comando | Entorno horneado | URL horneada |
 |--------|---------|------------------|--------------|
-| `pnpm build:local` | `cross-env EVA_BUILD_ENV=local tsup` | `local` | `http://localhost:4000` |
-| `pnpm build:dev` | `cross-env EVA_BUILD_ENV=development tsup` | `development` | `https://auth-dev.example.com` |
-| `pnpm build:prod` | `cross-env EVA_BUILD_ENV=production tsup` | `production` | `https://auth.example.com` |
+| `pnpm build:local` | `cross-env EVA_BUILD_ENV=local tsdown` | `local` | `http://localhost:4000` |
+| `pnpm build:dev` | `cross-env EVA_BUILD_ENV=development tsdown` | `development` | `https://auth-dev.example.com` |
+| `pnpm build:prod` | `cross-env EVA_BUILD_ENV=production tsdown` | `production` | `https://auth.example.com` |
 | `pnpm pack:local` | `build:local` + `pnpm pack` | `local` | `http://localhost:4000` |
 
 `pnpm build` (sin sufijo) usa `production` por defecto.
