@@ -29,3 +29,7 @@ export type {
   WebhookDelivery,
   RotateWebhookSecretResult,
 } from './types'
+
+// S2S server-side verify (v1.1.0)
+export { verifyS2SRequest } from './verify'
+export type { S2SVerifyReason, S2SVerifyError, S2SVerifyResult, S2SVerifyOptions } from './types'

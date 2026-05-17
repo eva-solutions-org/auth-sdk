@@ -42,6 +42,8 @@ import {
   S2S_SCOPES,
   S2S_RESPONSE_HEADERS,
   USERS_BATCH_MAX_IDS,
+  // S2S server-side — v1.1.0 (REQ-API-06)
+  verifyS2SRequest,
   // Account states (G1)
   ACCOUNT_STATES,
   // Runtime values — preexistentes (regresión: no deben haberse roto)
@@ -62,6 +64,9 @@ import {
   getEvaEnv,
   getCookieDomain,
 } from '../src/index'
+
+// Hono S2S exports — from hono barrel (REQ-API-02,03,05)
+import { s2sAuth, requireScope } from '../src/hono'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // ERROR_CODES
@@ -385,5 +390,50 @@ describe('S2S_RESPONSE_HEADERS export (Batch-14 G7)', () => {
 
   it('tiene SERVER_TIME con valor correcto', () => {
     expect(S2S_RESPONSE_HEADERS.SERVER_TIME).toBe('x-eva-server-time')
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v1.1.0: verifyS2SRequest exportado desde barrel raíz (REQ-API-06, T-015)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('verifyS2SRequest export desde raíz (v1.1.0, REQ-API-06)', () => {
+  it('verifyS2SRequest es función', () => {
+    expect(verifyS2SRequest).toBeDefined()
+    expect(typeof verifyS2SRequest).toBe('function')
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v1.1.0: s2sAuth y requireScope exportados desde barrel hono (REQ-API-02,03, T-015)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('s2sAuth y requireScope desde barrel hono (v1.1.0, REQ-API-02,03)', () => {
+  it('s2sAuth es función', () => {
+    expect(s2sAuth).toBeDefined()
+    expect(typeof s2sAuth).toBe('function')
+  })
+
+  it('requireScope es función', () => {
+    expect(requireScope).toBeDefined()
+    expect(typeof requireScope).toBe('function')
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v1.1.0: s2sAuth y requireScope NO exportados desde barrel raíz (REQ-API-07, T-015)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('s2sAuth y requireScope NO exportados desde barrel raíz (REQ-API-07)', () => {
+  it('s2sAuth no está en el barrel raíz (src/index)', async () => {
+    // Si src/index exportara s2sAuth, el import dinámico lo incluiría.
+    // Verificamos que no está presente como export nombrado en src/index.
+    const rootModule = await import('../src/index')
+    expect((rootModule as Record<string, unknown>)['s2sAuth']).toBeUndefined()
+  })
+
+  it('requireScope no está en el barrel raíz (src/index)', async () => {
+    const rootModule = await import('../src/index')
+    expect((rootModule as Record<string, unknown>)['requireScope']).toBeUndefined()
   })
 })

@@ -91,7 +91,18 @@ export type {
 // Módulo S2S (REQ-EXPORTS-02 — accesible desde raíz)
 // Nota: WebhookSubscription/WebhookSubscriptionWithSecret/WebhookDelivery/RotateWebhookSecretResult
 // se exportan desde ./webhooks arriba (s2s los re-exporta internamente desde ../webhooks/types).
-export { createS2SClient, signS2SRequest, buildS2SCanonicalString, EMPTY_BODY_SHA256_HEX, S2S_TIMESTAMP_WINDOW_SECONDS, USERS_BATCH_MAX_IDS, S2S_SCOPES, S2S_RESPONSE_HEADERS } from './s2s'
+// REQ-API-07 LOCKED: s2sAuth/requireScope NO se exportan desde raíz — son Hono-specific.
+export {
+  createS2SClient,
+  signS2SRequest,
+  buildS2SCanonicalString,
+  EMPTY_BODY_SHA256_HEX,
+  S2S_TIMESTAMP_WINDOW_SECONDS,
+  USERS_BATCH_MAX_IDS,
+  S2S_SCOPES,
+  S2S_RESPONSE_HEADERS,
+  verifyS2SRequest,
+} from './s2s'
 export type {
   S2SClient,
   S2SClientConfig,
@@ -103,4 +114,9 @@ export type {
   UpdateWebhookSubscriptionInput,
   ListWebhookDeliveriesQuery,
   S2SScope,
+  // v1.1.0: server-side verify types
+  S2SVerifyReason,
+  S2SVerifyError,
+  S2SVerifyResult,
+  S2SVerifyOptions,
 } from './s2s'
