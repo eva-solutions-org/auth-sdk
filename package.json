@@ -32,6 +32,9 @@
     "url": "https://github.com/sponsors/eva-solutions-org"
   },
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": {
@@ -112,7 +115,8 @@
         "types": "./dist/s2s/index.d.cts",
         "default": "./dist/s2s/index.cjs"
       }
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
