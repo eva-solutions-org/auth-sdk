@@ -119,6 +119,7 @@ export type ListWebhookDeliveriesQuery = {
  * - `signature_malformed` — the `x-eva-signature` header is not in `sha256=<hex64>` format.
  * - `client_unknown` — `secretStore` returned null for the given clientId.
  * - `signature_invalid` — the HMAC signature does not match the expected value.
+ * - `replay_detected` — the nonce has already been seen (only when `replayCache` is configured).
  *
  * `client_unknown` and `signature_invalid` share the same human-readable message
  * ("Authentication failed") to avoid revealing whether the clientId exists.
@@ -130,6 +131,7 @@ export type S2SVerifyReason =
   | 'signature_malformed'
   | 'client_unknown'
   | 'signature_invalid'
+  | 'replay_detected'
 
 /**
  * Discriminated union of all S2S verification failure modes.
@@ -167,4 +169,48 @@ export type S2SVerifyOptions = {
    * Default: `S2S_TIMESTAMP_WINDOW_SECONDS` (120).
    */
   timestampWindowSeconds?: number
+  /**
+   * Optional nonce store for replay protection. When provided, `verifyS2SRequest`
+   * calls `setIfAbsent` after a successful HMAC verify to detect replayed requests.
+   *
+   * The SDK builds the nonce internally as `${clientId}:${timestamp}:${signatureHex}`.
+   * The TTL passed to `setIfAbsent` equals `timestampWindowSeconds` (default 120 s).
+   *
+   * @remarks
+   * The implementation MUST be atomic (e.g. Redis `SET key value NX EX ttl`).
+   * Non-atomic implementations are vulnerable to TOCTOU race conditions.
+   *
+   * The store SHOULD be shared across all instances of the same service that share
+   * the clientId/secret pair. Independent per-instance stores allow cross-instance
+   * replay attacks.
+   *
+   * @security Critical for replay protection — must be atomic.
+   * @security Check occurs AFTER HMAC verify (D16) to preserve timing-safe invariant.
+   */
+  replayCache?: {
+    /**
+     * Atomically insert nonce if not present.
+     * @returns `true` if inserted (request is fresh); `false` if nonce already existed (replay detected).
+     *
+     * Implementation MUST be atomic (e.g. Redis `SET ... NX EX ttl`).
+     * Non-atomic implementations are vulnerable to TOCTOU race conditions.
+     *
+     * @security Critical for replay protection — must be atomic.
+     */
+    setIfAbsent(nonce: string, ttlSeconds: number): Promise<boolean>
+  }
+  /**
+   * Optional message overrides for i18n. Keys not provided fall back to the
+   * default English messages. An empty string `''` is respected as an explicit
+   * override (D12 LOCKED).
+   *
+   * @example
+   * ```ts
+   * messages: {
+   *   timestamp_expired: 'El timestamp está fuera del rango permitido',
+   *   replay_detected: 'Firma ya utilizada',
+   * }
+   * ```
+   */
+  messages?: Partial<Record<S2SVerifyReason, string>>
 }

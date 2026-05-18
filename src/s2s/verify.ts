@@ -69,14 +69,18 @@ const VERIFY_MESSAGES: Record<S2SVerifyReason, string> = {
   signature_malformed: 'Signature header is malformed',
   client_unknown: 'Authentication failed',
   signature_invalid: 'Authentication failed',
+  replay_detected: 'Signature already used',
 }
 
 // ---------------------------------------------------------------------------
 // Helpers privados
 // ---------------------------------------------------------------------------
 
-function verifyErr(reason: S2SVerifyReason): S2SVerifyResult<never> {
-  const error: S2SVerifyError = { reason, message: VERIFY_MESSAGES[reason] }
+function verifyErr(
+  reason: S2SVerifyReason,
+  messages: Record<S2SVerifyReason, string>,
+): S2SVerifyResult<never> {
+  const error: S2SVerifyError = { reason, message: messages[reason] }
   return { ok: false, error }
 }
 
@@ -131,7 +135,10 @@ export async function verifyS2SRequest(
   request: Request,
   opts: S2SVerifyOptions,
 ): Promise<S2SVerifyResult<{ clientId: string }>> {
-  const { secretStore, timestampWindowSeconds = S2S_TIMESTAMP_WINDOW_SECONDS } = opts
+  const { secretStore, timestampWindowSeconds = S2S_TIMESTAMP_WINDOW_SECONDS, replayCache } = opts
+
+  // PASO PRE — i18n merge (D12): spread natural respeta '' como override explícito
+  const effectiveMessages = { ...VERIFY_MESSAGES, ...opts.messages }
 
   // PASO 1 — Extract headers (Web API Headers normalizes case automatically per spec)
   const clientId = request.headers.get('x-eva-client-id')
@@ -139,25 +146,25 @@ export async function verifyS2SRequest(
   const signatureHeader = request.headers.get('x-eva-signature')
 
   if (clientId === null || timestampStr === null || signatureHeader === null) {
-    return verifyErr('header_missing')
+    return verifyErr('header_missing', effectiveMessages)
   }
 
   // PASO 2 — Validate timestamp format (unsigned decimal integer, up to 11 digits)
   if (!TIMESTAMP_REGEX.test(timestampStr)) {
-    return verifyErr('timestamp_invalid')
+    return verifyErr('timestamp_invalid', effectiveMessages)
   }
   const timestamp = Number(timestampStr)
 
   // PASO 3 — Validate timestamp window
   const now = Math.floor(Date.now() / 1000)
   if (Math.abs(now - timestamp) > timestampWindowSeconds) {
-    return verifyErr('timestamp_expired')
+    return verifyErr('timestamp_expired', effectiveMessages)
   }
 
   // PASO 4 — Parse signature header: `sha256=<64 hex chars>`
   const sigMatch = signatureHeader.match(SIGNATURE_REGEX)
   if (sigMatch === null) {
-    return verifyErr('signature_malformed')
+    return verifyErr('signature_malformed', effectiveMessages)
   }
   const signatureHex = sigMatch[1] as string
   const signatureBytes = hexToBytes(signatureHex)
@@ -210,10 +217,18 @@ export async function verifyS2SRequest(
   // PASO 9 — Result (checked AFTER verify — no early return before PASO 8)
   if (secretHex === null) {
     // Discard verify result — client_unknown takes precedence for timing-safe path
-    return verifyErr('client_unknown')
+    return verifyErr('client_unknown', effectiveMessages)
   }
   if (!verified) {
-    return verifyErr('signature_invalid')
+    return verifyErr('signature_invalid', effectiveMessages)
   }
+
+  // PASO 9b — replayCache check: always post-HMAC verify (D16 timing-safe)
+  if (replayCache) {
+    const nonce = `${clientId}:${timestampStr}:${signatureHex}`
+    const inserted = await replayCache.setIfAbsent(nonce, timestampWindowSeconds)
+    if (!inserted) return verifyErr('replay_detected', effectiveMessages)
+  }
+
   return okResult({ clientId })
 }

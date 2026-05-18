@@ -661,3 +661,293 @@ describe('canonical string determinismo bilateral', () => {
     expect(canonical1.split('\n')).toHaveLength(6)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Grupo 15: replayCache — setIfAbsent (D22) — T-004
+// ---------------------------------------------------------------------------
+
+/** Helper: crea un mock de replayCache con setIfAbsent configurable. */
+function createReplayCache(returns: boolean | (() => boolean | Promise<boolean>)) {
+  return {
+    setIfAbsent: vi.fn().mockImplementation(
+      typeof returns === 'function'
+        ? () => Promise.resolve(returns())
+        : () => Promise.resolve(returns),
+    ),
+  }
+}
+
+describe('replayCache — setIfAbsent (D22)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('setIfAbsent returns true → ok result (request fresh)', async () => {
+    const cache = createReplayCache(true)
+    const req = await buildSignedRequest({})
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+    })
+    expect(result.ok).toBe(true)
+    expect(cache.setIfAbsent).toHaveBeenCalledTimes(1)
+  })
+
+  it('setIfAbsent returns false → reason:replay_detected', async () => {
+    const cache = createReplayCache(false)
+    const req = await buildSignedRequest({})
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toBe('replay_detected')
+      expect(result.error.message.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('nonce format: ${clientId}:${timestamp}:${signatureHex}', async () => {
+    const cache = createReplayCache(true)
+    const timestamp = Math.floor(Date.now() / 1000)
+    const req = await buildSignedRequest({ timestamp })
+    await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+    })
+    const nonce = cache.setIfAbsent.mock.calls[0][0] as string
+    // nonce debe ser: clientId:timestampStr:signatureHex (64 hex chars)
+    expect(nonce).toMatch(new RegExp(`^${CLIENT_ID}:${timestamp}:[0-9a-f]{64}$`))
+  })
+
+  it('TTL por defecto igual a 120 (timestampWindowSeconds default)', async () => {
+    const cache = createReplayCache(true)
+    const req = await buildSignedRequest({})
+    await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+    })
+    const ttl = cache.setIfAbsent.mock.calls[0][1] as number
+    expect(ttl).toBe(120)
+  })
+
+  it('TTL igual a timestampWindowSeconds custom (60)', async () => {
+    const cache = createReplayCache(true)
+    vi.useFakeTimers()
+    const now = 1700000000
+    vi.setSystemTime(now * 1000)
+    try {
+      const req = await buildSignedRequest({ timestamp: now })
+      await verifyS2SRequest(req, {
+        secretStore: async () => SECRET_HEX,
+        replayCache: cache,
+        timestampWindowSeconds: 60,
+      })
+      const ttl = cache.setIfAbsent.mock.calls[0][1] as number
+      expect(ttl).toBe(60)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('NOT called when HMAC fails (wrong secret)', async () => {
+    const cache = createReplayCache(true)
+    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+    })
+    expect(cache.setIfAbsent).not.toHaveBeenCalled()
+  })
+
+  it('NOT called when client_unknown (secretStore returns null)', async () => {
+    const cache = createReplayCache(true)
+    const req = await buildSignedRequest({})
+    await verifyS2SRequest(req, {
+      secretStore: async () => null,
+      replayCache: cache,
+    })
+    expect(cache.setIfAbsent).not.toHaveBeenCalled()
+  })
+
+  it('rejection propagates — fail-closed (D10)', async () => {
+    const storeError = new Error('store down')
+    const cache = {
+      setIfAbsent: vi.fn().mockRejectedValue(storeError),
+    }
+    const req = await buildSignedRequest({})
+    await expect(
+      verifyS2SRequest(req, {
+        secretStore: async () => SECRET_HEX,
+        replayCache: cache,
+      }),
+    ).rejects.toThrow('store down')
+  })
+
+  it('called AFTER crypto.subtle.verify — order assertion (D16)', async () => {
+    const callOrder: string[] = []
+
+    const originalVerify = globalThis.crypto.subtle.verify.bind(globalThis.crypto.subtle)
+    const cryptoVerifySpy = vi.spyOn(globalThis.crypto.subtle, 'verify')
+    cryptoVerifySpy.mockImplementation(async (...args: Parameters<typeof originalVerify>) => {
+      callOrder.push('hmac')
+      return originalVerify(...args)
+    })
+
+    const cache = {
+      setIfAbsent: vi.fn().mockImplementation(async () => {
+        callOrder.push('replay')
+        return true
+      }),
+    }
+
+    const req = await buildSignedRequest({})
+    await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+    })
+
+    expect(callOrder).toEqual(['hmac', 'replay'])
+  })
+
+  it('undefined replayCache → ok result sin llamar a ningún cache', async () => {
+    const req = await buildSignedRequest({})
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      // sin replayCache
+    })
+    expect(result.ok).toBe(true)
+  })
+
+  it('D25 — setIfAbsent throws synchronously → propagates (D10 fail-closed)', async () => {
+    const cache = {
+      setIfAbsent: vi.fn().mockImplementation(() => {
+        throw new Error('sync throw')
+      }),
+    }
+    const req = await buildSignedRequest({})
+    await expect(
+      verifyS2SRequest(req, {
+        secretStore: async () => SECRET_HEX,
+        replayCache: cache,
+      }),
+    ).rejects.toThrow('sync throw')
+  })
+
+  it('D25 — clientId con ":" → nonce correctamente construido (no splitting)', async () => {
+    const colonClientId = 'service:alpha'
+    const cache = createReplayCache(true)
+    const timestamp = Math.floor(Date.now() / 1000)
+    const req = await buildSignedRequest({ clientId: colonClientId, timestamp })
+    await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+    })
+    const nonce = cache.setIfAbsent.mock.calls[0][0] as string
+    // El nonce debe comenzar con el clientId verbatim (con el colon incluido)
+    expect(nonce.startsWith(`${colonClientId}:`)).toBe(true)
+    // El nonce tiene el formato: service:alpha:timestamp:signatureHex
+    expect(nonce).toMatch(new RegExp(`^service:alpha:${timestamp}:[0-9a-f]{64}$`))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Grupo 16: messages override (D12) — T-005
+// ---------------------------------------------------------------------------
+
+describe('messages override (D12)', () => {
+  it('override timestamp_expired → custom message en el error', async () => {
+    vi.useFakeTimers()
+    const now = 1700000000
+    vi.setSystemTime(now * 1000)
+    try {
+      const req = new Request('http://localhost/internal/test', {
+        method: 'GET',
+        headers: {
+          'x-eva-client-id': CLIENT_ID,
+          'x-eva-timestamp': String(now + 86400), // muy futuro
+          'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
+        },
+      })
+      const result = await verifyS2SRequest(req, {
+        secretStore: async () => SECRET_HEX,
+        messages: { timestamp_expired: 'El timestamp expiró' },
+      })
+      expect(result.ok).toBe(false)
+      if (!result.ok) {
+        expect(result.error.reason).toBe('timestamp_expired')
+        expect(result.error.message).toBe('El timestamp expiró')
+      }
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('override signature_invalid → custom message en el error', async () => {
+    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      messages: { signature_invalid: 'Firma inválida personalizada' },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toBe('signature_invalid')
+      expect(result.error.message).toBe('Firma inválida personalizada')
+    }
+  })
+
+  it('override replay_detected → custom message en replay path', async () => {
+    const cache = createReplayCache(false)
+    const req = await buildSignedRequest({})
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+      messages: { replay_detected: 'Firma ya utilizada' },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toBe('replay_detected')
+      expect(result.error.message).toBe('Firma ya utilizada')
+    }
+  })
+
+  it('partial override: razones no provistas conservan los defaults en inglés', async () => {
+    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      messages: { timestamp_expired: 'Timestamp expirado' }, // solo override timestamp_expired
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      // signature_invalid NO fue sobreescrito, debe tener el default
+      expect(result.error.reason).toBe('signature_invalid')
+      expect(result.error.message).toBe('Authentication failed')
+    }
+  })
+
+  it('empty string "" override es respetado (D12 LOCKED)', async () => {
+    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      messages: { signature_invalid: '' },
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toBe('signature_invalid')
+      expect(result.error.message).toBe('') // '' es un override válido
+    }
+  })
+
+  it('sin opts.messages → todos los mensajes son los defaults en inglés', async () => {
+    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+      // sin messages
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.reason).toBe('signature_invalid')
+      expect(result.error.message).toBe('Authentication failed')
+    }
+  })
+})
