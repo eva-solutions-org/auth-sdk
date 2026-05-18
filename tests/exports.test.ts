@@ -437,3 +437,24 @@ describe('s2sAuth y requireScope NO exportados desde barrel raíz (REQ-API-07)',
     expect((rootModule as Record<string, unknown>)['requireScope']).toBeUndefined()
   })
 })
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v1.1.0: requireScope overloads — runtime type checks (T-014, REQ-HONO-SCOPE-01..03)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('requireScope overloads — runtime type checks', () => {
+  it('requireScope(string) returns function', () => {
+    const mw = requireScope('admin')
+    expect(typeof mw).toBe('function')
+  })
+
+  it('requireScope({ all }) returns function', () => {
+    const mw = requireScope({ all: ['admin', 'audit'] })
+    expect(typeof mw).toBe('function')
+  })
+
+  it('requireScope({ any }) returns function', () => {
+    const mw = requireScope({ any: ['data:read', 'data:write'] })
+    expect(typeof mw).toBe('function')
+  })
+})

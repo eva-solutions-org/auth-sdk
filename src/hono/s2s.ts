@@ -51,6 +51,22 @@ export type S2sAuthOptions = {
    * Default: `S2S_TIMESTAMP_WINDOW_SECONDS` (120).
    */
   timestampWindowSeconds?: number
+  /**
+   * Optional replay-protection cache. If provided, each verified request's nonce
+   * is atomically inserted; if already present the request is rejected with `replay_detected`.
+   *
+   * @since v1.1.0
+   * @see verifyS2SRequest for the full `setIfAbsent` contract and nonce format.
+   */
+  replayCache?: S2SVerifyOptions['replayCache']
+  /**
+   * Optional message overrides for error reasons (i18n / custom wording).
+   * Any key not overridden falls back to the built-in English default.
+   *
+   * @since v1.1.0
+   * @see verifyS2SRequest for the full `messages` contract and default strings.
+   */
+  messages?: S2SVerifyOptions['messages']
 }
 
 /**
@@ -113,6 +129,8 @@ export function s2sAuth(
     const result = await verifyS2SRequest(clonedRequest, {
       secretStore: opts.secretStore,
       timestampWindowSeconds: opts.timestampWindowSeconds,
+      replayCache: opts.replayCache,
+      messages: opts.messages,
     })
 
     if (!result.ok) {
@@ -144,37 +162,104 @@ export function s2sAuth(
  * throws a descriptive `Error` (programming error, results in HTTP 500).
  *
  * On **success** (scope present): calls `next()`.
- * On **failure** (scope absent): returns HTTP 403 `{ error: { code: 'insufficient_scope', required } }`.
+ * On **failure** (scope absent): returns HTTP 403 with `{ error: { code: 'insufficient_scope', ... } }`.
  *
- * To require multiple scopes with AND semantics, chain multiple `requireScope` calls.
- *
- * @see v1.2.0 — multi-scope AND/OR planned via TypeScript overloads, non-breaking.
- *
- * @throws `Error` if `s2sAuth` was not applied before this middleware.
+ * @throws `TypeError` at setup-time if the argument is invalid (empty object, empty array,
+ *   or both `all` and `any` specified simultaneously).
+ * @throws `Error` at runtime if `s2sAuth` was not applied before this middleware.
  *
  * @example
  * ```ts
+ * // Single scope (legacy — unchanged)
  * app.use('/admin/*', s2sAuth({ secretStore }), requireScope('admin'))
- * app.use('/admin/users', requireScope('users:read'))   // AND with 'admin'
+ *
+ * // AND semantics — all scopes must be present
+ * app.use('/admin/*', s2sAuth({ secretStore }), requireScope({ all: ['admin', 'audit'] }))
+ *
+ * // OR semantics — at least one scope must be present
+ * app.use('/data/*', s2sAuth({ secretStore }), requireScope({ any: ['data:read', 'data:write'] }))
  * ```
  */
+export function requireScope(scope: string): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
+/**
+ * Hono middleware that requires **all** listed scopes to be present (AND semantics).
+ *
+ * On failure returns HTTP 403 with `{ error: { code: 'insufficient_scope', requiredAll, missing } }`.
+ *
+ * @since v1.1.0
+ * @throws `TypeError` at setup-time if `all` is an empty array.
+ */
+export function requireScope(spec: { all: readonly string[] }): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
+/**
+ * Hono middleware that requires **at least one** of the listed scopes to be present (OR semantics).
+ *
+ * On failure returns HTTP 403 with `{ error: { code: 'insufficient_scope', requiredAny } }`.
+ *
+ * @since v1.1.0
+ * @throws `TypeError` at setup-time if `any` is an empty array.
+ */
+export function requireScope(spec: { any: readonly string[] }): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
 export function requireScope(
-  scope: string,
+  arg: string | { all?: readonly string[]; any?: readonly string[] },
 ): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>> {
-  return createMiddleware<{ Variables: S2sAuthVariables }>(async (c, next) => {
-    const scopes = c.var.s2sScopes
+  // Setup-time guards (D23)
+  if (arg === null || arg === undefined) {
+    throw new TypeError('requireScope: scope argument required')
+  }
+  if (typeof arg === 'object') {
+    const hasAll = 'all' in arg && arg.all !== undefined
+    const hasAny = 'any' in arg && arg.any !== undefined
+    if (hasAll && hasAny) {
+      throw new TypeError("requireScope: cannot use both 'all' and 'any'")
+    }
+    if (!hasAll && !hasAny) {
+      throw new TypeError("requireScope: must specify 'all' or 'any'")
+    }
+    if (hasAll && arg.all!.length === 0) {
+      throw new TypeError("requireScope: 'all' cannot be empty")
+    }
+    if (hasAny && arg.any!.length === 0) {
+      throw new TypeError("requireScope: 'any' cannot be empty")
+    }
+  }
 
-    if (scopes === undefined) {
+  return createMiddleware<{ Variables: S2sAuthVariables }>(async (c, next) => {
+    const vars = c.var.s2sScopes
+
+    if (vars === undefined) {
       throw new Error(
         '[eva-auth-sdk] requireScope: s2sAuth middleware not applied — apply s2sAuth() before requireScope()',
       )
     }
 
-    if (!scopes.includes(scope)) {
-      return c.json(
-        { error: { code: 'insufficient_scope', required: scope } },
-        403,
-      )
+    if (typeof arg === 'string') {
+      // Single scope — legacy wire format preserved (S-LEGACY-01)
+      if (!vars.includes(arg)) {
+        return c.json(
+          { error: { code: 'insufficient_scope', required: arg } },
+          403,
+        )
+      }
+    } else if ('all' in arg && arg.all) {
+      // AND semantics
+      const required = arg.all
+      const missing = required.filter((s) => !vars.includes(s))
+      if (missing.length > 0) {
+        return c.json(
+          { error: { code: 'insufficient_scope', requiredAll: required, missing } },
+          403,
+        )
+      }
+    } else if ('any' in arg && arg.any) {
+      // OR semantics
+      const required = arg.any
+      const hasAnyScope = required.some((s) => vars.includes(s))
+      if (!hasAnyScope) {
+        return c.json(
+          { error: { code: 'insufficient_scope', requiredAny: required } },
+          403,
+        )
+      }
     }
 
     await next()

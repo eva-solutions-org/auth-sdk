@@ -414,3 +414,327 @@ describe('body disponible post-middleware que consume stream', () => {
 beforeEach(() => {
   vi.restoreAllMocks()
 })
+
+// ---------------------------------------------------------------------------
+// Grupo 8: requireScope({ all }) — AND semantics (D9, T-010)
+// ---------------------------------------------------------------------------
+
+describe('requireScope({ all }) — AND semantics (D9)', () => {
+  it('todos los scopes presentes → 200 (S-AND-01)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => ['admin', 'audit'],
+      }),
+    )
+    app.use('*', requireScope({ all: ['admin', 'audit'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(200)
+  })
+
+  it('un scope faltante → 403 con requiredAll y missing (solo el faltante) (S-AND-02)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => ['admin'],
+      }),
+    )
+    app.use('*', requireScope({ all: ['admin', 'audit'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string; requiredAll: string[]; missing: string[] } }
+    expect(body.error.code).toBe('insufficient_scope')
+    expect(body.error.requiredAll).toEqual(['admin', 'audit'])
+    expect(body.error.missing).toEqual(['audit'])
+  })
+
+  it('ningún scope presente → missing contiene todos los requeridos (S-AND-03)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => [],
+      }),
+    )
+    app.use('*', requireScope({ all: ['admin', 'audit'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { missing: string[] } }
+    expect(body.error.missing).toEqual(['admin', 'audit'])
+  })
+
+  it('wire format AND: code=insufficient_scope, NO campo "required" (S-AND-04, REQ-WIRE-02)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => [],
+      }),
+    )
+    app.use('*', requireScope({ all: ['x', 'y'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as Record<string, unknown>
+    expect((body['error'] as Record<string, unknown>)['required']).toBeUndefined()
+    expect((body['error'] as Record<string, unknown>)['requiredAll']).toBeDefined()
+  })
+
+  it('sin s2sAuth aplicado → Error propagado (HTTP 500)', async () => {
+    const app = new Hono()
+    app.use('*', requireScope({ all: ['admin', 'audit'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const res = await app.fetch(new Request('http://localhost/test'))
+    expect(res.status).toBe(500)
+  })
+
+  it('single-item all funciona como single scope AND (S-AND-06)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => ['admin'],
+      }),
+    )
+    app.use('*', requireScope({ all: ['admin'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Grupo 9: requireScope({ any }) — OR semantics (D9, T-010)
+// ---------------------------------------------------------------------------
+
+describe('requireScope({ any }) — OR semantics (D9)', () => {
+  it('un scope presente de varios → 200 (S-OR-01)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => ['data:read'],
+      }),
+    )
+    app.use('*', requireScope({ any: ['data:read', 'data:write'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(200)
+  })
+
+  it('ningún scope presente → 403 con requiredAny (sin missing) (S-OR-02, REQ-WIRE-03)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => [],
+      }),
+    )
+    app.use('*', requireScope({ any: ['data:read', 'data:write'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { code: string; requiredAny: string[] } }
+    expect(body.error.code).toBe('insufficient_scope')
+    expect(body.error.requiredAny).toEqual(['data:read', 'data:write'])
+  })
+
+  it('todos los scopes presentes → 200 (OR superconjunto) (S-OR-03)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => ['data:read', 'data:write'],
+      }),
+    )
+    app.use('*', requireScope({ any: ['data:read', 'data:write'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(200)
+  })
+
+  it('wire format OR: code=insufficient_scope, NO required/requiredAll/missing (REQ-WIRE-03)', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => [],
+      }),
+    )
+    app.use('*', requireScope({ any: ['x', 'y'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as Record<string, unknown>
+    const errorBody = body['error'] as Record<string, unknown>
+    expect(errorBody['required']).toBeUndefined()
+    expect(errorBody['requiredAll']).toBeUndefined()
+    expect(errorBody['missing']).toBeUndefined()
+    expect(errorBody['requiredAny']).toBeDefined()
+  })
+
+  it('sin s2sAuth aplicado → Error propagado (HTTP 500)', async () => {
+    const app = new Hono()
+    app.use('*', requireScope({ any: ['data:read', 'data:write'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const res = await app.fetch(new Request('http://localhost/test'))
+    expect(res.status).toBe(500)
+  })
+
+  it('single-item any funciona como single scope OR', async () => {
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        scopesOf: async () => ['admin'],
+      }),
+    )
+    app.use('*', requireScope({ any: ['admin'] }))
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Grupo 10: requireScope — setup-time guards (D23, T-011)
+// ---------------------------------------------------------------------------
+
+describe('requireScope — setup-time guards (D23)', () => {
+  it('throws TypeError cuando {} (empty object — ni all ni any)', () => {
+    expect(() => requireScope({} as never)).toThrow(TypeError)
+    expect(() => requireScope({} as never)).toThrow("must specify 'all' or 'any'")
+  })
+
+  it('throws TypeError cuando { all: [] }', () => {
+    expect(() => requireScope({ all: [] })).toThrow(TypeError)
+    expect(() => requireScope({ all: [] })).toThrow("'all' cannot be empty")
+  })
+
+  it('throws TypeError cuando { any: [] }', () => {
+    expect(() => requireScope({ any: [] })).toThrow(TypeError)
+    expect(() => requireScope({ any: [] })).toThrow("'any' cannot be empty")
+  })
+
+  it('throws TypeError cuando { all, any } (mixed — ambos especificados)', () => {
+    expect(() => requireScope({ all: ['x'], any: ['y'] } as never)).toThrow(TypeError)
+    expect(() => requireScope({ all: ['x'], any: ['y'] } as never)).toThrow("cannot use both 'all' and 'any'")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Grupo 11: s2sAuth pass-through replayCache + messages (D22, D24, T-012)
+// ---------------------------------------------------------------------------
+
+describe('s2sAuth pass-through (D22, D24)', () => {
+  it('replayCache pass-through: setIfAbsent spy llamado en request válida (REQ-HONO-RC-02)', async () => {
+    const setIfAbsent = vi.fn().mockResolvedValue(true)
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        replayCache: { setIfAbsent },
+      }),
+    )
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(200)
+    expect(setIfAbsent).toHaveBeenCalledTimes(1)
+    // Verifica que el nonce tiene el formato esperado: clientId:timestamp:signatureHex
+    const [nonce] = setIfAbsent.mock.calls[0] as [string, number]
+    expect(nonce).toMatch(/^test-client:\d+:[0-9a-f]+$/)
+    expect(typeof nonce.split(':')[2]).toBe('string')
+  })
+
+  it('setIfAbsent rejection → Hono responde 500 (fail-closed D10, REQ-HONO-RC-03)', async () => {
+    const setIfAbsent = vi.fn().mockRejectedValue(new Error('cache unavailable'))
+    const app = new Hono()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        replayCache: { setIfAbsent },
+      }),
+    )
+    app.get('/test', (c) => c.json({ ok: true }))
+    app.onError((_err, c) => c.json({ error: 'internal' }, 500))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(500)
+  })
+
+  it('combo: replayCache false + messages.replay_detected override → 401 con mensaje custom (S-RC-10, REQ-HONO-MSG-03)', async () => {
+    const setIfAbsent = vi.fn().mockResolvedValue(false)
+    const app = new Hono<{ Variables: S2sAuthVariables }>()
+    app.use(
+      '*',
+      s2sAuth({
+        secretStore: async () => SECRET_HEX,
+        replayCache: { setIfAbsent },
+        messages: { replay_detected: 'Ya usado' },
+      }),
+    )
+    app.get('/test', (c) => c.json({ ok: true }))
+
+    const req = await buildSignedRequest({})
+    const res = await app.fetch(req)
+
+    expect(res.status).toBe(401)
+    const body = (await res.json()) as { error: { code: string; message: string } }
+    expect(body.error.code).toBe('replay_detected')
+    expect(body.error.message).toBe('Ya usado')
+  })
+})
