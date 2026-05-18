@@ -257,6 +257,18 @@ if (!wasNew) return /* 401 replay_detected */
 A future v1.2.0 will likely add a `replayCache` callback to `verifyS2SRequest`
 to streamline this pattern.
 
+#### Performance benchmarks (optional)
+
+For empirical timing data of `verifyS2SRequest`, run the on-demand benchmark:
+
+```bash
+pnpm exec vitest bench tests/perf/s2s-timing.bench.ts
+```
+
+This benchmark is not part of CI by default — use it locally to capture
+baseline timing and detect performance regressions when modifying
+`verifyS2SRequest` or `buildS2SCanonicalString`.
+
 ---
 
 ### Webhook Verification
