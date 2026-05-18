@@ -208,7 +208,7 @@ app.post('/internal/users', async (c) => {
 ```
 
 On verification failure: responds with HTTP 401 and body `{ error: { code, message } }`.
-On scope failure: responds with HTTP 403 and body `{ error: { code: 'forbidden', message } }`.
+On scope failure: responds with HTTP 403 and body `{ error: { code: 'insufficient_scope', required: '<scope>' } }`.
 
 #### Framework-agnostic (Web API Request)
 
