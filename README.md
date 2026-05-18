@@ -210,13 +210,26 @@ app.post('/internal/users', async (c) => {
 On verification failure: responds with HTTP 401 and body `{ error: { code, message } }`.
 On scope failure: responds with HTTP 403 and body `{ error: { code: 'insufficient_scope', required: '<scope>' } }`.
 
+**Multi-scope (v1.1.0+)**:
+
+```ts
+// AND — all scopes must be present
+app.get('/admin/audit', s2sAuth(opts), requireScope({ all: ['admin', 'audit'] }), handler)
+// 403 if missing any: { error: { code: 'insufficient_scope', requiredAll: [...], missing: [...] } }
+
+// OR — at least one scope must be present
+app.get('/data', s2sAuth(opts), requireScope({ any: ['data:read', 'data:write'] }), handler)
+// 403 if none: { error: { code: 'insufficient_scope', requiredAny: [...] } }
+```
+
+Setup-time validation: empty arrays, empty objects, and mixed `{ all, any }` throw `TypeError` immediately when constructing the middleware.
+
 #### Framework-agnostic (Web API Request)
 
 ```ts
 import { verifyS2SRequest } from '@eva_solutions/auth-sdk/s2s'
 
-const result = await verifyS2SRequest({
-  request,
+const result = await verifyS2SRequest(request, {
   secretStore: async (clientId) => lookupSecret(clientId),
 })
 
@@ -230,32 +243,34 @@ if (!result.ok) {
 const { clientId } = result.data
 ```
 
-#### Replay protection
+#### Replay protection (built-in)
 
-The SDK validates the `x-eva-timestamp` header against a configurable window
-(default 120 seconds via `S2S_TIMESTAMP_WINDOW_SECONDS`), but does NOT
-provide nonce-based replay protection out of the box. An attacker who
-captures a valid request can replay it within the timestamp window.
-
-For replay protection, combine `verifyS2SRequest` with a short-lived
-nonce store (Redis SETNX is the canonical pattern):
+Provide a `replayCache` callback to `verifyS2SRequest` (or `s2sAuth`) for atomic
+nonce-based replay protection:
 
 ```ts
-import { verifyS2SRequest, S2S_TIMESTAMP_WINDOW_SECONDS } from '@eva_solutions/auth-sdk/s2s'
+import { Redis } from 'ioredis'
+const redis = new Redis(/* ... */)
 
-const result = await verifyS2SRequest({ request, secretStore })
-if (!result.ok) return /* 401 */
+const replayCache = {
+  async setIfAbsent(nonce: string, ttlSeconds: number): Promise<boolean> {
+    const result = await redis.set(nonce, '1', 'EX', ttlSeconds, 'NX')
+    return result === 'OK' // null when key existed (replay detected)
+  },
+}
 
-const signature = request.headers.get('x-eva-signature')!
-const wasNew = await redis.set(`s2s:nonce:${signature}`, '1', {
-  NX: true,
-  EX: S2S_TIMESTAMP_WINDOW_SECONDS,
-})
-if (!wasNew) return /* 401 replay_detected */
+const result = await verifyS2SRequest(request, { secretStore, replayCache })
+if (!result.ok) return /* handle */
 ```
 
-A future v1.2.0 will likely add a `replayCache` callback to `verifyS2SRequest`
-to streamline this pattern.
+The `replayCache.setIfAbsent` callback is **store-agnostic** — wrap Redis, Memcached, an
+in-memory `Map`, or any backend that can atomically check-and-set with TTL.
+
+> **Note**: the `replayCache` store should be **shared across all instances of your
+> service** for the same `clientId`/secret pair to prevent cross-instance replay.
+
+If `setIfAbsent` rejects (e.g. store unreachable), the error propagates — the SDK
+treats store failure as **fail-closed** (no degraded mode).
 
 #### Performance benchmarks (optional)
 
