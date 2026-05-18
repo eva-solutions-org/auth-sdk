@@ -1,6 +1,6 @@
 {
   "name": "@eva_solutions/auth-sdk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Official TypeScript client for the EVA Auth Service — secure cookie-based auth with JWT ES256, JWKS rotation, S2S signing, and webhooks.",
   "keywords": [
     "auth",
