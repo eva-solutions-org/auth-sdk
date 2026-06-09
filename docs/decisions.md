@@ -96,7 +96,7 @@ Este patrón se aplica tanto en `hono/middleware.ts` como en `generic/verify.ts`
 ## ADR-005: JWKS cache con hard max TTL
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-016](#adr-016-migración-jwks-a-createremotejwkset-de-jose) — 2026-06-08. Ver ADR-016 para el modelo vigente.
 
 ### Contexto
 
@@ -120,7 +120,7 @@ La public key del Auth Service se cachea localmente para evitar fetch en cada ve
 ## ADR-006: Constantes build-time vía tsup define
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada — parcialmente reemplazada por [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time)
+**Estado**: Aceptada — parcialmente reemplazada por [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time) (nota: ADR-010 fue supersedido por [ADR-013](#adr-013-auth-url-build-time-puro--closed-environment-map) — el modelo vigente es build-time puro)
 
 ### Contexto
 
@@ -225,7 +225,7 @@ Validación anti-injection: `configureEvaAuth({ cookieDomain })` lanza `Error("c
 ## ADR-010: Auth URL Runtime Override con Fallback Build-Time
 
 **Fecha**: 2026-05-02
-**Estado**: Aceptada — parcialmente reemplaza [ADR-006](#adr-006-constantes-build-time-vía-tsup-define)
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-013](#adr-013-auth-url-build-time-puro--closed-environment-map) — 2026-06-08. Ver ADR-013 para el modelo vigente.
 
 ### Contexto
 
@@ -598,3 +598,96 @@ Hard delete de `src/errors.ts`. Ningún símbolo migrado ni deprecado.
 - `src/http-client.ts`: import de `parseErrorResponse` migrado a `./schemas`.
 - Tests que importaban de `./errors`: actualizados o eliminados.
 - Migration guide (`docs/migration.md`): documenta que `EvaAuthError` no existe en 1.0.0.
+
+---
+
+## ADR-013: Auth URL Build-Time Puro — Closed Environment Map
+
+**Fecha**: 2026-06-08
+**Estado**: Aceptada (supersede [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time))
+
+### Contexto
+
+ADR-010 introdujo override runtime de URL via `configureEvaAuth({ authUrl })` y `process.env.EVA_AUTH_URL`. En producción, esto creó superficie de misconfiguración accidental: un consumidor podría apuntar a una URL incorrecta por una env var mal seteada en CI/CD. Además, `validateAuthUrl` aceptaba `http:` para cualquier host — exponiendo `secretHex` y `adminPassword` en claro ante un error de configuración. La auditoría de seguridad (2026-06-08) identificó ambos vectores como CWE-319 (Cleartext Transmission of Sensitive Information).
+
+Con el modelo build-time puro ya establecido para `getEvaEnv()` y cookies Secure, no existe razón técnica para mantener la excepción de URL en runtime.
+
+### Decisión
+
+**Auth URL es BUILD-TIME PURO**. `getAuthUrl()` retorna `BUILD_TIME_AUTH_URL` directamente, sin leer `process.env.EVA_AUTH_URL` ni `_runtimeConfig.authUrl`.
+
+- `configureEvaAuth.authUrl` eliminado de la interfaz pública.
+- `process.env.EVA_AUTH_URL` ignorado.
+- `__EVA_AUTH_URL__` sigue siendo la única fuente de verdad — horneada al compilar con `EVA_BUILD_ENV`.
+- `validateHttpsUrl(value, label)` reemplaza `validateAuthUrl` con semántica más estricta: requiere `https:` salvo host loopback (`localhost`, `127.0.0.0/8`, `::1`, `[::1]`). Se reutiliza en `createS2SClient` y `createAdminClient`.
+
+### Consecuencias
+
+- **Breaking change**: `ConfigureEvaAuthOptions.authUrl` eliminado. Bump a v2.0.0.
+- **Consumers JS puro**: campo `authUrl` extra ignorado silenciosamente (guard `console.warn` de cortesía). Sin throw.
+- **Tests**: `http://auth.test` como stub de `__EVA_AUTH_URL__` migrado a `http://localhost:4000`.
+- **createS2SClient / createAdminClient**: lanzan si `baseUrl` es `http:` no-loopback.
+- **JWKS cache invalidation**: eliminada (no hay authUrl que cambie en runtime).
+- **Edge runtimes**: sin acceso a `process.env.EVA_AUTH_URL` — comportamiento mejorado (consistente en todos los runtimes).
+- **IPv6 loopback**: la comparación en `validateHttpsUrl` cubre tanto `'::1'` como `'[::1]'` — Node.js retiene los corchetes en `.hostname` para IPv6 literals (B4-D1).
+
+### Justificación
+
+- Elimina superficie de misconfiguración accidental (CWE-319 mitigation).
+- Modelo consistente: URL, entorno y Secure cookies son todos build-time.
+- `createS2SClient`/`createAdminClient` con `validateHttpsUrl` evitan transmisión de secretos en claro por error de configuración.
+- El SDK se publica 3 veces (local/development/production) — el consumidor instala la variante correcta. Cero runtime config para URL.
+
+### Alternativas descartadas
+
+- **Deprecation gradual** (console.warn por 1 versión): rechazado (D-02). SDK no está ampliamente distribuido — hard removal es más limpio.
+- **Allowlist de hostnames en validateHttpsUrl**: redundante con build-time puro. La URL no viene de runtime → validar protocolo https es suficiente.
+
+---
+
+## ADR-016: Migración JWKS a createRemoteJWKSet de jose
+
+**Fecha**: 2026-06-08
+**Estado**: Aceptada — supersede [ADR-005](#adr-005-jwks-cache-con-hard-max-ttl)
+
+### Contexto
+
+La implementación manual de JWKS cache en `src/jwks.ts` (ADR-005) seleccionaba la clave pública usando `keys[0]` de forma ciega, sin validar `kid`, `alg` ni `use`. Esto producía comportamiento incorrecto cuando el Auth Service emite múltiples claves (rotación). Adicionalmente, `jwtVerify` se invocaba sin especificar `algorithms`, permitiendo teóricamente algoritmos distintos de ES256 (defensa en profundidad).
+
+La librería `jose` expone `createRemoteJWKSet`, que implementa kid-matching RFC 7517 completo, deduplicación de fetch concurrente, cooldown anti-abuse, y errores tipados — eliminando la necesidad del código manual.
+
+Se verificó directamente el código fuente de jose v6.2.3 (`node_modules/.pnpm/jose@6.2.3/.../jwks/remote.js`) para confirmar el comportamiento fail-closed: si `cacheMaxAge` expira y el endpoint JWKS está caído, `createRemoteJWKSet` lanza inmediatamente. No usa clave stale tras expiración.
+
+### Decisión
+
+1. Migrar `src/jwks.ts` a `createRemoteJWKSet` de jose. Eliminar la implementación manual de cache (fetchJwks, getPublicKey, clearJwksCache) y el módulo de estado `src/jwks-cache.ts`.
+2. Configurar `cacheMaxAge: 86_400_000` (24h) — alineado con el TTL normal de ADR-005.
+3. Configurar `cooldownDuration: 30_000` (30s) y `timeoutDuration: 5_000` (5s) explícitamente.
+4. Agregar `algorithms: ['ES256']` en el call a `jwtVerify` (defensa en profundidad — P4).
+5. Pinear jose a `~6.2.3` en package.json para acotar el rango de upgrades automáticos.
+6. Agregar test de contrato (`tests/jwks.contract.test.ts`) que valida el comportamiento fail-closed con jose real (customFetch que retorna 500), detectando regresión en upgrades.
+
+### Comportamiento fail-closed (verificado)
+
+- Mientras el endpoint JWKS esté online: re-fetch transparente si el endpoint está online tras expiración del `cacheMaxAge`. Sin interrupción de servicio.
+- Si el endpoint JWKS cae exactamente cuando `cacheMaxAge` expira: jose lanza (JWKSTimeout u otro JOSEError) → `verifyAccessToken` retorna `{ ok: false, error: { reason: 'token_invalid', status: 401 } }`.
+- No se usa clave potencialmente revocada tras expiración. El comportamiento fail-closed está protegido por el test de contrato `tests/jwks.contract.test.ts`.
+
+### Justificación
+
+- ADR-005 requería un "hard max TTL con rechazo". jose con `cacheMaxAge: 86_400_000` cumple esa garantía sin código adicional — el behavior fail-closed está verificado en el código fuente.
+- El grace period de 1h de ADR-005 era un beneficio de disponibilidad, no de seguridad. Se acepta la pérdida: si el Auth Service cae exactamente en la ventana post-expiración, las verificaciones fallan hasta que el servicio vuelva (behavior correcto).
+- kid-matching RFC 7517 de jose resuelve el bug P5 (selección ciega `keys[0]`) de forma correcta y probada.
+- La eliminación de `getPublicKey`, `fetchJwks`, `clearJwksCache` del barrel público es consistente con major v2.0.0.
+
+### Consecuencias
+
+- `getPublicKey`, `fetchJwks`, `clearJwksCache` eliminados del barrel público `src/index.ts` (breaking change v2.0.0).
+- Mensajes de error en `EvaSdkError.message` cambian de español SDK-propio a inglés técnico de jose. El discriminator `reason: 'token_invalid'` no cambia.
+- `src/jwks-cache.ts` eliminado.
+- jose pinado a `~6.2.3`. Upgrades de minor version requieren re-validar el test de contrato fail-closed.
+
+### Alternativas descartadas
+
+- **Wrapper de hard reject sobre createRemoteJWKSet**: requeriría ~30 LOC de estado mutable adicional para rastrear el último fetch exitoso, accediendo a `JWKS.fresh` (propiedad no documentada como API estable). El test de contrato hace innecesario este wrapper — si jose cambia su comportamiento, el test lo detecta.
+- **Mantener fetchJwks/getPublicKey como wrappers**: la razón de existir de clearJwksCache era invalidar el cache cuando cambiaba la URL (ADR-010, supersedido por ADR-013 build-time puro). Sin URL dinámica, no hay caso de uso válido. Mantener exports muertos confunde la API.

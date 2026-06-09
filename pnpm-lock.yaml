@@ -12,7 +12,7 @@ importers:
         specifier: ^2.14.1
         version: 2.14.1
       jose:
-        specifier: ^6.2.3
+        specifier: ~6.2.3
         version: 6.2.3
       zod:
         specifier: ^4.4.3

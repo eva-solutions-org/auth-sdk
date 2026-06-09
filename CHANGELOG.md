@@ -6,6 +6,73 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/). Este
 
 ---
 
+## [2.0.0] — 2026-06-08
+
+### Breaking Changes
+
+- **`configureEvaAuth.authUrl` eliminado** — el campo `authUrl` ya no existe en `ConfigureEvaAuthOptions`. TypeScript rechazará `configureEvaAuth({ authUrl: '...' })` en compilación. En JS puro, el campo extra es ignorado silenciosamente (sin throw).
+
+- **`process.env.EVA_AUTH_URL` ignorado** — la variable de entorno ya no tiene efecto. `getAuthUrl()` retorna exclusivamente la URL horneada en build-time (`__EVA_AUTH_URL__`).
+
+- **`createS2SClient` lanza si `baseUrl` es HTTP no-loopback** — se requiere `https:` para hosts no-loopback. `http://localhost:*`, `http://127.x.x.x:*`, `http://[::1]:*` y `http://::1:*` siguen siendo válidos para entornos de test/desarrollo local.
+
+- **`createAdminClient` lanza si `baseUrl` es HTTP no-loopback** — mismo comportamiento que `createS2SClient`.
+
+- **`getPublicKey` eliminado** — el export `getPublicKey(): Promise<CryptoKey>` ya no existe en el barrel raíz. Era una API interna expuesta accidentalmente. Consumers que necesiten la clave pública deben usar `verifyAccessToken()` directamente.
+
+- **`fetchJwks` eliminado** — el export `fetchJwks(): Promise<void>` ya no existe. La hidratación del cache JWKS es automática y gestionada internamente por jose.
+
+- **`clearJwksCache` eliminado** — el export `clearJwksCache(): void` ya no existe. Con la URL del Auth Service siendo build-time pura (ADR-013), no hay caso de uso válido para invalidar el cache manualmente.
+
+### Migration Guide
+
+#### Si usabas `configureEvaAuth({ authUrl })`
+
+```ts
+// v1.x — ya no funciona
+configureEvaAuth({ authUrl: 'https://auth.example.com' })
+
+// v2.x — usar la variante de build correcta
+// El SDK ya trae la URL horneada. No se necesita ningún código adicional.
+// Asegurarse de consumir la variante 'production' del SDK.
+```
+
+#### Si usabas `process.env.EVA_AUTH_URL`
+
+Eliminar la variable de entorno. La URL se fija en build-time con `EVA_BUILD_ENV=production` al publicar.
+
+#### Si tus tests usan `http://auth.test` como baseUrl de S2S o Admin
+
+```ts
+// v1.x
+createS2SClient({ baseUrl: 'http://auth.test', ... })
+
+// v2.x — usar loopback
+createS2SClient({ baseUrl: 'http://localhost:4000', ... })
+// O mockear el factory completo en lugar de crear el cliente real
+```
+
+### Security
+
+- `validateHttpsUrl` reemplaza `validateAuthUrl`: requiere HTTPS salvo host loopback (`localhost`, `127.0.0.0/8`, `::1`/`[::1]`). Mitiga CWE-319 para `secretHex` (S2S) y `adminPassword` (Admin).
+- Auth URL build-time puro elimina superficie de misconfiguración accidental de URL en deploys.
+- **kid-matching RFC 7517** — la verificación de tokens ahora usa `createRemoteJWKSet` de jose, que selecciona la clave pública por `kid` + `alg` + `use`. Resuelve el bug de selección ciega `keys[0]` que producía comportamiento incorrecto con múltiples claves (rotación de clave).
+- **`algorithms: ['ES256']` explícito en jwtVerify** — defensa en profundidad contra algorithm confusion attacks. jose ya rechazaba el algoritmo vía la CryptoKey tipada, pero ahora la restricción es declarativa.
+- **jose pinado a `~6.2.3`** — el rango de patch acota upgrades automáticos. El comportamiento fail-closed verificado se protege con `tests/jwks.contract.test.ts`.
+
+### Changed
+
+- **Mensajes de error JWKS** — `EvaSdkError.message` ahora contiene mensajes de jose en inglés técnico (ej: `"Expected 200 OK from the JSON Web Key Set HTTP response"`) en lugar de mensajes en español del SDK (ej: `"Clave pública no disponible"`). El discriminator `reason: 'token_invalid'` y `status: 401` no cambian.
+
+### Internal
+
+- ADR-010 marcado como SUPERSEDED por ADR-013.
+- ADR-013 agregado a `docs/decisions.md`.
+- `src/globals.d.ts` JSDoc actualizado.
+- `tsdown.config.ts` comentario de cabecera actualizado.
+
+---
+
 ## [1.0.0-public] — 2026-05-16
 
 ### Changed

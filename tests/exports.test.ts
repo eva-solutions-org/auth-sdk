@@ -54,9 +54,6 @@ import {
   DEFAULT_ERROR_MESSAGES,
   readTokensFromCookies,
   configureEvaAuth,
-  getPublicKey,
-  fetchJwks,
-  clearJwksCache,
   verifyAccessToken,
   createHttpClient,
   createEvaAuth,
@@ -198,10 +195,13 @@ describe('exports preexistentes — regresión (T-035 no rompió nada)', () => {
     expect(typeof configureEvaAuth).toBe('function')
   })
 
-  it('getPublicKey / fetchJwks / clearJwksCache son funciones', () => {
-    expect(typeof getPublicKey).toBe('function')
-    expect(typeof fetchJwks).toBe('function')
-    expect(typeof clearJwksCache).toBe('function')
+  it('getPublicKey, fetchJwks, clearJwksCache NO están en el barrel (S-CL-01 — REQ-CL-03/04/05)', async () => {
+    // Estos 3 símbolos fueron eliminados del barrel en v2.0.0 (REQ-CL-03/04/05).
+    // Verificamos que no están presentes en el namespace exportado.
+    const sdk = await import('../src/index')
+    expect((sdk as Record<string, unknown>)['getPublicKey']).toBeUndefined()
+    expect((sdk as Record<string, unknown>)['fetchJwks']).toBeUndefined()
+    expect((sdk as Record<string, unknown>)['clearJwksCache']).toBeUndefined()
   })
 
   it('verifyAccessToken es función', () => {
@@ -435,6 +435,17 @@ describe('s2sAuth y requireScope NO exportados desde barrel raíz (REQ-API-07)',
   it('requireScope no está en el barrel raíz (src/index)', async () => {
     const rootModule = await import('../src/index')
     expect((rootModule as Record<string, unknown>)['requireScope']).toBeUndefined()
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// REQ-HTTPS-10: validateHttpsUrl NO exportada desde barrel público (T-016)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('validateHttpsUrl NO exportada desde barrel raíz (REQ-HTTPS-10)', () => {
+  it('validateHttpsUrl no está en src/index (barrel público raíz)', async () => {
+    const rootModule = await import('../src/index')
+    expect((rootModule as Record<string, unknown>)['validateHttpsUrl']).toBeUndefined()
   })
 })
 
