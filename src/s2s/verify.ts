@@ -119,7 +119,7 @@ function okResult<T>(data: T): S2SVerifyResult<T> {
  * const result = await verifyS2SRequest(request, {
  *   secretStore: async (clientId) => {
  *     const client = await db.serviceClients.findById(clientId)
- *     return client?.secretHash ?? null
+ *     return client?.secret ?? null
  *   },
  * })
  * if (!result.ok) {

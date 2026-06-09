@@ -186,7 +186,7 @@ const app = new Hono()
 app.use('*', s2sAuth({
   secretStore: async (clientId) => {
     const client = await db.serviceClients.findBySlug(clientId)
-    return client?.secretHash ?? null
+    return client?.secret ?? null
   },
   scopesOf: async (clientId) => {
     const client = await db.serviceClients.findBySlug(clientId)

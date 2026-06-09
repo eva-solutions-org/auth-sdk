@@ -21,7 +21,7 @@ export type AdminClientConfig = {
 }
 
 /**
- * Service client público (sin secretHash).
+ * Service client público (sin el plaintext del secret).
  * Shape del wire en GET /admin/service-clients/*.
  * Las fechas vienen serializadas como ISO strings en el wire.
  */
