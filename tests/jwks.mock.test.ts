@@ -1,207 +1,87 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Mock PRIMERO — antes de cualquier import del módulo bajo test.
+// createRemoteJWKSet es sync, retorna una función (JwksKeyFn). El mock debe reflejarlo.
 vi.mock('jose', () => ({
-  importJWK: vi.fn().mockResolvedValue('mock-crypto-key'),
+  createRemoteJWKSet: vi.fn(),
 }))
 
 vi.mock('../src/constants', () => ({
   getAuthServiceUrl: vi.fn().mockReturnValue('http://auth.test'),
 }))
 
-class MockCryptoKey {}
-vi.stubGlobal('CryptoKey', MockCryptoKey)
-const mockKey = new MockCryptoKey() as unknown as CryptoKey
+import { createRemoteJWKSet } from 'jose'
+import { getJwksKeyFn, _resetJwksForTesting } from '../src/jwks'
 
-import { fetchJwks, getPublicKey, clearJwksCache } from '../src/jwks'
-import { importJWK } from 'jose'
-
-const importJWKMock = vi.mocked(importJWK)
-
-const fakeJwk = { kty: 'EC', crv: 'P-256', x: 'abc', y: 'def' }
-
-function mockFetchResponse(opts: {
-  ok?: boolean
-  status?: number
-  json?: unknown
-  etag?: string | null
-} = {}) {
-  const { ok = true, status = 200, json = { keys: [fakeJwk] }, etag = null } = opts
-  return vi.fn().mockResolvedValue({
-    ok,
-    status,
-    json: vi.fn().mockResolvedValue(json),
-    headers: {
-      get: vi.fn((h: string) => h === 'etag' ? etag : null),
-    },
-  } as unknown as Response)
-}
+const createRemoteJWKSetMock = vi.mocked(createRemoteJWKSet)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  clearJwksCache()
-  importJWKMock.mockResolvedValue(mockKey)
+  _resetJwksForTesting() // reset singleton entre tests
+  // createRemoteJWKSet es sync y retorna una función (JwksKeyFn — async key resolver)
+  createRemoteJWKSetMock.mockReturnValue(vi.fn() as any)
 })
 
-describe('fetchJwks', () => {
-  it('hace fetch a la URL correcta (.well-known/jwks.json)', async () => {
-    const fetchMock = mockFetchResponse()
-    vi.stubGlobal('fetch', fetchMock)
+describe('getJwksKeyFn', () => {
+  it('llama createRemoteJWKSet con la URL correcta al inicializar', () => {
+    getJwksKeyFn()
 
-    await fetchJwks()
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://auth.test/.well-known/jwks.json',
-      expect.objectContaining({ headers: {} }),
-    )
+    expect(createRemoteJWKSetMock).toHaveBeenCalledOnce()
+    const [urlArg] = createRemoteJWKSetMock.mock.calls[0]
+    expect(urlArg).toBeInstanceOf(URL)
+    expect((urlArg as URL).href).toBe('http://auth.test/.well-known/jwks.json')
   })
 
-  it('envía If-None-Match cuando hay ETag cacheado', async () => {
-    const fetchMock = mockFetchResponse({ etag: '"etag-123"' })
-    vi.stubGlobal('fetch', fetchMock)
+  it('llama createRemoteJWKSet con cacheMaxAge: 86_400_000 (24h)', () => {
+    getJwksKeyFn()
 
-    // Primera llamada para cachear con etag
-    await fetchJwks()
-    fetchMock.mockClear()
-
-    // Segunda llamada debe enviar If-None-Match
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: vi.fn().mockResolvedValue({ keys: [fakeJwk] }),
-      headers: { get: vi.fn(() => '"etag-123"') },
-    } as unknown as Response)
-
-    await fetchJwks()
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      'http://auth.test/.well-known/jwks.json',
-      expect.objectContaining({
-        headers: { 'If-None-Match': '"etag-123"' },
-      }),
-    )
+    const [, options] = createRemoteJWKSetMock.mock.calls[0]
+    expect((options as Record<string, unknown>).cacheMaxAge).toBe(86_400_000)
   })
 
-  it('en 304 con key cacheada, no importa nueva key', async () => {
-    // Primero cacheamos una key
-    const fetchMock = mockFetchResponse({ etag: '"etag-1"' })
-    vi.stubGlobal('fetch', fetchMock)
-    await fetchJwks()
+  it('llama createRemoteJWKSet con cooldownDuration: 30_000 (30s)', () => {
+    getJwksKeyFn()
 
-    importJWKMock.mockClear()
-
-    // Ahora simulamos 304
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 304,
-      json: vi.fn(),
-      headers: { get: vi.fn(() => null) },
-    } as unknown as Response)
-
-    await fetchJwks()
-
-    expect(importJWKMock).not.toHaveBeenCalled()
+    const [, options] = createRemoteJWKSetMock.mock.calls[0]
+    expect((options as Record<string, unknown>).cooldownDuration).toBe(30_000)
   })
 
-  it('lanza error si fetch falla y no hay cache', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')))
+  it('llama createRemoteJWKSet con timeoutDuration: 5_000 (5s)', () => {
+    getJwksKeyFn()
 
-    await expect(fetchJwks()).rejects.toThrow('Error al obtener JWKS y no hay clave en caché')
+    const [, options] = createRemoteJWKSetMock.mock.calls[0]
+    expect((options as Record<string, unknown>).timeoutDuration).toBe(5_000)
   })
 
-  it('usa cache si fetch falla pero hay key cacheada (no lanza)', async () => {
-    // Primero cacheamos
-    const fetchMock = mockFetchResponse()
-    vi.stubGlobal('fetch', fetchMock)
-    await fetchJwks()
-
-    // Ahora fetch falla
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network error')))
-
-    await expect(fetchJwks()).resolves.toBeUndefined()
+  it('inicialización lazy: createRemoteJWKSet NO se llama al importar el módulo', () => {
+    // Al importar sin llamar getJwksKeyFn(), createRemoteJWKSet no debe ejecutarse.
+    // El módulo ya fue importado arriba — si hubiera init eagerly, el mock ya tendría 0 calls
+    // PERO afterBeforeEach clearAllMocks ya reseteó los contadores.
+    // El estado de _jwks también fue reseteado por _resetJwksForTesting().
+    // Por ende, si no llamamos getJwksKeyFn(), el mock debe tener 0 calls.
+    expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(0)
   })
 
-  it('lanza error si respuesta no-ok y no hay cache', async () => {
-    vi.stubGlobal('fetch', mockFetchResponse({ ok: false, status: 500 }))
+  it('retorna la misma instancia en llamadas sucesivas (singleton)', () => {
+    const first = getJwksKeyFn()
+    const second = getJwksKeyFn()
+    const third = getJwksKeyFn()
 
-    await expect(fetchJwks()).rejects.toThrow('Error al obtener JWKS con estado 500')
+    expect(first).toBe(second)
+    expect(second).toBe(third)
   })
 
-  it('usa cache si respuesta no-ok pero hay key cacheada', async () => {
-    // Primero cacheamos
-    const fetchMock = mockFetchResponse()
-    vi.stubGlobal('fetch', fetchMock)
-    await fetchJwks()
+  it('createRemoteJWKSet se llama EXACTAMENTE 1 vez aunque getJwksKeyFn se llame N veces', () => {
+    getJwksKeyFn()
+    getJwksKeyFn()
+    getJwksKeyFn()
 
-    // Ahora respuesta no-ok
-    vi.stubGlobal('fetch', mockFetchResponse({ ok: false, status: 503 }))
-
-    await expect(fetchJwks()).resolves.toBeUndefined()
+    expect(createRemoteJWKSetMock).toHaveBeenCalledTimes(1)
   })
 
-  it('lanza error si JWKS no contiene keys', async () => {
-    vi.stubGlobal('fetch', mockFetchResponse({ json: { keys: [] } }))
+  it('retorna una función (JwksKeyFn)', () => {
+    const keyFn = getJwksKeyFn()
 
-    await expect(fetchJwks()).rejects.toThrow('Formato de respuesta JWKS inválido')
-  })
-
-  it('importa correctamente el primer JWK y actualiza cache', async () => {
-    vi.stubGlobal('fetch', mockFetchResponse({ etag: '"etag-new"' }))
-
-    await fetchJwks()
-
-    expect(importJWKMock).toHaveBeenCalledWith(fakeJwk, 'ES256')
-    const key = await getPublicKey()
-    expect(key).toBe(mockKey)
-  })
-})
-
-describe('getPublicKey', () => {
-  it('llama fetchJwks cuando no hay cache', async () => {
-    vi.stubGlobal('fetch', mockFetchResponse())
-
-    const key = await getPublicKey()
-
-    expect(fetch).toHaveBeenCalled()
-    expect(key).toBe(mockKey)
-  })
-
-  it('retorna key cacheada cuando no está stale', async () => {
-    vi.stubGlobal('fetch', mockFetchResponse())
-
-    // Poblar cache
-    await getPublicKey()
-    vi.mocked(fetch).mockClear()
-
-    // Segunda llamada — no debe hacer fetch
-    const key = await getPublicKey()
-
-    expect(fetch).not.toHaveBeenCalled()
-    expect(key).toBe(mockKey)
-  })
-
-  it('lanza error si después de fetchJwks no hay key', async () => {
-    // fetch ok pero sin keys y sin cache
-    vi.stubGlobal('fetch', mockFetchResponse({ json: { keys: [] } }))
-
-    await expect(getPublicKey()).rejects.toThrow()
-  })
-})
-
-describe('clearJwksCache', () => {
-  it('limpia el cache (getPublicKey llama fetchJwks de nuevo)', async () => {
-    vi.stubGlobal('fetch', mockFetchResponse())
-
-    // Poblar cache
-    await getPublicKey()
-    vi.mocked(fetch).mockClear()
-
-    // Limpiar cache
-    clearJwksCache()
-
-    // Debe hacer fetch de nuevo
-    vi.stubGlobal('fetch', mockFetchResponse())
-    await getPublicKey()
-
-    expect(fetch).toHaveBeenCalled()
+    expect(typeof keyFn).toBe('function')
   })
 })

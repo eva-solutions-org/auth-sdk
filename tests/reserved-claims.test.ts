@@ -12,18 +12,19 @@ vi.mock('jose', () => ({
 }))
 
 vi.mock('../src/jwks', () => ({
-  getPublicKey: vi.fn().mockResolvedValue('mock-key'),
+  // getJwksKeyFn es sync y retorna una función (JwksKeyFn — async key resolver)
+  getJwksKeyFn: vi.fn().mockReturnValue(vi.fn()),
 }))
 
 import { jwtVerify } from 'jose'
-import { getPublicKey } from '../src/jwks'
+import { getJwksKeyFn } from '../src/jwks'
 
 const jwtVerifyMock = vi.mocked(jwtVerify)
-const getPublicKeyMock = vi.mocked(getPublicKey)
+const getJwksKeyFnMock = vi.mocked(getJwksKeyFn)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  getPublicKeyMock.mockResolvedValue('mock-key' as any)
+  getJwksKeyFnMock.mockReturnValue(vi.fn() as any)
 })
 
 // ───── Sin schema: ningún claim reservado aparece en payload ─────

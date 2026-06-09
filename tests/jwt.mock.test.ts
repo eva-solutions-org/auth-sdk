@@ -8,18 +8,19 @@ vi.mock('jose', () => ({
 }))
 
 vi.mock('../src/jwks', () => ({
-  getPublicKey: vi.fn().mockResolvedValue('mock-key'),
+  // getJwksKeyFn es sync y retorna una función (JwksKeyFn — async key resolver)
+  getJwksKeyFn: vi.fn().mockReturnValue(vi.fn()),
 }))
 
 import { jwtVerify } from 'jose'
-import { getPublicKey } from '../src/jwks'
+import { getJwksKeyFn } from '../src/jwks'
 
 const jwtVerifyMock = vi.mocked(jwtVerify)
-const getPublicKeyMock = vi.mocked(getPublicKey)
+const getJwksKeyFnMock = vi.mocked(getJwksKeyFn)
 
 beforeEach(() => {
   vi.clearAllMocks()
-  getPublicKeyMock.mockResolvedValue('mock-key' as any)
+  getJwksKeyFnMock.mockReturnValue(vi.fn() as any)
 })
 
 describe('verifyAccessToken', () => {
@@ -93,7 +94,7 @@ describe('verifyAccessToken', () => {
     expect(result.error.status).toBe(401)
   })
 
-  it('pasa issuer y audience correctos a jwtVerify', async () => {
+  it('pasa issuer, audience y algorithms correctos a jwtVerify', async () => {
     jwtVerifyMock.mockResolvedValue({
       payload: { sub: 'user-1', sessionId: 'sess-1' },
       protectedHeader: { alg: 'ES256' },
@@ -103,15 +104,29 @@ describe('verifyAccessToken', () => {
 
     expect(jwtVerifyMock).toHaveBeenCalledWith(
       'any-token',
-      'mock-key',
+      expect.any(Function), // getJwksKeyFn() retorna función (JwksKeyFn), no CryptoKey
       {
         issuer: JWT_CONFIG.ISSUER,
         audience: JWT_CONFIG.AUDIENCE,
+        algorithms: [JWT_CONFIG.ALGORITHM],
       },
     )
   })
 
-  it('llama getPublicKey una vez por invocación', async () => {
+  it('pasa algorithms: [ES256] a jwtVerify (P4 — defense-in-depth)', async () => {
+    jwtVerifyMock.mockResolvedValue({
+      payload: { sub: 'user-1', sessionId: 'sess-1' },
+      protectedHeader: { alg: 'ES256' },
+    } as any)
+
+    await verifyAccessToken('any-token')
+
+    const [, , options] = jwtVerifyMock.mock.calls[0]
+    expect(options).toHaveProperty('algorithms', [JWT_CONFIG.ALGORITHM])
+    expect(options).toHaveProperty('algorithms', ['ES256'])
+  })
+
+  it('llama getJwksKeyFn una vez por invocación', async () => {
     jwtVerifyMock.mockResolvedValue({
       payload: { sub: 'user-1', sessionId: 'sess-1' },
       protectedHeader: { alg: 'ES256' },
@@ -119,7 +134,78 @@ describe('verifyAccessToken', () => {
 
     await verifyAccessToken('token')
 
-    expect(getPublicKeyMock).toHaveBeenCalledOnce()
+    expect(getJwksKeyFnMock).toHaveBeenCalledOnce()
+  })
+
+  it('retorna token_invalid cuando jwtVerify lanza JWKSNoMatchingKey (REQ-JWKS-08)', async () => {
+    const err = new Error('no applicable keys found in the JSON Web Key Set')
+    err.name = 'JWKSNoMatchingKey'
+    jwtVerifyMock.mockRejectedValue(err)
+
+    const result = await verifyAccessToken('token-kid-inexistente')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('sdk')
+    expect(result.error.reason).toBe('token_invalid')
+    expect(result.error.status).toBe(401)
+  })
+
+  it('retorna token_invalid cuando jwtVerify lanza JWKSTimeout (REQ-JWKS-09)', async () => {
+    const err = new Error('request timed out')
+    err.name = 'JWKSTimeout'
+    jwtVerifyMock.mockRejectedValue(err)
+
+    const result = await verifyAccessToken('token-timeout')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('sdk')
+    expect(result.error.status).toBe(401)
+  })
+
+  // ───── Algorithm confusion — REQ-JWT-02 (test dedicado) ─────
+  //
+  // Este test verifica que un token cuyo header declara un algoritmo distinto de ES256
+  // es RECHAZADO por verifyAccessToken con reason: 'token_invalid'.
+  //
+  // Capa que lo rechaza: jose, en la fase de validación del algoritmo del header JWS
+  // ANTES de intentar verificar la firma. Cuando jwtVerify recibe options.algorithms: ['ES256']
+  // y el token tiene alg: 'RS256' (u otro), lanza JOSEAlgorithmNotAllowed con el mensaje
+  // '"RS256" alg not allowed'. Este error ocurre en el header parsing de jose, no en la
+  // verificación criptográfica. Fuente: jose v6 src/lib/check_key_type.ts + jose/src/jws/flattened/verify.ts.
+  //
+  // Anti-regresión: si se eliminara `algorithms: ['ES256']` de la call a jwtVerify,
+  // jose NO lanzaría JOSEAlgorithmNotAllowed — intentaría verificar la firma con la
+  // CryptoKey ES256 y fallaría con JWSSignatureVerificationFailed (error diferente).
+  // El nombre del error en el mock es el discriminador: este test solo pasa cuando
+  // jose alcanza el check de algoritmo declarativo, que requiere algorithms: ['ES256'].
+  //
+  // Escenarios cubiertos por error.name diferente: RS256, HS256, alg 'none' → todos
+  // producen JOSEAlgorithmNotAllowed cuando algorithms: ['ES256'] está configurado.
+
+  it('rechaza token con alg distinto de ES256 — algorithm confusion → token_invalid (REQ-JWT-02)', async () => {
+    // Fixture: jose lanza JOSEAlgorithmNotAllowed cuando el header del token
+    // declara alg: 'RS256' pero options.algorithms solo permite 'ES256'.
+    const err = new Error('"RS256" alg not allowed')
+    err.name = 'JOSEAlgorithmNotAllowed'
+    jwtVerifyMock.mockRejectedValue(err)
+
+    // Acción: intentar verificar un token con alg inválido
+    const result = await verifyAccessToken('rs256-token')
+
+    // Assert 1: el result es falla con reason token_invalid y status 401
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('sdk')
+    expect(result.error.reason).toBe('token_invalid')
+    expect(result.error.status).toBe(401)
+
+    // Assert 2 (anti-regresión): jwtVerify fue llamado con algorithms: ['ES256'] explícito.
+    // Si se quitara algorithms del call site, jose no lanzaría JOSEAlgorithmNotAllowed
+    // y el test fallaría al no recibir el error esperado del mock.
+    const [, , options] = jwtVerifyMock.mock.calls[0]
+    expect(options).toHaveProperty('algorithms', ['ES256'])
   })
 
   // ───── Sin schema: drop everything excepto id/sessionId (REQ-TE-012) ─────

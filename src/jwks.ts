@@ -1,93 +1,26 @@
-import { importJWK } from 'jose'
-import { z } from 'zod'
+import { createRemoteJWKSet } from 'jose'
 import { getAuthServiceUrl } from './constants'
-import {
-  cachedKey,
-  cachedEtag,
-  cachedAt,
-  pendingFetch,
-  clearCache,
-  setCached,
-  refreshCachedAt,
-  setPendingFetch,
-} from './jwks-cache'
 
-const JwksResponseSchema = z.object({
-  keys: z.array(z.record(z.string(), z.unknown())).min(1),
-})
+type JwksKeyFn = ReturnType<typeof createRemoteJWKSet>
 
-const CACHE_TTL = 86400 * 1000
-const CACHE_MAX_TTL = 86400 * 1000 + 3600 * 1000
-const JWKS_FETCH_TIMEOUT = 5_000
+// Singleton lazy — se crea en la primera llamada a getJwksKeyFn().
+// undefined antes de la primera llamada (preserva el comportamiento lazy actual).
+let _jwks: JwksKeyFn | undefined
 
-export async function fetchJwks(): Promise<void> {
-  const url = `${getAuthServiceUrl()}/.well-known/jwks.json`
-  const headers: Record<string, string> = {}
-
-  if (cachedEtag) {
-    headers['If-None-Match'] = cachedEtag
+export function getJwksKeyFn(): JwksKeyFn {
+  // Lazy init: si _jwks ya fue inicializado, retornar sin re-crear.
+  if (!_jwks) {
+    const url = new URL(`${getAuthServiceUrl()}/.well-known/jwks.json`)
+    _jwks = createRemoteJWKSet(url, {
+      cacheMaxAge: 86_400_000,   // 24h — alineado con TTL normal de ADR-005
+      cooldownDuration: 30_000,  // 30s — anti-abuse contra JWKS endpoint (explícito)
+      timeoutDuration: 5_000,    // 5s — equivalente al JWKS_FETCH_TIMEOUT actual
+    })
   }
-
-  let res: Response
-  try {
-    res = await fetch(url, { headers, signal: AbortSignal.timeout(JWKS_FETCH_TIMEOUT) })
-  } catch {
-    if (cachedKey) return
-    throw new Error('Error al obtener JWKS y no hay clave en caché')
-  }
-
-  if (res.status === 304 && cachedKey) {
-    refreshCachedAt(Date.now())
-    return
-  }
-
-  if (!res.ok) {
-    if (cachedKey) return
-    throw new Error(`Error al obtener JWKS con estado ${res.status}`)
-  }
-
-  const json: unknown = await res.json()
-  const parsed = JwksResponseSchema.safeParse(json)
-
-  if (!parsed.success) {
-    if (cachedKey) return
-    throw new Error('Formato de respuesta JWKS inválido')
-  }
-
-  const jwk = parsed.data.keys[0]
-
-  const key = await importJWK(jwk, 'ES256')
-  if (!(key instanceof CryptoKey)) {
-    throw new Error('Se esperaba CryptoKey de la importación JWKS')
-  }
-  setCached(key, res.headers.get('etag'), Date.now())
+  return _jwks
 }
 
-export async function getPublicKey(): Promise<CryptoKey> {
-  const isStale = !cachedKey || (Date.now() - cachedAt > CACHE_TTL)
-
-  if (isStale) {
-    if (!pendingFetch) {
-      const fetch$ = fetchJwks().finally(() => { setPendingFetch(null) })
-      setPendingFetch(fetch$)
-    }
-    try {
-      await pendingFetch
-    } catch (err) {
-      if (!cachedKey || Date.now() - cachedAt > CACHE_MAX_TTL) {
-        throw err
-      }
-    }
-  }
-
-  if (!cachedKey) {
-    throw new Error('Clave pública no disponible')
-  }
-
-  return cachedKey
-}
-
-/** Limpia el cache JWKS (cachedKey, cachedEtag, cachedAt, pendingFetch). */
-export function clearJwksCache(): void {
-  clearCache()
+/** Solo para test environments — resetea la instancia singleton. */
+export function _resetJwksForTesting(): void {
+  _jwks = undefined
 }

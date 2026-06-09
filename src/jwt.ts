@@ -1,7 +1,7 @@
 import { jwtVerify } from 'jose'
 import { z, ZodObject } from 'zod'
 import type { ZodType } from 'zod'
-import { getPublicKey } from './jwks'
+import { getJwksKeyFn } from './jwks'
 import { JWT_CONFIG } from './constants'
 import { RESERVED_JWT_CLAIMS } from './jwt-claims'
 import type { EvaTokenPayload, Result, EvaSdkError } from './types'
@@ -63,10 +63,10 @@ export async function verifyAccessToken<TExtra extends Record<string, unknown> =
 ): Promise<Result<EvaTokenPayload<TExtra>>> {
   try {
     // 1. Verificar firma + standard claims con jose.
-    const key = await getPublicKey()
-    const { payload } = await jwtVerify(token, key, {
+    const { payload } = await jwtVerify(token, getJwksKeyFn(), {
       issuer: JWT_CONFIG.ISSUER,
       audience: JWT_CONFIG.AUDIENCE,
+      algorithms: [JWT_CONFIG.ALGORITHM],
     })
 
     // 2. Validar shape base (sub + sessionId presentes).

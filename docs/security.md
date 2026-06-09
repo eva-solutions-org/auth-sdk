@@ -35,11 +35,12 @@ Claims validados:
 
 | Parámetro | Valor |
 |-----------|-------|
-| Cache TTL | 24 horas |
-| Max TTL (fallback) | 25 horas |
-| Revalidación | ETag / HTTP 304 |
+| Cache TTL (`cacheMaxAge`) | 24 horas |
+| Cooldown entre re-fetches | 30 segundos |
+| Timeout de fetch | 5 segundos |
+| Revalidación | Re-fetch completo (sin ETag) |
 
-Si el cache supera 25 horas sin actualización exitosa → **verificación rechazada**. No se usa key potencialmente revocada. → [ADR-005](decisions.md)
+Mientras el endpoint JWKS esté online: re-fetch transparente tras expiración del TTL, sin interrupción. Si el endpoint cae exactamente cuando el TTL expira: **verificación rechazada** (fail-closed). No se usa key potencialmente revocada tras expiración. Kid-matching RFC 7517 automático — soporte transparente de rotación multi-clave. → [ADR-016](decisions.md)
 
 ---
 
@@ -53,7 +54,7 @@ Aplica en: `hono/middleware.ts`, `hono/auth-routes.ts`, `generic/verify.ts` (tod
 
 ### JWKS fetch
 
-Variable `pendingFetch` a nivel de módulo en `jwks.ts`. Múltiples verificaciones simultáneas → solo un fetch.
+Deduplicación interna de `createRemoteJWKSet` (jose) en `jwks.ts`. Múltiples verificaciones simultáneas → solo un fetch. Cooldown de 30s entre re-fetches anti-abuse.
 
 ---
 
