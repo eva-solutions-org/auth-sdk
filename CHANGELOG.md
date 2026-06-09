@@ -6,6 +6,14 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/). Este
 
 ---
 
+## [2.0.1] — 2026-06-09
+
+### Fixed
+
+- **Docs** — corrige ejemplos de `secretStore` en JSDoc de `verifyS2SRequest` y README que sugerían el campo `secretHash` (modelo R1); el contrato espera el plaintext del secret (`secret`).
+
+---
+
 ## [2.0.0] — 2026-06-08
 
 ### Breaking Changes
