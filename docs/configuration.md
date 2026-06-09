@@ -123,14 +123,13 @@ Ver [ADR-011](decisions.md#adr-011-generic-evatokenpayload--optional-schema-vali
 
 ## configureEvaAuth — Configuración runtime
 
-A partir del change `deployment-flexibility`, el SDK ofrece `configureEvaAuth(opts)` para inyectar configuración en runtime sin necesidad de rebuild. Llamar al **boot**, antes del primer request.
+El SDK expone `configureEvaAuth(opts)` para inyectar configuración en runtime. Llamar al **boot**, antes del primer request.
 
 ```ts
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 // También disponible desde @eva_solutions/auth-sdk/hono, /generic y /react
 
 configureEvaAuth({
-  authUrl: process.env.EVA_AUTH_URL,         // Override URL del Auth Service
   cookieDomain: process.env.COOKIE_DOMAIN,   // Domain para cookies (ej: '.miempresa.com')
 })
 ```
@@ -139,14 +138,12 @@ configureEvaAuth({
 
 | Opción | Tipo | Descripción |
 |--------|------|-------------|
-| `authUrl` | `string \| undefined` | URL del Auth Service. Override con máxima precedencia. Si se omite, no resetea el valor previo. |
 | `cookieDomain` | `string \| undefined` | Atributo `Domain` para `Set-Cookie`. Si se omite, no resetea el valor previo. |
 | `errorWire` | `'api' \| 'string' \| undefined` | Shape HTTP que el SDK emite cuando rechaza un request. Default: `'api'`. Ver [sección errorWire](#errorwire) más abajo. |
 | `errorMessages` | `Partial<EvaErrorMessages> \| undefined` | Override de mensajes de error. Ver [sección Mensajes de error personalizados](#mensajes-de-error-personalizados). |
 
 ### Validaciones
 
-- `authUrl` debe ser una URL válida con protocolo `http:` o `https:`. Si no es válida o usa otro protocolo (`javascript:`, `data:`, `file:`, `ftp:`), la llamada **lanza inmediatamente** con mensaje descriptivo.
 - `cookieDomain` no puede contener `;`, `\r` ni `\n` (defensa contra header injection). Si los contiene, **lanza inmediatamente**.
 
 ### Idempotencia
@@ -154,21 +151,39 @@ configureEvaAuth({
 Llamadas repetidas sobrescriben los campos provistos. Un campo omitido (`undefined`) preserva el valor previo:
 
 ```ts
-configureEvaAuth({ authUrl: 'https://auth-a.com', cookieDomain: '.a.com' })
-configureEvaAuth({ cookieDomain: '.b.com' })  // authUrl sigue siendo 'https://auth-a.com'
+configureEvaAuth({ cookieDomain: '.a.com' })
+configureEvaAuth({ cookieDomain: '.b.com' })  // sobrescribe .a.com
 ```
 
-### Precedencia de URL del Auth Service
+### URL del Auth Service
 
+La URL del Auth Service se fija en **build-time** — no es configurable en runtime. El SDK se publica en tres variantes según `EVA_BUILD_ENV`:
+
+| `EVA_BUILD_ENV` | URL horneada |
+|-----------------|-------------|
+| `local` | `http://localhost:4000` |
+| `development` | `https://auth-dev.example.com` |
+| `production` | `https://auth.example.com` |
+
+Para acceder al Auth Service en producción, instalar la variante `production`. No es necesario llamar `configureEvaAuth` para la URL.
+
+> **Migración desde v1.x**: si usabas `configureEvaAuth({ authUrl })` o `process.env.EVA_AUTH_URL`, estos mecanismos ya no tienen efecto. Migrar a builds por entorno con `EVA_BUILD_ENV`. Ver [CHANGELOG.md](../CHANGELOG.md) entrada v2.0.0.
+
+### Validación HTTPS en S2S y Admin
+
+`createS2SClient` y `createAdminClient` validan que `config.baseUrl` use `https:` (o `http:` con host loopback: `localhost`, `127.0.0.0/8`, `::1`/`[::1]`). Si no cumple, lanzan sincrónicamente antes de retornar el cliente.
+
+```ts
+// Válido — https
+createS2SClient({ baseUrl: 'https://auth.example.com', ... })
+
+// Válido — loopback para tests
+createS2SClient({ baseUrl: 'http://localhost:4000', ... })
+
+// Lanza — http no-loopback (CWE-319)
+createS2SClient({ baseUrl: 'http://auth.example.com', ... })
+// Error: S2SClientConfig.baseUrl inválida: se requiere https (o loopback http): http://auth.example.com
 ```
-configureEvaAuth({ authUrl }) > process.env.EVA_AUTH_URL > __EVA_AUTH_URL__ (build-time)
-```
-
-Si `process.env.EVA_AUTH_URL` contiene un valor inválido, el SDK emite `console.warn` y cae al build-time fallback sin lanzar.
-
-### Invalidación de JWKS cache
-
-Al cambiar `authUrl` a un valor distinto, el SDK invalida automáticamente el cache JWKS. El siguiente fetch de public key irá al nuevo host. Si el `authUrl` es idéntico al previo, el cache se preserva.
 
 ### Recomendación de cookieDomain para subdominios
 
@@ -278,9 +293,7 @@ RFC 6265 exige que para borrar una cookie, el `Set-Cookie; Max-Age=0` del logout
 
 ## Modelo build-time
 
-El SDK **también soporta** configuración horneada en build-time para el caso zero-config. Si `configureEvaAuth()` no se llama, todo el comportamiento previo se preserva.
-
-> **Nota**: antes de `deployment-flexibility`, este era el único modelo. Ahora es el fallback.
+El SDK usa **exclusivamente** configuración horneada en build-time para la URL del Auth Service. El selector de entorno es `EVA_BUILD_ENV` al momento del build. Si `configureEvaAuth()` no se llama, todo el comportamiento se preserva con los valores build-time.
 
 ---
 

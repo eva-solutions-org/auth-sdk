@@ -17,6 +17,7 @@
  *   POST   /admin/users/:id/restore                     → restoreUser
  */
 
+import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../schemas'
 import type { Result } from '../types'
 import type {
@@ -125,6 +126,7 @@ async function adminFetch<T>({
  * ```
  */
 export function createAdminClient(config: AdminClientConfig): AdminClient {
+  validateHttpsUrl(config.baseUrl, 'AdminClientConfig.baseUrl')
   return {
     async createServiceClient(
       input: CreateServiceClientInput,

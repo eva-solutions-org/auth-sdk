@@ -31,7 +31,10 @@ export type S2SClientConfig = {
    * Es el valor que devuelve el Admin al crear/rotar el service client.
    */
   secretHex: string
-  /** URL base del Auth Service API (sin trailing slash). */
+  /**
+   * URL base del Auth Service API (sin trailing slash).
+   * Validada en `createS2SClient`: se requiere https (o http con host loopback para tests).
+   */
   baseUrl: string
 }
 

@@ -13,7 +13,10 @@ import type { AccountState } from '../account-states'
 export type AdminClientConfig = {
   /** Contraseña de administrador global del Auth Service. */
   adminPassword: string
-  /** URL base del Auth Service API (sin trailing slash). */
+  /**
+   * URL base del Auth Service API (sin trailing slash).
+   * Validada en `createAdminClient`: se requiere https (o http con host loopback para tests).
+   */
   baseUrl: string
 }
 

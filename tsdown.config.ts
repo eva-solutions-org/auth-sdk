@@ -1,11 +1,10 @@
 /**
  * tsdown configuration for building the SDK.
  *
- * NOTE: `envUrls` values below are PLACEHOLDERS for build-time defaults.
- * Consumers configure their actual Auth Service URL at runtime via
- * `configureEvaAuth({ apiUrl: '...' })`. These values are NEVER used by
- * published packages — they exist only to provide build-time defaults for
- * local development of this SDK.
+ * NOTE: `envUrls` values below define the Auth Service URL baked into each
+ * build variant. The URL is a BUILD-TIME constant — not configurable at runtime.
+ * Select the variant with EVA_BUILD_ENV=local|development|production at build time.
+ * These PLACEHOLDER values are replaced with real URLs in the published packages.
  */
 import { defineConfig } from 'tsdown'
 

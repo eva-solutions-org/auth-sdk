@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { clearCache } from './jwks-cache'
 import {
   DEFAULT_ERROR_MESSAGES,
   type EvaErrorMessages,
@@ -23,7 +22,6 @@ const BUILD_TIME_ENV: EvaEnv = __EVA_ENV__ as EvaEnv
 
 // === Estado runtime mutable (NO exportado directamente) ===
 type RuntimeConfig = {
-  authUrl?: string
   cookieDomain?: string
   errorMessages?: Partial<EvaErrorMessages>
   errorWire?: 'api' | 'string'
@@ -33,29 +31,42 @@ let _runtimeConfig: RuntimeConfig = {}
 
 // === Validators ===
 
-function validateAuthUrl(value: string, context: 'param' | 'env'): string | null {
+/**
+ * Valida que `value` sea una URL https (o http con host loopback para tests/dev local).
+ * Lanza Error síncrono si la URL es malformada, usa protocolo no soportado,
+ * o usa http con host no-loopback.
+ * Exportada para uso interno del SDK (createS2SClient, createAdminClient).
+ * NO re-exportada desde los barrels públicos (src/index.ts, etc.) — REQ-HTTPS-10.
+ */
+export function validateHttpsUrl(value: string, label: string): void {
   let parsed: URL
   try {
     parsed = new URL(value)
   } catch {
-    if (context === 'param') {
-      throw new Error(`EVA_AUTH_URL inválida: ${value}`)
-    }
-    // oxlint-disable-next-line no-console -- intentional consumer-facing runtime warning
-    console.warn(`[eva-auth-sdk] EVA_AUTH_URL inválida en process.env (${value}); usando build-time fallback`)
-    return null
+    throw new Error(`${label} inválida: URL malformada: ${value}`)
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    if (context === 'param') {
-      throw new Error(`EVA_AUTH_URL inválida (protocolo no soportado: ${parsed.protocol}): ${value}`)
+
+  if (parsed.protocol === 'http:') {
+    // NOTA: en Node.js, new URL('http://[::1]:4000').hostname devuelve '[::1]' (con corchetes).
+    // El WHATWG URL spec permite ambas representaciones según el runtime.
+    // Este SDK se ejecuta en Node.js/Edge runtimes que mantienen los corchetes en .hostname para IPv6.
+    const hostname = parsed.hostname
+    // oxlint-disable-next-line prefer-string-starts-ends-with -- regex anclada requerida para seguridad (CWE-319): startsWith('127.') aceptaría '127.evil.com'
+    if (
+      hostname === 'localhost' ||
+      hostname === '::1' ||   // defensa: dead-code en Node 20+ (Ada 2.0 retorna '[::1]' con corchetes)
+      hostname === '[::1]' || // Node.js 20+ (WHATWG Ada 2.0): .hostname de IPv6 literal incluye corchetes
+      /^127(?:\.\d{1,3}){3}$/.test(hostname) // forma IPv4 completa anclada — bloquea '127.evil.com'
+    ) {
+      return // loopback http: permitido (tests + desarrollo local)
     }
-    // oxlint-disable-next-line no-console -- intentional consumer-facing runtime warning
-    console.warn(
-      `[eva-auth-sdk] EVA_AUTH_URL inválida en process.env (protocolo no soportado: ${parsed.protocol}); usando build-time fallback`,
-    )
-    return null
+    throw new Error(`${label} inválida: se requiere https (o loopback http): ${value}`)
   }
-  return value
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`${label} inválida: protocolo no soportado (${parsed.protocol}): ${value}`)
+  }
+  // https: → válido, void
 }
 
 function validateCookieDomain(value: string): void {
@@ -67,12 +78,6 @@ function validateCookieDomain(value: string): void {
 // === API pública ===
 
 export interface ConfigureEvaAuthOptions {
-  /**
-   * URL del Auth Service. Override programático con máxima precedencia.
-   * Validada con new URL() + protocolo http/https — throw inmediato si inválida.
-   * Si se omite (undefined), NO resetea el valor previo.
-   */
-  authUrl?: string
   /**
    * Domain para Set-Cookie. Validada contra header injection (;, \r, \n).
    * Si se omite (undefined), NO resetea el valor previo.
@@ -101,19 +106,17 @@ export interface ConfigureEvaAuthOptions {
  * Configura el SDK en runtime. Idempotente — llamadas repetidas sobrescriben los campos
  * provistos. Llamar al boot del consumidor, antes del primer request.
  *
- * @throws Error si authUrl no es URL válida o tiene protocolo no soportado (no http/https).
  * @throws Error si cookieDomain contiene caracteres de header injection (;, \r, \n).
  */
 export function configureEvaAuth(opts: ConfigureEvaAuthOptions): void {
-  if (opts.authUrl !== undefined) {
-    // validateAuthUrl con 'param' siempre retorna string o lanza — nunca null
-    const validated = validateAuthUrl(opts.authUrl, 'param') as string
-    const prev = _runtimeConfig.authUrl
-    _runtimeConfig.authUrl = validated
-    // Invalida JWKS cache solo si authUrl realmente cambió (B-3)
-    if (prev !== validated) {
-      clearCache()
-    }
+  // D-07: guard de cortesía para consumidores en JS puro que aún pasen authUrl
+  // (eliminado en v2.0.0 — no tiene efecto funcional, solo emite aviso de migración)
+  if ('authUrl' in opts) {
+    // oxlint-disable-next-line no-console -- intentional consumer-facing migration warning
+    console.warn(
+      '[eva-auth-sdk] configureEvaAuth: el campo `authUrl` fue eliminado en v2.0.0 y ya no tiene efecto. ' +
+      'La URL del Auth Service se fija en build-time. Ver CHANGELOG.md#200 para migrar.',
+    )
   }
   if (opts.cookieDomain !== undefined) {
     validateCookieDomain(opts.cookieDomain)
@@ -133,21 +136,10 @@ export function configureEvaAuth(opts: ConfigureEvaAuthOptions): void {
 }
 
 /**
- * Retorna la URL del Auth Service con la siguiente precedencia:
- * 1. configureEvaAuth({ authUrl }) — runtime param
- * 2. process.env.EVA_AUTH_URL — variable de entorno (con guard para Edge runtimes)
- * 3. __EVA_AUTH_URL__ — constante horneada en build-time
+ * Retorna la URL del Auth Service horneada en build-time.
+ * El valor se fija al compilar — no es configurable en runtime.
  */
 export function getAuthUrl(): string {
-  if (_runtimeConfig.authUrl) return _runtimeConfig.authUrl
-
-  const envRaw = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env?.EVA_AUTH_URL
-  const envTrimmed = envRaw?.trim()
-  if (envTrimmed) {
-    const validated = validateAuthUrl(envTrimmed, 'env')
-    if (validated) return validated
-  }
-
   return BUILD_TIME_AUTH_URL
 }
 

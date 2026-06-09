@@ -582,3 +582,93 @@ describe('S2SClient', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 })
+
+// ---------------------------------------------------------------------------
+// T-013: createS2SClient — validación baseUrl (REQ-S2S-01..05, REQ-HTTPS-01..11)
+// ---------------------------------------------------------------------------
+
+describe('createS2SClient — validación baseUrl', () => {
+  const validConfig = { clientId: CLIENT_ID, secretHex: SECRET_HEX }
+
+  it('baseUrl https válido no lanza (REQ-S2S-01)', () => {
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'https://auth.example.com' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http://localhost no lanza — loopback permitido (REQ-S2S-03, REQ-HTTPS-03)', () => {
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://localhost:4000' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http://127.0.0.1 no lanza — loopback 127.x.x.x (REQ-HTTPS-04)', () => {
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://127.0.0.1:8080' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http://[::1] no lanza — loopback IPv6 (REQ-HTTPS-04)', () => {
+    // new URL('http://[::1]:4000').hostname devuelve '[::1]' (CON corchetes) en Node.js 20+ (WHATWG Ada 2.0).
+    // La rama '::1' (sin corchetes) en validateHttpsUrl es defensa/dead-code en Node 20+.
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://[::1]:4000' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http no-loopback lanza sincrónicamente con label en mensaje (REQ-S2S-02, REQ-S2S-04, REQ-S2S-05)', () => {
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://auth.example.com' }),
+    ).toThrow(/S2SClientConfig\.baseUrl/)
+  })
+
+  it('baseUrl http://192.168.1.1 lanza — no-loopback (REQ-HTTPS-06)', () => {
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://192.168.1.1' }),
+    ).toThrow(/se requiere https/)
+  })
+
+  it('baseUrl protocolo inválido (ftp:) lanza (REQ-HTTPS-07)', () => {
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'ftp://auth.example.com' }),
+    ).toThrow(/protocolo no soportado/)
+  })
+
+  it('baseUrl malformada lanza con mensaje "malformada" (REQ-HTTPS-08)', () => {
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'not-a-url' }),
+    ).toThrow(/malformada/)
+  })
+
+  // ─── CWE-319: bypass loopback por hostname no-IPv4 con prefijo "127." ────────
+  // Verifica que el fix de startsWith('127.') → regex anclada /^127(?:\.\d{1,3}){3}$/
+  // cierra el vector donde un atacante usa http://127.evil.com para eludir el check.
+
+  it('baseUrl http://127.evil.com RECHAZADO — bypass CWE-319 cerrado (fix B6.5)', () => {
+    // '127.evil.com' pasa startsWith('127.') pero NO la regex anclada ^127(?:\.\d{1,3}){3}$
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://127.evil.com' }),
+    ).toThrow(/se requiere https/)
+  })
+
+  it('baseUrl http://127.0.0.1.evil.com RECHAZADO — no es loopback IPv4 (fix B6.5)', () => {
+    // Node.js no normaliza este hostname; la regex anclada lo rechaza correctamente
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://127.0.0.1.evil.com' }),
+    ).toThrow(/se requiere https/)
+  })
+
+  it('baseUrl http://127.0.0.2 no lanza — loopback 127.x.x.x válido (REQ-HTTPS-11)', () => {
+    // Confirma que la regex /^127(?:\.\d{1,3}){3}$/ acepta toda la subred 127.x.x.x
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://127.0.0.2' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http://127.100.50.1 no lanza — subred 127.x.x.x (REQ-HTTPS-11)', () => {
+    // Cubre explícitamente REQ-HTTPS-11: cualquier 127.x.x.x es loopback según RFC 5735
+    expect(() =>
+      createS2SClient({ ...validConfig, baseUrl: 'http://127.100.50.1' }),
+    ).not.toThrow()
+  })
+})

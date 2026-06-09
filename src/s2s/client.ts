@@ -16,6 +16,7 @@
  *   GET  /internal/webhooks/deliveries
  */
 
+import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../schemas'
 import type { Result } from '../types'
 import { signS2SRequest } from './sign'
@@ -169,6 +170,7 @@ async function s2sFetch<T>({
  * ```
  */
 export function createS2SClient(config: S2SClientConfig): S2SClient {
+  validateHttpsUrl(config.baseUrl, 'S2SClientConfig.baseUrl')
   return {
     async getUser(userId: string): Promise<Result<S2SGetUserResult>> {
       return s2sFetch<S2SGetUserResult>({

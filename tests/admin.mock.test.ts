@@ -343,3 +343,53 @@ describe('AdminClient', () => {
     expect((result.error as { kind: 'api'; code: string }).code).toBe('unauthorized')
   })
 })
+
+// ---------------------------------------------------------------------------
+// T-014: createAdminClient — validación baseUrl (REQ-ADMIN-01..05)
+// ---------------------------------------------------------------------------
+
+describe('createAdminClient — validación baseUrl', () => {
+  const validConfig = { adminPassword: ADMIN_PASSWORD }
+
+  it('baseUrl https válido no lanza (REQ-ADMIN-01)', () => {
+    expect(() =>
+      createAdminClient({ ...validConfig, baseUrl: 'https://auth.example.com' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http://localhost no lanza — loopback permitido (REQ-ADMIN-03)', () => {
+    expect(() =>
+      createAdminClient({ ...validConfig, baseUrl: 'http://localhost:4000' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http://127.0.0.1 no lanza — loopback 127.x.x.x', () => {
+    expect(() =>
+      createAdminClient({ ...validConfig, baseUrl: 'http://127.0.0.1:8080' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http://[::1] no lanza — loopback IPv6', () => {
+    expect(() =>
+      createAdminClient({ ...validConfig, baseUrl: 'http://[::1]:4000' }),
+    ).not.toThrow()
+  })
+
+  it('baseUrl http no-loopback lanza sincrónicamente con label en mensaje (REQ-ADMIN-02, REQ-ADMIN-04, REQ-ADMIN-05)', () => {
+    expect(() =>
+      createAdminClient({ ...validConfig, baseUrl: 'http://auth.example.com' }),
+    ).toThrow(/AdminClientConfig\.baseUrl/)
+  })
+
+  it('baseUrl protocolo inválido (ftp:) lanza', () => {
+    expect(() =>
+      createAdminClient({ ...validConfig, baseUrl: 'ftp://auth.example.com' }),
+    ).toThrow(/protocolo no soportado/)
+  })
+
+  it('baseUrl malformada lanza con mensaje "malformada"', () => {
+    expect(() =>
+      createAdminClient({ ...validConfig, baseUrl: 'not-a-url' }),
+    ).toThrow(/malformada/)
+  })
+})
