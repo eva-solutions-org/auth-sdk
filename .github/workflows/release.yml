@@ -48,7 +48,7 @@ jobs:
         # gh was not available at apply time (RISK-D02) — SHA below is v1.4.10 known stable.
         # With npm OIDC trusted publishing (recommended), NODE_AUTH_TOKEN is not needed.
         # If using a classic npm token as fallback, add NPM_TOKEN as a GitHub secret.
-        uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1
         with:
           publish: npm publish --provenance --access public
           createGithubReleases: true
