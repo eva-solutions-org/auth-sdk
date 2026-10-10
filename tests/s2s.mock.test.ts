@@ -20,6 +20,7 @@ import type { S2SCanonicalParts } from '../src/s2s/types'
 
 const SECRET_HEX = 'deadbeef'.repeat(8) // 64 hex chars = 32 bytes
 const CLIENT_ID = 'mi-servicio'
+const NONCE = '00112233445566778899aabbccddeeff'
 const BASE_URL = 'https://auth.test'
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,7 @@ describe('buildS2SCanonicalString', () => {
       path: '/internal/users/user-123',
       rawQuery: '',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -40,13 +42,14 @@ describe('buildS2SCanonicalString', () => {
     const canonical = await buildS2SCanonicalString(parts)
     const lines = canonical.split('\n')
 
-    expect(lines).toHaveLength(6)
+    expect(lines).toHaveLength(7)
     expect(lines[0]).toBe('GET')
     expect(lines[1]).toBe('/internal/users/user-123')
     expect(lines[2]).toBe('') // query vacío
     expect(lines[3]).toBe('1700000000')
-    expect(lines[4]).toBe(CLIENT_ID)
-    expect(lines[5]).toBe(EMPTY_BODY_SHA256_HEX)
+    expect(lines[4]).toBe(NONCE)
+    expect(lines[5]).toBe(CLIENT_ID)
+    expect(lines[6]).toBe(EMPTY_BODY_SHA256_HEX)
   })
 
   it('método en lowercase es normalizado a UPPERCASE', async () => {
@@ -55,6 +58,7 @@ describe('buildS2SCanonicalString', () => {
       path: '/internal/users/batch',
       rawQuery: '',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -72,12 +76,13 @@ describe('buildS2SCanonicalString', () => {
       path: '/internal/users/batch',
       rawQuery: '',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes,
     }
 
     const canonical = await buildS2SCanonicalString(parts)
-    const bodyHash = canonical.split('\n')[5]
+    const bodyHash = canonical.split('\n')[6]
 
     expect(bodyHash).not.toBe(EMPTY_BODY_SHA256_HEX)
     expect(bodyHash).toMatch(/^[0-9a-f]{64}$/)
@@ -89,6 +94,7 @@ describe('buildS2SCanonicalString', () => {
       path: '/internal/webhooks/deliveries',
       rawQuery: 'limit=10&offset=0',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -106,6 +112,7 @@ describe('buildS2SCanonicalString', () => {
       path: '/internal/webhooks/deliveries',
       rawQuery: 'limit=10&status=pending',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -128,6 +135,7 @@ describe('buildS2SCanonicalString', () => {
       path: '/internal/users/user-abc',
       rawQuery: '',
       timestamp: '1700000001',
+      nonce: NONCE,
       clientId: 'otro-servicio',
       bodyBytes: new Uint8Array(0),
     }
@@ -146,6 +154,7 @@ describe('signS2SRequest', () => {
       path: '/internal/users/user-1',
       rawQuery: '',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -161,6 +170,7 @@ describe('signS2SRequest', () => {
       path: '/internal/users/user-1',
       rawQuery: '',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -177,6 +187,7 @@ describe('signS2SRequest', () => {
       path: '/internal/users/user-1',
       rawQuery: '',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -194,6 +205,7 @@ describe('signS2SRequest', () => {
       path: '/test',
       rawQuery: '',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -208,6 +220,7 @@ describe('signS2SRequest', () => {
       method: 'GET',
       path: '/internal/users/user-1',
       rawQuery: '',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -285,7 +298,26 @@ describe('S2SClient', () => {
     expect(options.method).toBe('GET')
     expect((options.headers as Record<string, string>)['x-eva-client-id']).toBe(CLIENT_ID)
     expect((options.headers as Record<string, string>)['x-eva-timestamp']).toMatch(/^\d+$/)
+    expect((options.headers as Record<string, string>)['x-eva-nonce']).toMatch(/^[0-9a-f]{32}$/)
     expect((options.headers as Record<string, string>)['x-eva-signature']).toMatch(/^sha256=[0-9a-f]{64}$/)
+  })
+
+  it('cada llamada envía un nonce distinto', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { user: mockUser } }),
+    })
+
+    const s2s = createS2SClient(mockConfig)
+    await s2s.getUser('user-1')
+    await s2s.getUser('user-1')
+
+    const nonces = fetchMock.mock.calls.map(
+      ([, options]) => ((options as RequestInit).headers as Record<string, string>)['x-eva-nonce'],
+    )
+    expect(nonces).toHaveLength(2)
+    expect(nonces[0]).not.toBe(nonces[1])
   })
 
   it('getUser: error HTTP 401 → Result ok:false EvaApiError', async () => {

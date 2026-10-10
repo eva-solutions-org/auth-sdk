@@ -11,7 +11,7 @@
  */
 
 import { buildS2SCanonicalString } from './sign'
-import { S2S_TIMESTAMP_WINDOW_SECONDS } from './constants'
+import { S2S_NONCE_REGEX, S2S_TIMESTAMP_WINDOW_SECONDS } from './constants'
 import type { S2SCanonicalParts, S2SVerifyError, S2SVerifyOptions, S2SVerifyReason, S2SVerifyResult } from './types'
 
 // ---------------------------------------------------------------------------
@@ -66,6 +66,7 @@ const VERIFY_MESSAGES: Record<S2SVerifyReason, string> = {
   header_missing: 'Required authentication headers are missing',
   timestamp_invalid: 'Timestamp header is not a valid integer',
   timestamp_expired: 'Timestamp is outside the allowed window',
+  nonce_malformed: 'Nonce header is malformed',
   signature_malformed: 'Signature header is malformed',
   client_unknown: 'Authentication failed',
   signature_invalid: 'Authentication failed',
@@ -143,9 +144,10 @@ export async function verifyS2SRequest(
   // PASO 1 — Extract headers (Web API Headers normalizes case automatically per spec)
   const clientId = request.headers.get('x-eva-client-id')
   const timestampStr = request.headers.get('x-eva-timestamp')
+  const nonce = request.headers.get('x-eva-nonce')
   const signatureHeader = request.headers.get('x-eva-signature')
 
-  if (clientId === null || timestampStr === null || signatureHeader === null) {
+  if (clientId === null || timestampStr === null || nonce === null || signatureHeader === null) {
     return verifyErr('header_missing', effectiveMessages)
   }
 
@@ -159,6 +161,12 @@ export async function verifyS2SRequest(
   const now = Math.floor(Date.now() / 1000)
   if (Math.abs(now - timestamp) > timestampWindowSeconds) {
     return verifyErr('timestamp_expired', effectiveMessages)
+  }
+
+  // PASO 3b — Validate nonce format (canonical 32 lowercase hex, no normalization).
+  // Does not depend on the secret, so it is decided before any HMAC work.
+  if (!S2S_NONCE_REGEX.test(nonce)) {
+    return verifyErr('nonce_malformed', effectiveMessages)
   }
 
   // PASO 4 — Parse signature header: `sha256=<64 hex chars>`
@@ -185,6 +193,7 @@ export async function verifyS2SRequest(
     path: url.pathname,
     rawQuery: url.search.length > 0 ? url.search.slice(1) : '', // strip leading '?'
     timestamp: timestampStr, // D-01: pass string directly — no numeric conversion
+    nonce, // validated in PASO 3b, bound into canonical
     clientId, // D-02: extracted from header, bound into canonical
     bodyBytes,
   }
@@ -225,8 +234,14 @@ export async function verifyS2SRequest(
 
   // PASO 9b — replayCache check: always post-HMAC verify (D16 timing-safe)
   if (replayCache) {
-    const nonce = `${clientId}:${timestampStr}:${signatureHex}`
-    const inserted = await replayCache.setIfAbsent(nonce, timestampWindowSeconds)
+    // The key is unambiguous because the nonce is a fixed-length 32-hex suffix without ':',
+    // so `clientId:nonce` cannot collide across clients even if clientId contains ':'. TTL = 2W + 1:
+    // `now` is floored to seconds and the window is inclusive (±W), so a request is
+    // acceptable for 2W + 1 seconds and the key must outlive that.
+    const inserted = await replayCache.setIfAbsent(
+      `${clientId}:${nonce}`,
+      2 * timestampWindowSeconds + 1,
+    )
     if (!inserted) return verifyErr('replay_detected', effectiveMessages)
   }
 

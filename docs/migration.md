@@ -8,7 +8,8 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 2. Llama `configureEvaAuth({ authUrl })` al arrancar, antes del primer request.
 3. Borra todo uso de `getEvaEnv` y del tipo `EvaEnv`.
 4. Si desarrollas en local, sirve tu app por https (las cookies ahora son siempre `Secure`).
-5. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
+5. Si firmas requests S2S a mano (sin `createS2SClient`), cambia a `signS2SHeaders` (sección 7). Si verificas S2S, cada request entrante debe traer `x-eva-nonce`.
+6. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
 
 ## Resumen de breaking changes
 
@@ -21,6 +22,7 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 | 5 | `getEvaEnv` / `EvaEnv` | Eliminados |
 | 6 | Build | Una sola variante: ya no existen `build:local`, `build:dev`, `build:prod` ni `pack:local` |
 | 7 | `authUrl` | Inmutable: un segundo valor distinto lanza |
+| 8 | S2S | Nuevo header obligatorio `x-eva-nonce`; canonical de 7 líneas; razón `nonce_malformed`; clave y TTL del `replayCache` cambian |
 
 ---
 
@@ -127,6 +129,41 @@ it('...', async () => {
   // ...
 })
 ```
+
+---
+
+## 7. S2S requiere `x-eva-nonce`
+
+Las firmas S2S ahora incluyen un nonce por request. No hay modo de compatibilidad: un request sin `x-eva-nonce` se rechaza con `header_missing`, y uno con nonce mal formado (no son 32 hex en minúsculas) con `nonce_malformed`.
+
+**Si usas `createS2SClient`**: no hagas nada, ya envía el nonce.
+
+**Si firmas a mano** con `signS2SRequest` y armas los headers tú:
+
+```ts
+// Antes (2.x)
+const timestamp = String(Math.floor(Date.now() / 1000))
+const signature = await signS2SRequest({
+  parts: { method, path, rawQuery, timestamp, clientId, bodyBytes },
+  secretHex,
+})
+const headers = { 'x-eva-client-id': clientId, 'x-eva-timestamp': timestamp, 'x-eva-signature': signature }
+
+// Después (3.0.0)
+import { signS2SHeaders } from '@eva_solutions/auth-sdk/s2s'
+const headers = await signS2SHeaders({ method, path, rawQuery, bodyBytes, clientId, secretHex })
+```
+
+`signS2SHeaders` genera timestamp, nonce (`generateS2SNonce()`) y firma, y devuelve los cuatro headers. Si sigues usando `signS2SRequest` directamente, `S2SCanonicalParts` ahora exige `nonce` (32 hex en minúsculas) y la función lanza si no lo cumple.
+
+**Si verificas S2S** (`verifyS2SRequest` / `s2sAuth`):
+
+- El canonical string pasa de 6 a 7 líneas (el nonce va entre timestamp y clientId). Cualquier implementación propia del verificador debe actualizarse.
+- `S2SVerifyReason` gana `nonce_malformed`. Si tienes un `switch` exhaustivo sobre las razones o un mapeo de mensajes, agrégala.
+- `replayCache.setIfAbsent` recibe ahora la clave `${clientId}:${nonce}` (antes `${clientId}:${timestamp}:${signatureHex}`) y un TTL de `2 * timestampWindowSeconds + 1` (241 s por defecto; antes 120). Si tu implementación derivaba algo de la forma de la clave, ajústala; las claves antiguas no coinciden con las nuevas.
+- Durante un despliegue por etapas, un verificador 3.0.0 rechaza a los firmantes 2.x y un firmante 3.0.0 es rechazado por un verificador 2.x (firma inválida). Actualiza ambos lados juntos.
+
+Razonamiento: [ADR-018](decisions.md#adr-018-nonce-obligatorio-en-las-firmas-s2s-x-eva-nonce).
 
 ---
 

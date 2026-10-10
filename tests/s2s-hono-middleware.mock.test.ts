@@ -22,6 +22,7 @@ import type { S2sAuthVariables } from '../src/hono/s2s'
 
 const SECRET_HEX = 'abababab'.repeat(8) // 64 hex chars = 32 bytes
 const CLIENT_ID = 'test-client'
+const NONCE = '00112233445566778899aabbccddeeff'
 
 // ---------------------------------------------------------------------------
 // Helper: construir un Request firmado para Hono
@@ -47,6 +48,7 @@ async function buildSignedRequest(opts: {
     path,
     rawQuery: '',
     timestamp: String(timestamp),
+    nonce: NONCE,
     clientId,
     bodyBytes: body,
   }
@@ -56,6 +58,7 @@ async function buildSignedRequest(opts: {
   const headers: Record<string, string> = {
     'x-eva-client-id': clientId,
     'x-eva-timestamp': String(timestamp),
+    'x-eva-nonce': NONCE,
     'x-eva-signature': signature,
   }
 
@@ -691,10 +694,10 @@ describe('s2sAuth pass-through (D22, D24)', () => {
 
     expect(res.status).toBe(200)
     expect(setIfAbsent).toHaveBeenCalledTimes(1)
-    // Verifica que el nonce tiene el formato esperado: clientId:timestamp:signatureHex
-    const [nonce] = setIfAbsent.mock.calls[0] as [string, number]
-    expect(nonce).toMatch(/^test-client:\d+:[0-9a-f]+$/)
-    expect(typeof nonce.split(':')[2]).toBe('string')
+    // Verifica la clave y el TTL: clientId:nonce y 2*120+1
+    const [key, ttl] = setIfAbsent.mock.calls[0] as [string, number]
+    expect(key).toBe(`test-client:${NONCE}`)
+    expect(ttl).toBe(241)
   })
 
   it('setIfAbsent rejection → Hono responde 500 (fail-closed D10, REQ-HONO-RC-03)', async () => {

@@ -10,7 +10,13 @@
 export { createS2SClient } from './client'
 export type { S2SClient } from './client'
 
-export { buildS2SCanonicalString, signS2SRequest, EMPTY_BODY_SHA256_HEX } from './sign'
+export {
+  buildS2SCanonicalString,
+  signS2SRequest,
+  signS2SHeaders,
+  generateS2SNonce,
+  EMPTY_BODY_SHA256_HEX,
+} from './sign'
 
 export { S2S_TIMESTAMP_WINDOW_SECONDS, USERS_BATCH_MAX_IDS, S2S_SCOPES, S2S_RESPONSE_HEADERS } from './constants'
 export type { S2SScope } from './constants'

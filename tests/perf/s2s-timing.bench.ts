@@ -38,6 +38,7 @@ import type { S2SCanonicalParts } from '../../src/s2s/types'
 
 const VALID_SECRET = 'cafebabe'.repeat(8) // 64 hex chars = 32 bytes
 const CLIENT_ID = 'bench-client'
+const NONCE = '00112233445566778899aabbccddeeff'
 const BASE_URL = 'http://localhost/internal/bench'
 const BODY_JSON = new TextEncoder().encode('{"hello":"world"}')
 
@@ -58,6 +59,7 @@ beforeAll(async () => {
     path: '/internal/bench',
     rawQuery: '',
     timestamp: String(timestamp),
+    nonce: NONCE,
     clientId: CLIENT_ID,
     bodyBytes: BODY_JSON,
   }
@@ -69,6 +71,7 @@ beforeAll(async () => {
     headers: {
       'x-eva-client-id': CLIENT_ID,
       'x-eva-timestamp': String(timestamp),
+      'x-eva-nonce': NONCE,
       'x-eva-signature': validSignature,
       'content-type': 'application/json',
     },
@@ -85,6 +88,7 @@ beforeAll(async () => {
     headers: {
       'x-eva-client-id': CLIENT_ID,
       'x-eva-timestamp': String(timestamp),
+      'x-eva-nonce': NONCE,
       'x-eva-signature': tamperedSignature,
       'content-type': 'application/json',
     },
@@ -99,6 +103,7 @@ beforeAll(async () => {
     headers: {
       'x-eva-client-id': 'unknown-client',
       'x-eva-timestamp': String(timestamp),
+      'x-eva-nonce': NONCE,
       'x-eva-signature': validSignature,
       'content-type': 'application/json',
     },

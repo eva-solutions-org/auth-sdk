@@ -11,6 +11,16 @@
 export const S2S_TIMESTAMP_WINDOW_SECONDS = 120
 
 /**
+ * Formato canónico del nonce S2S (`x-eva-nonce`): 16 bytes aleatorios como 32 hex en minúsculas.
+ * Sin flag `/i`: el verificador rechaza variantes no canónicas en vez de normalizarlas. Es el
+ * contrato canónico y defensa en profundidad: una implementación que normalizara el valor
+ * podría derivar claves de replay distintas del valor realmente firmado. (Reescribirlo en
+ * mayúsculas no evade nada por sí solo: el nonce va en el canonical firmado y rompería el HMAC.)
+ * Uso interno: no se exporta desde el barrel.
+ */
+export const S2S_NONCE_REGEX = /^[0-9a-f]{32}$/
+
+/**
  * Máximo de IDs permitidos por llamada a `batchUsers`.
  * Si se superan, el cliente retorna un error sin hacer fetch al API.
  */

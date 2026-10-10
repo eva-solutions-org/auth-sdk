@@ -39,8 +39,8 @@ export type S2SClientConfig = {
 }
 
 /**
- * Partes del request necesarias para construir el canonical string SigV4-style.
- * Espejo del tipo `CanonicalRequestParts` del API.
+ * Partes del request necesarias para construir el canonical string SigV4-style
+ * (7 líneas: método, path, query, timestamp, nonce, clientId, hash del body).
  */
 export type S2SCanonicalParts = {
   /** HTTP method en uppercase (GET, POST, PATCH, DELETE). */
@@ -51,6 +51,8 @@ export type S2SCanonicalParts = {
   rawQuery: string
   /** Unix timestamp en segundos como string decimal. */
   timestamp: string
+  /** Nonce del request: 32 hex en minúsculas (ver `generateS2SNonce`). */
+  nonce: string
   /** Slug del service client (clientId). */
   clientId: string
   /** Bytes raw del body. GET/sin body → `new Uint8Array(0)`. */
@@ -116,13 +118,14 @@ export type ListWebhookDeliveriesQuery = {
 /**
  * All possible reasons why an S2S request verification can fail.
  *
- * - `header_missing` — one or more required headers are absent.
+ * - `header_missing` — one or more required headers are absent (client id, timestamp, nonce, signature).
  * - `timestamp_invalid` — the `x-eva-timestamp` header is not a valid integer string.
  * - `timestamp_expired` — the timestamp is outside the allowed window (default ±120 s).
+ * - `nonce_malformed` — the `x-eva-nonce` header is not 32 lowercase hex chars.
  * - `signature_malformed` — the `x-eva-signature` header is not in `sha256=<hex64>` format.
  * - `client_unknown` — `secretStore` returned null for the given clientId.
  * - `signature_invalid` — the HMAC signature does not match the expected value.
- * - `replay_detected` — the nonce has already been seen (only when `replayCache` is configured).
+ * - `replay_detected` — the `(clientId, nonce)` pair has already been seen (only when `replayCache` is configured).
  *
  * `client_unknown` and `signature_invalid` share the same human-readable message
  * ("Authentication failed") to avoid revealing whether the clientId exists.
@@ -131,6 +134,7 @@ export type S2SVerifyReason =
   | 'header_missing'
   | 'timestamp_invalid'
   | 'timestamp_expired'
+  | 'nonce_malformed'
   | 'signature_malformed'
   | 'client_unknown'
   | 'signature_invalid'
@@ -176,8 +180,11 @@ export type S2SVerifyOptions = {
    * Optional nonce store for replay protection. When provided, `verifyS2SRequest`
    * calls `setIfAbsent` after a successful HMAC verify to detect replayed requests.
    *
-   * The SDK builds the nonce internally as `${clientId}:${timestamp}:${signatureHex}`.
-   * The TTL passed to `setIfAbsent` equals `timestampWindowSeconds` (default 120 s).
+   * The SDK builds the key internally as `${clientId}:${nonce}` (`nonce` is the validated
+   * `x-eva-nonce` header, 32 lowercase hex). The TTL passed to `setIfAbsent` is
+   * `2 * timestampWindowSeconds + 1` (default 241 s): the current time is floored to seconds
+   * and the window is inclusive on both sides (±W), so a request stays acceptable for 2W + 1
+   * seconds and the key must outlive that.
    *
    * @remarks
    * The implementation MUST be atomic (e.g. Redis `SET key value NX EX ttl`).
@@ -192,15 +199,16 @@ export type S2SVerifyOptions = {
    */
   replayCache?: {
     /**
-     * Atomically insert nonce if not present.
-     * @returns `true` if inserted (request is fresh); `false` if nonce already existed (replay detected).
+     * Atomically insert `key` (`${clientId}:${nonce}`) if not present, expiring after `ttlSeconds`
+     * (`2 * timestampWindowSeconds + 1`).
+     * @returns `true` if inserted (request is fresh); `false` if the key already existed (replay detected).
      *
      * Implementation MUST be atomic (e.g. Redis `SET ... NX EX ttl`).
      * Non-atomic implementations are vulnerable to TOCTOU race conditions.
      *
      * @security Critical for replay protection — must be atomic.
      */
-    setIfAbsent(nonce: string, ttlSeconds: number): Promise<boolean>
+    setIfAbsent(key: string, ttlSeconds: number): Promise<boolean>
   }
   /**
    * Optional message overrides for i18n. Keys not provided fall back to the

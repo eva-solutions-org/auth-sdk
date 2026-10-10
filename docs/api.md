@@ -140,6 +140,8 @@ Retorna `string`.
 | `createAdminClient` | función | Factory del cliente Admin |
 | `ADMIN_ERROR_CODES` | constante | Error codes específicos del módulo Admin |
 | `createS2SClient` | función | Factory del cliente S2S |
+| `signS2SHeaders` | función | Genera los 4 headers S2S (client id, timestamp, nonce, firma) |
+| `generateS2SNonce` | función | Genera un nonce S2S (32 hex en minúsculas) |
 | `S2S_SCOPES` | constante | Scopes S2S reconocidos por el Auth Service |
 | `S2S_RESPONSE_HEADERS` | constante | Headers de respuesta S2S (SERVER_TIME) |
 | `USERS_BATCH_MAX_IDS` | constante | Límite de IDs por llamada a `batchUsers` (100) |
@@ -752,23 +754,27 @@ const deliveries = await s2s.listWebhookDeliveries({ status: 'failed', limit: 20
 
 ### Firma HMAC automática
 
-El cliente genera automáticamente los headers de autenticación S2S:
+El cliente genera automáticamente los headers de autenticación S2S (cuatro, todos obligatorios):
 
 | Header | Descripción |
 |--------|-------------|
 | `x-eva-client-id` | Slug del service client |
 | `x-eva-timestamp` | Unix seconds del request |
+| `x-eva-nonce` | 16 bytes aleatorios como 32 hex en minúsculas (`^[0-9a-f]{32}$`). Nuevo en cada request |
 | `x-eva-signature` | `sha256=<hmac-sha256-hex>` |
+
+El nonce hace único a cada request aunque dos compartan segundo, método, path y body. El verificador exige el formato canónico exacto: minúsculas, sin normalizar.
 
 ### Canonical string
 
-El SDK construye el canonical string de la firma como:
+El SDK construye el canonical string de la firma como (siete líneas):
 
 ```
 METHOD\n
 /path\n
 canonicalQuery\n
 timestamp\n
+nonce\n
 clientId\n
 sha256(bodyBytes)
 ```
@@ -776,6 +782,46 @@ sha256(bodyBytes)
 `canonicalQuery` no es el query string tal cual: se parte por `&`, se decodifica cada nombre/valor, se ordena por (nombre, valor), se re-codifica en RFC 3986 y se une de nuevo. Un query vacío da `""`. Fuente: `canonicalizeQuery` en `src/s2s/sign.ts`.
 
 Para requests sin body, se usa el hash del cuerpo vacío (`EMPTY_BODY_SHA256_HEX`).
+
+### Firmar a mano: `signS2SHeaders` y `generateS2SNonce`
+
+Si no usas `createS2SClient` (por ejemplo, llamas a otro servicio que verifica con `s2sAuth`), genera los cuatro headers con `signS2SHeaders`. Es el único punto que genera timestamp y nonce y firma; `createS2SClient` lo usa por dentro.
+
+```typescript
+import { signS2SHeaders } from '@eva_solutions/auth-sdk/s2s'
+
+const bodyBytes = new TextEncoder().encode(JSON.stringify(payload))
+const headers = await signS2SHeaders({
+  method: 'POST',
+  path: '/internal/ping',
+  rawQuery: '',          // opcional, default ''
+  bodyBytes,             // opcional, default vacío; deben ser los bytes EXACTOS que envías
+  clientId: 'mi-servicio',
+  secretHex: process.env.S2S_SECRET!,
+})
+await fetch('https://otro-servicio.example.com/internal/ping', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...headers },
+  body: bodyBytes,
+})
+```
+
+`headers` contiene `x-eva-client-id`, `x-eva-timestamp`, `x-eva-nonce` y `x-eva-signature`. No reutilices los mismos headers en otro request: cada llamada necesita un nonce nuevo. `generateS2SNonce()` devuelve un nonce suelto; `signS2SRequest({ parts, secretHex })` lanza si `parts.nonce` no tiene el formato canónico.
+
+### Verificación (`verifyS2SRequest` / `s2sAuth`) y razones de rechazo
+
+Orden de las comprobaciones: headers presentes → formato y ventana del timestamp → formato del nonce → formato de la firma → HMAC → `replayCache`.
+
+| `reason` | Cuándo |
+|----------|--------|
+| `header_missing` | Falta alguno de los cuatro headers (incluido `x-eva-nonce`) |
+| `timestamp_invalid` / `timestamp_expired` | Timestamp no entero / fuera de ±`timestampWindowSeconds` (default 120) |
+| `nonce_malformed` | `x-eva-nonce` no cumple `^[0-9a-f]{32}$` (mayúsculas incluidas). Se decide antes de consultar el secreto |
+| `signature_malformed` | `x-eva-signature` no es `sha256=<hex64>` |
+| `client_unknown` / `signature_invalid` | Cliente desconocido / HMAC no coincide (mismo mensaje: "Authentication failed") |
+| `replay_detected` | La clave `${clientId}:${nonce}` ya fue vista (solo con `replayCache`) |
+
+**`replayCache`**: `setIfAbsent(key, ttlSeconds)` debe ser atómico (por ejemplo Redis `SET key 1 NX EX ttl`). La clave que arma el SDK es `${clientId}:${nonce}` y el TTL es `2 * timestampWindowSeconds + 1` (241 s con el default): la hora se trunca a segundos y la ventana es inclusiva (±W), así que un request firmado sigue siendo aceptable durante 2W + 1 segundos y la clave debe sobrevivirlo. Compártelo entre todas las instancias que comparten el par clientId/secreto. El chequeo ocurre después de verificar el HMAC.
 
 ### Métodos del S2SClient
 

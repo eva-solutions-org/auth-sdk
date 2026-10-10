@@ -733,3 +733,41 @@ Las razones de ADR-013 siguen vigentes: evitar una URL mal configurada y la tran
 - La `authUrl` no cambia en runtime, por lo que el cache JWKS no necesita invalidación (ver nota en ADR-016).
 - Los tests que necesiten reiniciar la configuración usan `vi.resetModules()` con import dinámico: el SDK no exporta un reset.
 - Cambio incompatible: major 3.0.0. Guía de migración en [migration.md](migration.md).
+
+---
+
+## ADR-018: Nonce obligatorio en las firmas S2S (x-eva-nonce)
+
+**Fecha**: 2026-10-10
+**Estado**: Aceptada (parte de 3.0.0)
+
+### Contexto
+
+La firma S2S cubría método, path, query, timestamp, clientId y hash del body. Tres problemas:
+
+1. **Colisión en el mismo segundo**: el timestamp tiene resolución de segundos, así que dos requests idénticos (mismo método, path, query y body) emitidos en el mismo segundo producían exactamente la misma firma. El anti-replay se apoyaba en la firma (`${clientId}:${timestamp}:${signatureHex}`), de modo que el segundo request legítimo se rechazaba como `replay_detected`.
+2. **Evasión por capitalización**: el formato de firma se validaba con una regex insensible a mayúsculas. La misma firma en otra capitalización producía una clave de replay distinta en un store sensible a mayúsculas.
+3. **TTL del replayCache incorrecto**: se pasaba `timestampWindowSeconds` como TTL, pero la hora se trunca a segundos y la ventana es inclusiva (±W), por lo que un request es aceptable por timestamp durante 2W + 1 segundos. La clave podía expirar mientras el request seguía siendo válido.
+
+### Decisión
+
+1. Header obligatorio `x-eva-nonce`: 16 bytes de `crypto.getRandomValues` como 32 hex en minúsculas. El verificador valida `^[0-9a-f]{32}$` **sin** flag `/i`; rechaza lo no canónico con la razón nueva `nonce_malformed`, antes del HMAC, sin normalizar.
+2. El canonical pasa a 7 líneas: METHOD, PATH, QUERY, TIMESTAMP, NONCE, CLIENT_ID, BODY_HASH. `nonce` es obligatorio en `S2SCanonicalParts`; `signS2SRequest` lanza si no cumple el formato.
+3. Obligatorio y sin modo dual: sin header → `header_missing`.
+4. La clave de replay la arma el SDK: `${clientId}:${nonce}`. El TTL es `2 * timestampWindowSeconds + 1` (241 s por defecto). El chequeo sigue después del HMAC.
+5. Nuevos exports: `generateS2SNonce()` y `signS2SHeaders(...)`, único punto que genera timestamp + nonce y firma; `createS2SClient` lo usa. Los firmantes manuales migran a él.
+6. El SDK es el dueño del contrato del algoritmo; se elimina la afirmación de que el builder es un espejo del canonical del Auth Service.
+
+### Alternativas consideradas
+
+- **Timestamp en milisegundos**: descartada. Reduce la colisión pero no la elimina (dos requests en el mismo ms), cambia el formato y la ventana del timestamp, y no aporta unicidad criptográfica.
+- **Aceptar nonce en mayúsculas o minúsculas (normalizar o regex `/i`)**: descartada. Obliga a normalizar en todos los puntos (una implementación que normalice mal podría derivar claves de replay distintas del valor firmado); rechazar lo no canónico es más simple y mantiene un único contrato. No era un vector de evasión por sí mismo: el nonce va en el canonical firmado, así que reescribirlo en otra capitalización rompe el HMAC.
+- **Solo documentar la colisión y el TTL**: descartada. Deja a los consumidores con falsos replays y con una ventana de replay real; un defecto de protocolo no se resuelve con documentación.
+- **Modo dual (nonce opcional durante una transición)**: descartada. Un nonce opcional es un downgrade: el atacante lo omite y vuelve al esquema débil. La versión es una major sin consumidores externos, así que no hay costo de transición que justifique el modo dual.
+
+### Consecuencias
+
+- Cambio incompatible dentro de 3.0.0 (aún sin publicar): firmantes y verificadores 2.x y 3.0.0 no interoperan. Guía en [migration.md](migration.md#7-s2s-requiere-x-eva-nonce).
+- `S2SVerifyReason` gana `nonce_malformed`; los mensajes por defecto y `messages` la cubren.
+- Las claves del replayCache cambian de forma y su TTL sube de 120 s a 241 s: el store necesita retener claves más tiempo.
+- Cualquier verificador independiente (por ejemplo en el Auth Service) debe adoptar el canonical de 7 líneas desde este SDK.

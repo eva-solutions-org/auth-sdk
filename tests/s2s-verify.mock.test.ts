@@ -22,6 +22,7 @@ import type { S2SCanonicalParts } from '../src/s2s/types'
 
 const SECRET_HEX = 'deadbeef'.repeat(8) // 64 hex chars = 32 bytes
 const CLIENT_ID = 'test-client'
+const NONCE = '00112233445566778899aabbccddeeff'
 
 // ---------------------------------------------------------------------------
 // Helper: construir un Request firmado correctamente
@@ -39,6 +40,7 @@ async function buildSignedRequest(opts: {
   omitClientId?: boolean
   omitTimestamp?: boolean
   omitSignature?: boolean
+  omitNonce?: boolean
 }): Promise<Request> {
   const method = opts.method ?? 'GET'
   const path = opts.path ?? '/internal/test'
@@ -53,6 +55,7 @@ async function buildSignedRequest(opts: {
     path,
     rawQuery: query,
     timestamp: String(timestamp),
+    nonce: NONCE,
     clientId,
     bodyBytes: body,
   }
@@ -64,6 +67,7 @@ async function buildSignedRequest(opts: {
 
   if (!opts.omitClientId) headers['x-eva-client-id'] = clientId
   if (!opts.omitTimestamp) headers['x-eva-timestamp'] = String(timestamp)
+  if (!opts.omitNonce) headers['x-eva-nonce'] = NONCE
   if (!opts.omitSignature) headers['x-eva-signature'] = signature
 
   if (body.length > 0) {
@@ -141,6 +145,13 @@ describe('header_missing', () => {
     if (!result.ok) expect(result.error.reason).toBe('header_missing')
   })
 
+  it('falta x-eva-nonce → reason:header_missing', async () => {
+    const req = await buildSignedRequest({ omitNonce: true })
+    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.reason).toBe('header_missing')
+  })
+
   it('falta x-eva-signature → reason:header_missing', async () => {
     const req = await buildSignedRequest({ omitSignature: true })
     const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
@@ -162,6 +173,7 @@ describe('headers case-insensitive', () => {
       path: '/internal/test',
       rawQuery: '',
       timestamp: String(timestamp),
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -173,6 +185,7 @@ describe('headers case-insensitive', () => {
       headers: {
         'X-Eva-Client-Id': CLIENT_ID,
         'X-Eva-Timestamp': String(timestamp),
+        'X-Eva-Nonce': NONCE,
         'X-Eva-Signature': signature,
       },
     })
@@ -188,6 +201,7 @@ describe('headers case-insensitive', () => {
       path: '/internal/test',
       rawQuery: '',
       timestamp: String(timestamp),
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -198,6 +212,7 @@ describe('headers case-insensitive', () => {
       headers: {
         'X-EVA-CLIENT-ID': CLIENT_ID,
         'X-EVA-TIMESTAMP': String(timestamp),
+        'X-EVA-NONCE': NONCE,
         'X-EVA-SIGNATURE': signature,
       },
     })
@@ -218,6 +233,7 @@ describe('timestamp_invalid', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': 'abc',
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
@@ -235,6 +251,7 @@ describe('timestamp_invalid', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': '-1',
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
@@ -257,6 +274,7 @@ describe('timestamp_invalid', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': '0',
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
@@ -284,6 +302,7 @@ describe('timestamp_expired', () => {
         headers: {
           'x-eva-client-id': CLIENT_ID,
           'x-eva-timestamp': String(now + 86400),
+          'x-eva-nonce': NONCE,
           'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
         },
       })
@@ -305,6 +324,7 @@ describe('timestamp_expired', () => {
         headers: {
           'x-eva-client-id': CLIENT_ID,
           'x-eva-timestamp': String(now - 86400),
+          'x-eva-nonce': NONCE,
           'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
         },
       })
@@ -356,6 +376,7 @@ describe('timestamp boundary AC-15', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': String(now + 121),
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
@@ -374,6 +395,7 @@ describe('timestamp boundary AC-15', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': String(now - 121),
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
@@ -396,6 +418,7 @@ describe('signature_malformed', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': validTimestamp(),
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'ab'.repeat(32), // hex sin prefijo
       },
     })
@@ -413,6 +436,7 @@ describe('signature_malformed', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': validTimestamp(),
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'sha256=abcd1234abcd1234abcd1234abcd1234', // solo 32 chars
       },
     })
@@ -427,6 +451,7 @@ describe('signature_malformed', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': validTimestamp(),
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'sha256=' + 'z'.repeat(64),
       },
     })
@@ -441,6 +466,7 @@ describe('signature_malformed', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': validTimestamp(),
+        'x-eva-nonce': NONCE,
         'x-eva-signature': '',
       },
     })
@@ -541,6 +567,7 @@ describe('query string', () => {
       path: '/internal/webhooks',
       rawQuery: 'status=pending&limit=10',
       timestamp: String(timestamp),
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
@@ -552,6 +579,7 @@ describe('query string', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': String(timestamp),
+        'x-eva-nonce': NONCE,
         'x-eva-signature': signature,
       },
     })
@@ -579,6 +607,7 @@ describe('timestampWindowSeconds override', () => {
       headers: {
         'x-eva-client-id': CLIENT_ID,
         'x-eva-timestamp': String(now - 31),
+        'x-eva-nonce': NONCE,
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
@@ -652,13 +681,14 @@ describe('canonical string determinismo bilateral', () => {
       path: '/internal/users/batch',
       rawQuery: 'verbose=true',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new TextEncoder().encode('{"ids":["u1"]}'),
     }
     const canonical1 = await buildS2SCanonicalString(parts)
     const canonical2 = await buildS2SCanonicalString(parts)
     expect(canonical1).toBe(canonical2)
-    expect(canonical1.split('\n')).toHaveLength(6)
+    expect(canonical1.split('\n')).toHaveLength(7)
   })
 })
 
@@ -707,7 +737,7 @@ describe('replayCache — setIfAbsent (D22)', () => {
     }
   })
 
-  it('nonce format: ${clientId}:${timestamp}:${signatureHex}', async () => {
+  it('clave del replayCache: ${clientId}:${nonce}', async () => {
     const cache = createReplayCache(true)
     const timestamp = Math.floor(Date.now() / 1000)
     const req = await buildSignedRequest({ timestamp })
@@ -716,11 +746,11 @@ describe('replayCache — setIfAbsent (D22)', () => {
       replayCache: cache,
     })
     const nonce = cache.setIfAbsent.mock.calls[0][0] as string
-    // nonce debe ser: clientId:timestampStr:signatureHex (64 hex chars)
-    expect(nonce).toMatch(new RegExp(`^${CLIENT_ID}:${timestamp}:[0-9a-f]{64}$`))
+    // la clave es clientId:nonce, con el nonce canónico (32 hex)
+    expect(nonce).toBe(`${CLIENT_ID}:${NONCE}`)
   })
 
-  it('TTL por defecto igual a 120 (timestampWindowSeconds default)', async () => {
+  it('TTL por defecto igual a 2*120+1 = 241 (timestampWindowSeconds default)', async () => {
     const cache = createReplayCache(true)
     const req = await buildSignedRequest({})
     await verifyS2SRequest(req, {
@@ -728,10 +758,10 @@ describe('replayCache — setIfAbsent (D22)', () => {
       replayCache: cache,
     })
     const ttl = cache.setIfAbsent.mock.calls[0][1] as number
-    expect(ttl).toBe(120)
+    expect(ttl).toBe(241)
   })
 
-  it('TTL igual a timestampWindowSeconds custom (60)', async () => {
+  it('TTL igual a 2*W+1 con timestampWindowSeconds custom (60 → 121)', async () => {
     const cache = createReplayCache(true)
     vi.useFakeTimers()
     const now = 1700000000
@@ -744,7 +774,7 @@ describe('replayCache — setIfAbsent (D22)', () => {
         timestampWindowSeconds: 60,
       })
       const ttl = cache.setIfAbsent.mock.calls[0][1] as number
-      expect(ttl).toBe(60)
+      expect(ttl).toBe(121)
     } finally {
       vi.useRealTimers()
     }
@@ -846,8 +876,8 @@ describe('replayCache — setIfAbsent (D22)', () => {
     const nonce = cache.setIfAbsent.mock.calls[0][0] as string
     // El nonce debe comenzar con el clientId verbatim (con el colon incluido)
     expect(nonce.startsWith(`${colonClientId}:`)).toBe(true)
-    // El nonce tiene el formato: service:alpha:timestamp:signatureHex
-    expect(nonce).toMatch(new RegExp(`^service:alpha:${timestamp}:[0-9a-f]{64}$`))
+    // La clave tiene el formato: service:alpha:nonce
+    expect(nonce).toBe(`service:alpha:${NONCE}`)
   })
 })
 
@@ -866,6 +896,7 @@ describe('messages override (D12)', () => {
         headers: {
           'x-eva-client-id': CLIENT_ID,
           'x-eva-timestamp': String(now + 86400), // muy futuro
+          'x-eva-nonce': NONCE,
           'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
         },
       })

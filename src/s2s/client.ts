@@ -19,11 +19,10 @@
 import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../schemas'
 import type { Result } from '../types'
-import { signS2SRequest } from './sign'
+import { signS2SHeaders } from './sign'
 import { USERS_BATCH_MAX_IDS } from './constants'
 import type {
   S2SClientConfig,
-  S2SCanonicalParts,
   S2SGetUserResult,
   S2SBatchUsersInput,
   S2SBatchUsersResult,
@@ -91,20 +90,17 @@ async function s2sFetch<T>({
   body?: unknown
 }): Promise<Result<T>> {
   try {
-    const timestamp = String(Math.floor(Date.now() / 1000))
     const bodyBytes: Uint8Array =
       body !== undefined ? encoder.encode(JSON.stringify(body)) : new Uint8Array(0)
 
-    const parts: S2SCanonicalParts = {
+    const authHeaders = await signS2SHeaders({
       method,
       path: pathname,
       rawQuery,
-      timestamp,
-      clientId: config.clientId,
       bodyBytes,
-    }
-
-    const signature = await signS2SRequest({ parts, secretHex: config.secretHex })
+      clientId: config.clientId,
+      secretHex: config.secretHex,
+    })
 
     const url = rawQuery
       ? `${config.baseUrl}${pathname}?${rawQuery}`
@@ -112,9 +108,7 @@ async function s2sFetch<T>({
 
     const headers: Record<string, string> = {
       'content-type': 'application/json',
-      'x-eva-client-id': config.clientId,
-      'x-eva-timestamp': timestamp,
-      'x-eva-signature': signature,
+      ...authHeaders,
     }
 
     const res = await fetch(url, {

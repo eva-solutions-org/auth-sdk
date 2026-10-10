@@ -94,6 +94,8 @@ export type {
 export {
   createS2SClient,
   signS2SRequest,
+  signS2SHeaders,
+  generateS2SNonce,
   buildS2SCanonicalString,
   EMPTY_BODY_SHA256_HEX,
   S2S_TIMESTAMP_WINDOW_SECONDS,

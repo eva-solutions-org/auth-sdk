@@ -52,8 +52,9 @@ export type S2sAuthOptions = {
    */
   timestampWindowSeconds?: number
   /**
-   * Optional replay-protection cache. If provided, each verified request's nonce
-   * is atomically inserted; if already present the request is rejected with `replay_detected`.
+   * Optional replay-protection cache. If provided, each verified request's key
+   * (`${clientId}:${nonce}`) is atomically inserted with a TTL of
+   * `2 * timestampWindowSeconds + 1`; if already present the request is rejected with `replay_detected`.
    *
    * @since v1.1.0
    * @see verifyS2SRequest for the full `setIfAbsent` contract and nonce format.

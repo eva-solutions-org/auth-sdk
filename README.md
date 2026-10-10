@@ -145,37 +145,41 @@ const { payload, newCookies } = result.data;
 import { createS2SClient } from '@eva_solutions/auth-sdk/s2s';
 
 const s2s = createS2SClient({
-  secret: process.env.S2S_SECRET!,
-  serviceId: 'my-service',
+  clientId: 'my-service',
+  secretHex: process.env.S2S_SECRET!,
+  baseUrl: 'https://auth.example.com',
 });
 
 // All requests are automatically signed with HMAC
 const user = await s2s.getUser('user-id-123');
 ```
 
-Low-level signing (when you need manual control):
+Low-level signing (when you need manual control). `signS2SHeaders` returns the four
+required headers (`x-eva-client-id`, `x-eva-timestamp`, `x-eva-nonce`, `x-eva-signature`);
+each call generates a fresh nonce:
 
 ```ts
-import { signS2SRequest } from '@eva_solutions/auth-sdk/s2s';
+import { signS2SHeaders } from '@eva_solutions/auth-sdk/s2s';
 
-const signed = signS2SRequest({
+const bodyBytes = new TextEncoder().encode(JSON.stringify({ id: '123' }));
+const headers = await signS2SHeaders({
   method: 'POST',
-  url: 'https://auth.example.com/internal/users',
-  body: JSON.stringify({ id: '123' }),
-  secret: process.env.S2S_SECRET!,
-  serviceId: 'my-service',
+  path: '/internal/users',
+  bodyBytes,
+  clientId: 'my-service',
+  secretHex: process.env.S2S_SECRET!,
 });
 
-await fetch(signed.url, {
-  method: signed.method,
-  headers: signed.headers,
-  body: signed.body,
+await fetch('https://auth.example.com/internal/users', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...headers },
+  body: bodyBytes,
 });
 ```
 
 ### Verifying inbound S2S requests
 
-If your service receives requests signed via `createS2SClient` or `signS2SRequest`,
+If your service receives requests signed via `createS2SClient`, `signS2SHeaders` or `signS2SRequest`,
 use the server-side verification primitives to authenticate them.
 
 #### Hono middleware (recommended for Hono apps)
@@ -247,15 +251,15 @@ const { clientId } = result.data
 #### Replay protection (built-in)
 
 Provide a `replayCache` callback to `verifyS2SRequest` (or `s2sAuth`) for atomic
-nonce-based replay protection:
+nonce-based replay protection (every S2S request carries a unique `x-eva-nonce`; the SDK passes the key `${clientId}:${nonce}` and a TTL of `2 * timestampWindowSeconds + 1`, 241 s by default):
 
 ```ts
 import { Redis } from 'ioredis'
 const redis = new Redis(/* ... */)
 
 const replayCache = {
-  async setIfAbsent(nonce: string, ttlSeconds: number): Promise<boolean> {
-    const result = await redis.set(nonce, '1', 'EX', ttlSeconds, 'NX')
+  async setIfAbsent(key: string, ttlSeconds: number): Promise<boolean> {
+    const result = await redis.set(key, '1', 'EX', ttlSeconds, 'NX')
     return result === 'OK' // null when key existed (replay detected)
   },
 }
@@ -352,7 +356,7 @@ The SDK exports 8 independent entry points. Import only what your runtime needs.
 | `@eva_solutions/auth-sdk/hono-openapi` | `evaAuthOpenAPIRoutes()` — OpenAPI 3.1 variant with `/doc` | `hono >=4.12.19`, `@hono/zod-openapi >=1.4.0` |
 | `@eva_solutions/auth-sdk/webhooks` | `verifyWebhookSignature()`, `EVENT_CODES`, webhook types | — |
 | `@eva_solutions/auth-sdk/admin` | `createAdminClient()` — service clients and user management | — |
-| `@eva_solutions/auth-sdk/s2s` | `createS2SClient()`, `signS2SRequest()` — HMAC S2S signing | — |
+| `@eva_solutions/auth-sdk/s2s` | `createS2SClient()`, `signS2SHeaders()`, `signS2SRequest()` — HMAC S2S signing | — |
 
 ---
 

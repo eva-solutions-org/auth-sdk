@@ -3,8 +3,9 @@
  *
  * REQ-S2S-02, REQ-S2S-03 LOCKED.
  *
- * Algoritmo canónico (espejo EXACTO de API `src/core/crypto/canonical.ts`):
- *   canonical = [METHOD, PATH, CANONICAL_QUERY, TIMESTAMP, CLIENT_ID, BODY_HASH].join('\n')
+ * Algoritmo canónico (este SDK es el dueño del contrato; el servidor lo verifica con
+ * `verifyS2SRequest`):
+ *   canonical = [METHOD, PATH, CANONICAL_QUERY, TIMESTAMP, NONCE, CLIENT_ID, BODY_HASH].join('\n')
  *
  * Usa Web Crypto API (`crypto.subtle`) — isomorfo (browser + worker + Node 20+).
  *
@@ -12,6 +13,7 @@
  * para que el entry point ./s2s sea completamente tree-shakeable.
  */
 
+import { S2S_NONCE_REGEX } from './constants'
 import type { S2SCanonicalParts } from './types'
 
 // ---------------------------------------------------------------------------
@@ -51,7 +53,6 @@ async function sha256Hex(data: string | Uint8Array): Promise<string> {
 /**
  * Encoding RFC 3986 estricto.
  * `encodeURIComponent` no codifica `! * ' ( )` — esta función sí.
- * Espejo de `uriEncodeRFC3986` del API.
  */
 function uriEncodeRFC3986(input: string): string {
   return encodeURIComponent(input).replace(
@@ -112,10 +113,19 @@ export const EMPTY_BODY_SHA256_HEX =
   'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 
 /**
- * Construye el canonical string de 6 líneas (SigV4-style).
+ * Genera un nonce S2S: 16 bytes de `crypto.getRandomValues` como 32 hex en minúsculas.
+ * Es el valor del header `x-eva-nonce`; cada request debe llevar uno nuevo.
+ */
+export function generateS2SNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * Construye el canonical string de 7 líneas (SigV4-style).
  *
- * Formato EXACTO (espejo del API):
- *   {METHOD}\n{PATH}\n{CANONICAL_QUERY}\n{TIMESTAMP}\n{CLIENT_ID}\n{BODY_HASH}
+ * Formato EXACTO:
+ *   {METHOD}\n{PATH}\n{CANONICAL_QUERY}\n{TIMESTAMP}\n{NONCE}\n{CLIENT_ID}\n{BODY_HASH}
  *
  * @param parts - Componentes del request a firmar.
  */
@@ -124,13 +134,14 @@ export async function buildS2SCanonicalString(parts: S2SCanonicalParts): Promise
   const PATH = parts.path
   const CANONICAL_QUERY = canonicalizeQuery(parts.rawQuery)
   const TIMESTAMP = parts.timestamp
+  const NONCE = parts.nonce
   const CLIENT_ID = parts.clientId
   const BODY_HASH =
     parts.bodyBytes.length === 0
       ? EMPTY_BODY_SHA256_HEX
       : await sha256Hex(parts.bodyBytes)
 
-  return [METHOD, PATH, CANONICAL_QUERY, TIMESTAMP, CLIENT_ID, BODY_HASH].join('\n')
+  return [METHOD, PATH, CANONICAL_QUERY, TIMESTAMP, NONCE, CLIENT_ID, BODY_HASH].join('\n')
 }
 
 /**
@@ -138,6 +149,7 @@ export async function buildS2SCanonicalString(parts: S2SCanonicalParts): Promise
  *
  * @returns String con formato `"sha256=${hexLowercase}"`.
  * @throws Si `secretHex` tiene formato inválido (longitud impar o chars no-hex).
+ * @throws Si `parts.nonce` no es un nonce canónico (32 hex en minúsculas).
  */
 export async function signS2SRequest({
   parts,
@@ -146,6 +158,10 @@ export async function signS2SRequest({
   parts: S2SCanonicalParts
   secretHex: string
 }): Promise<string> {
+  if (!S2S_NONCE_REGEX.test(parts.nonce)) {
+    throw new Error('[eva-auth-sdk] s2s: nonce inválido (se requieren 32 hex en minúsculas)')
+  }
+
   const canonical = await buildS2SCanonicalString(parts)
 
   const keyBytes = hexToBytes(secretHex)
@@ -172,4 +188,45 @@ export async function signS2SRequest({
     .join('')
 
   return `sha256=${hexSig}`
+}
+
+/**
+ * Genera los 4 headers de autenticación S2S para un request: client id, timestamp (segundos),
+ * nonce y firma. Es el único punto que genera timestamp + nonce y firma; `createS2SClient` lo
+ * usa y los firmantes manuales deben usarlo en vez de armar los headers a mano.
+ *
+ * El nonce es nuevo en cada llamada: no reutilices los headers devueltos en otro request.
+ *
+ * @param rawQuery - Query string crudo sin `?`. Default `''`.
+ * @param bodyBytes - Bytes EXACTOS que se enviarán como body. Default: vacío.
+ * @throws Si `secretHex` tiene formato inválido.
+ */
+export async function signS2SHeaders({
+  method,
+  path,
+  rawQuery = '',
+  bodyBytes = new Uint8Array(0),
+  clientId,
+  secretHex,
+}: {
+  method: string
+  path: string
+  rawQuery?: string
+  bodyBytes?: Uint8Array
+  clientId: string
+  secretHex: string
+}): Promise<Record<string, string>> {
+  const timestamp = String(Math.floor(Date.now() / 1000))
+  const nonce = generateS2SNonce()
+  const signature = await signS2SRequest({
+    parts: { method, path, rawQuery, timestamp, nonce, clientId, bodyBytes },
+    secretHex,
+  })
+
+  return {
+    'x-eva-client-id': clientId,
+    'x-eva-timestamp': timestamp,
+    'x-eva-nonce': nonce,
+    'x-eva-signature': signature,
+  }
 }

@@ -58,6 +58,20 @@ Deduplicación interna de `createRemoteJWKSet` (jose) en `jwks.ts`. Múltiples v
 
 ---
 
+## S2S: firma HMAC y anti-replay
+
+El SDK es dueño del algoritmo de firma S2S (canonical de 7 líneas, ver [api.md](api.md#eva_solutionsauth-sdks2s)). Puntos de seguridad:
+
+- **Nonce por request** (`x-eva-nonce`): 16 bytes de `crypto.getRandomValues` como 32 hex en minúsculas, parte de la firma. Antes el anti-replay se apoyaba en timestamp + firma, y dos requests idénticos en el mismo segundo producían la misma firma (colisión o falso replay).
+- **Formato canónico estricto**: el verificador valida `^[0-9a-f]{32}$` sin flag `/i` y rechaza con `nonce_malformed`; no normaliza. Es el contrato canónico y defensa en profundidad: una implementación que normalizara el valor podría derivar claves de replay distintas del valor realmente firmado. Reescribir el nonce en otra capitalización no evade el replay por sí solo, porque el nonce va dentro del canonical firmado y rompería el HMAC (`signature_invalid`). Se valida antes del HMAC porque no depende del secreto.
+- **Clave de replay** `${clientId}:${nonce}` (sin ambigüedad: el nonce es un sufijo de largo fijo, 32 hex, que no contiene `:`; el SDK no valida el formato del clientId).
+- **TTL del replayCache** `2 * timestampWindowSeconds + 1`. Con el TTL anterior (igual a la ventana) una clave podía expirar mientras el request aún era aceptable por timestamp, abriendo una ventana de replay.
+- **El anti-replay solo existe con `replayCache`** compartido entre instancias y atómico; sin él, un request capturado se puede reenviar durante la ventana.
+- **Vector de paridad (KAT)**: `tests/s2s-nonce.mock.test.ts` (test `KAT: canonical y firma literales`) trae un canonical y una firma literales calculados de forma independiente con `node:crypto`. Cualquier otro repo que verifique o firme S2S por su cuenta debe reproducirlos.
+- Decisión y alternativas: [ADR-018](decisions.md#adr-018-nonce-obligatorio-en-las-firmas-s2s-x-eva-nonce).
+
+---
+
 ## Request timeouts
 
 | Operación | Timeout |

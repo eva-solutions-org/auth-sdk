@@ -23,6 +23,7 @@ import type { S2SCanonicalParts } from '../src/s2s/types'
 const SECRET_HEX = 'cafebabe'.repeat(8) // 64 hex chars = 32 bytes
 const ALT_SECRET_HEX = '0f0e0d0c'.repeat(8) // secreto diferente
 const CLIENT_ID = 'test-client'
+const NONCE = '00112233445566778899aabbccddeeff'
 
 // ---------------------------------------------------------------------------
 // Helper: construir un Request firmado usando signS2SRequest
@@ -50,6 +51,7 @@ async function makeSignedRequest(opts: {
     path,
     rawQuery: query,
     timestamp: String(timestamp),
+    nonce: NONCE,
     clientId,
     bodyBytes: body,
   }
@@ -60,6 +62,7 @@ async function makeSignedRequest(opts: {
   const headers: Record<string, string> = {
     'x-eva-client-id': clientId,
     'x-eva-timestamp': String(timestamp),
+    'x-eva-nonce': NONCE,
     'x-eva-signature': signature,
   }
 
@@ -126,6 +129,7 @@ describe('Cross-compat: signS2SRequest → verifyS2SRequest', () => {
       path: '/internal/users/batch',
       rawQuery: 'verbose=true&limit=10',
       timestamp: '1700000000',
+      nonce: NONCE,
       clientId: CLIENT_ID,
       bodyBytes: new TextEncoder().encode('{"ids":["u1","u2"]}'),
     }
@@ -133,7 +137,7 @@ describe('Cross-compat: signS2SRequest → verifyS2SRequest', () => {
     const canonical1 = await buildS2SCanonicalString(parts)
     const canonical2 = await buildS2SCanonicalString(parts)
     expect(canonical1).toBe(canonical2)
-    expect(canonical1.split('\n')).toHaveLength(6)
+    expect(canonical1.split('\n')).toHaveLength(7)
     expect(canonical1.split('\n')[0]).toBe('POST')
     expect(canonical1.split('\n')[1]).toBe('/internal/users/batch')
   })

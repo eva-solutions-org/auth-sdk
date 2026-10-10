@@ -17,7 +17,7 @@
 | Kind of consumer | Entry point | Typical symbols | Purpose |
 |------------------|-------------|-----------------|---------|
 | Server verifying S2S requests | `@eva_solutions/auth-sdk/hono` | `s2sAuth`, type `S2sAuthVariables`, `requireScope` | Verifies HMAC-signed S2S requests on `/internal/*`-style routes. |
-| Server signing outbound S2S calls | `@eva_solutions/auth-sdk/s2s` | `signS2SRequest` | Signs a request to another service that verifies with `s2sAuth`. |
+| Server signing outbound S2S calls | `@eva_solutions/auth-sdk/s2s` | `signS2SHeaders` (preferred), `generateS2SNonce`, `signS2SRequest` | Produces the four S2S headers (client id, timestamp, nonce, signature) for a request to another service that verifies with `s2sAuth`. |
 | App backend (root) | `@eva_solutions/auth-sdk` | `configureEvaAuth`, `createS2SClient`, `getAuthUrl`, `COOKIES`, `isNotFound`, `matchError`, `isNetworkError`, types `S2SClient`, `EvaError`, `EvaTokenPayload` | Boot config, S2S client (for example `getUser`), cookie name constants, error narrowing. |
 | App backend (Hono) | `@eva_solutions/auth-sdk/hono` | `evaAuth`, `evaAuthRoutes`, `s2sAuth`, `requireScope` | JWT cookie middleware on protected routes, auth proxy routes mounted under a prefix of the consumer's choice, S2S verification with scopes. |
 
@@ -33,8 +33,10 @@ These are the values the SDK and the Auth Service must agree on. Changing any of
 | Refresh cookie name | `eva_refresh_token` (max age 30 days) | `src/constants.ts` |
 | JWT issuer / audience / algorithm | `auth-service` / `proyecto-global` / `ES256` | `src/constants.ts` (`JWT_CONFIG`) |
 | JWKS location | `<auth url>/.well-known/jwks.json`, fetched at runtime | `src/jwks.ts` |
-| S2S headers | `X-Eva-Client-Id`, `X-Eva-Timestamp`, `X-Eva-Signature` (`sha256=` prefix) | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
-| S2S canonical string | `METHOD`, path, **canonicalized** query (decoded, sorted by name then value, RFC 3986 re-encoded), timestamp, client id, `sha256(body)`, joined by newlines (`canonicalizeQuery` in `src/s2s/sign.ts`) | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
+| S2S headers | `X-Eva-Client-Id`, `X-Eva-Timestamp`, `X-Eva-Nonce` (32 lowercase hex, `^[0-9a-f]{32}$`, new per request), `X-Eva-Signature` (`sha256=` prefix). All four are required. | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
+| S2S canonical string (7 lines) | `METHOD`, path, **canonicalized** query (decoded, sorted by name then value, RFC 3986 re-encoded), timestamp, nonce, client id, `sha256(body)`, joined by newlines (`buildS2SCanonicalString` and `canonicalizeQuery` in `src/s2s/sign.ts`). The SDK owns this algorithm: any other implementation (for example a server-side verifier in the Auth Service) must follow it, not the reverse. | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
+| S2S replay protection | `replayCache.setIfAbsent(key, ttl)` with key `${clientId}:${nonce}` and ttl `2 * timestampWindowSeconds + 1` (241 s by default). Verification failures use the reasons `header_missing`, `timestamp_invalid`, `timestamp_expired`, `nonce_malformed`, `signature_malformed`, `client_unknown`, `signature_invalid`, `replay_detected`. | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
+| S2S parity vector (KAT) | Literal canonical string and signature, computed independently with `node:crypto`, for other repos (verifiers or own signers) to check parity with the contract. Copy it from the test `KAT: canonical y firma literales` in `tests/s2s-nonce.mock.test.ts`. | `tests/s2s-nonce.mock.test.ts` |
 | Auth proxy routes (`evaAuthRoutes()`) | `POST /get-code`, `/login`, `/refresh`, `/logout`; `GET /me`, `/empresas`, `/sessions` (plus the `PATCH`/`DELETE` variants in `src/auth-handlers.ts`) | `src/hono/auth-routes.ts` |
 | Wire error shape | `{ error: { code, message } }` by default (`errorWire: 'api'`) | [configuration.md](configuration.md), [migration.md](migration.md) |
 

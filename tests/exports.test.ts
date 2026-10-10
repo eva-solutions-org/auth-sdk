@@ -36,6 +36,8 @@ import {
   // S2S
   createS2SClient,
   signS2SRequest,
+  signS2SHeaders,
+  generateS2SNonce,
   buildS2SCanonicalString,
   EMPTY_BODY_SHA256_HEX,
   S2S_TIMESTAMP_WINDOW_SECONDS,
@@ -262,6 +264,11 @@ describe('s2s exports desde raíz (GAP-01, REQ-EXPORTS-02)', () => {
 
   it('signS2SRequest es función', () => {
     expect(typeof signS2SRequest).toBe('function')
+  })
+
+  it('signS2SHeaders y generateS2SNonce son funciones', () => {
+    expect(typeof signS2SHeaders).toBe('function')
+    expect(typeof generateS2SNonce).toBe('function')
   })
 
   it('buildS2SCanonicalString es función', () => {
