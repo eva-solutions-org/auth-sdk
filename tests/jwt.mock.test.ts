@@ -14,6 +14,7 @@ vi.mock('../src/jwks', () => ({
 
 import { jwtVerify } from 'jose'
 import { getJwksKeyFn } from '../src/jwks'
+import { getAuthUrl } from '../src/config'
 
 const jwtVerifyMock = vi.mocked(jwtVerify)
 const getJwksKeyFnMock = vi.mocked(getJwksKeyFn)
@@ -428,5 +429,29 @@ describe('verifyAccessToken', () => {
     expect(result.data).not.toHaveProperty('aud')
     expect(result.data).not.toHaveProperty('iat')
     expect(result.data).not.toHaveProperty('jti')
+  })
+})
+
+describe('verifyAccessToken — errores de configuración', () => {
+  it('verify_rethrows_config_error: sin authUrl rechaza con el error de config, no token_invalid', async () => {
+    // getAuthUrl REAL sin configurar: lanza el EvaAuthConfigError verdadero (config no está mockeado).
+    getJwksKeyFnMock.mockImplementation(() => {
+      getAuthUrl()
+      return vi.fn() as any
+    })
+
+    await expect(verifyAccessToken('any-token')).rejects.toMatchObject({ name: 'EvaAuthConfigError' })
+    expect(jwtVerifyMock).not.toHaveBeenCalled()
+  })
+
+  it('verify_maps_malformed_to_token_invalid: un token malformado sigue siendo 401 token_invalid', async () => {
+    jwtVerifyMock.mockRejectedValue(new Error('Invalid Compact JWS'))
+
+    const result = await verifyAccessToken('not-a-jwt')
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: 'sdk', reason: 'token_invalid', message: 'Invalid Compact JWS', status: 401 },
+    })
   })
 })

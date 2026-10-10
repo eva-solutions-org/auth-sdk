@@ -2,6 +2,7 @@ import { jwtVerify } from 'jose'
 import { z, ZodObject } from 'zod'
 import type { ZodType } from 'zod'
 import { getJwksKeyFn } from './jwks'
+import { isEvaAuthConfigError } from './config'
 import { JWT_CONFIG } from './constants'
 import { RESERVED_JWT_CLAIMS } from './jwt-claims'
 import type { EvaTokenPayload, Result, EvaSdkError } from './types'
@@ -130,6 +131,8 @@ export async function verifyAccessToken<TExtra extends Record<string, unknown> =
       } as EvaTokenPayload<TExtra>,
     }
   } catch (err: unknown) {
+    // Falta de configuración (authUrl): no es un token inválido, no debe degradarse a 401.
+    if (isEvaAuthConfigError(err)) throw err
     const message = err instanceof Error ? err.message : 'Verificación de token fallida'
     return {
       ok: false,

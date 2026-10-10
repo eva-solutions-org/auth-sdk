@@ -368,3 +368,31 @@ describe('evaAuth — errorMessages override (T-44)', () => {
     expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Local' } })
   })
 })
+
+describe('evaAuth middleware — authUrl sin configurar (REQ-SDK-27, REQ-SDK-28)', () => {
+  const configError = () => Object.assign(new Error('authUrl no configurada'), { name: 'EvaAuthConfigError' })
+
+  it('access_path_without_authUrl_returns_500_no_set_cookie', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(readTokensFromCookies).mockReturnValue({ accessToken: 'tok' } as any)
+    vi.mocked(verifyAccessToken).mockRejectedValue(configError())
+
+    const res = await createTestApp().request('/test')
+
+    expect(res.status).toBe(500)
+    expect(res.headers.get('set-cookie')).toBeNull()
+    expect(clearTokenCookies).not.toHaveBeenCalled()
+  })
+
+  it('refresh_only_path_without_authUrl_returns_500_no_set_cookie', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.mocked(readTokensFromCookies).mockReturnValue({ refreshToken: 'refresh-only' } as any)
+    mockRefresh.mockRejectedValue(configError())
+
+    const res = await createTestApp().request('/test')
+
+    expect(res.status).toBe(500)
+    expect(res.headers.get('set-cookie')).toBeNull()
+    expect(clearTokenCookies).not.toHaveBeenCalled()
+  })
+})

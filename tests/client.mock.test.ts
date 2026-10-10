@@ -9,9 +9,13 @@ import {
   createErrorResponse,
 } from './helpers/fixtures'
 
-vi.mock('../src/config', () => ({
-  getAuthUrl: () => 'http://auth.test',
-  getEvaEnv: () => 'production' as const,
+// importOriginal: el predicado isEvaAuthConfigError que usa http-client es el REAL;
+// solo se reemplazan las funciones que dependen del estado de configuración.
+const { getAuthUrlMock } = vi.hoisted(() => ({ getAuthUrlMock: vi.fn() }))
+
+vi.mock('../src/config', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/config')>()),
+  getAuthUrl: getAuthUrlMock,
   getCookieDomain: () => undefined,
   configureEvaAuth: vi.fn(),
 }))
@@ -21,6 +25,8 @@ globalThis.fetch = mockFetch
 
 beforeEach(() => {
   mockFetch.mockReset()
+  getAuthUrlMock.mockReset()
+  getAuthUrlMock.mockReturnValue('http://auth.test')
 })
 
 const client = createHttpClient()
@@ -230,5 +236,30 @@ describe('network errors', () => {
     expect(result.error.message).toBe('Failed to fetch')
     expect(result.error.status).toBe(0)
     expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('network')
+  })
+})
+
+describe('config errors', () => {
+  it('authFetch_rethrows_config_error: sin authUrl rechaza con el error de config, no lo mapea a network', async () => {
+    getAuthUrlMock.mockImplementation(() => {
+      throw Object.assign(new Error('authUrl no configurada'), { name: 'EvaAuthConfigError' })
+    })
+
+    await expect(client.health()).rejects.toMatchObject({
+      name: 'EvaAuthConfigError',
+      message: 'authUrl no configurada',
+    })
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('authFetch_maps_network_failure: TypeError de fetch sigue siendo network con status 0', async () => {
+    mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'))
+
+    const result = await client.health()
+
+    expect(result).toEqual({
+      ok: false,
+      error: { kind: 'sdk', reason: 'network', message: 'fetch failed', status: 0 },
+    })
   })
 })

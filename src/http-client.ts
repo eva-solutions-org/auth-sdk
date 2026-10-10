@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isEvaAuthConfigError } from './config'
 import { HEADERS, getAuthServiceUrl } from './constants'
 import { parseErrorResponse } from './schemas'
 import type { EvaUser, EvaSession, EvaEmpresa, Result, TokenPair, DeviceInfo } from './types'
@@ -59,6 +60,8 @@ const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<R
 
     return { ok: true, data: { ...data, ...(tokens ? { tokens } : {}) } }
   } catch (err) {
+    // Falta de configuración (authUrl): error del consumidor, no una falla de red.
+    if (isEvaAuthConfigError(err)) throw err
     const message = err instanceof Error ? err.message : 'Error de red'
     return {
       ok: false,

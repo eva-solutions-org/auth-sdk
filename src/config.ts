@@ -16,12 +16,12 @@ const ErrorMessagesSchema = z.object(
   ) as Record<keyof EvaErrorMessages, z.ZodString>,
 ).partial().strict()
 
-// === Fallback build-time (constantes internas, NO exportadas) ===
-const BUILD_TIME_AUTH_URL: string = __EVA_AUTH_URL__
+// === Fallback build-time (constante interna, NO exportada) ===
 const BUILD_TIME_ENV: EvaEnv = __EVA_ENV__ as EvaEnv
 
 // === Estado runtime mutable (NO exportado directamente) ===
 type RuntimeConfig = {
+  authUrl?: string
   cookieDomain?: string
   errorMessages?: Partial<EvaErrorMessages>
   errorWire?: 'api' | 'string'
@@ -69,6 +69,40 @@ export function validateHttpsUrl(value: string, label: string): void {
   // https: → válido, void
 }
 
+/**
+ * Valida y normaliza `authUrl`: https (o loopback http), con path permitido, sin userinfo,
+ * query ni fragmento. Ningún mensaje incluye el valor recibido: puede traer credenciales.
+ * Lo único que se ve en un mensaje es el href ya normalizado (esquema, host, puerto, path),
+ * que llegado a ese punto no puede contener userinfo, query ni fragmento.
+ * Retorna el href normalizado sin una única `/` final.
+ */
+function validateAuthUrl(value: unknown): string {
+  // Entrada de JS sin tipar (as any / JSON): sin esto `value.includes` lanzaría un TypeError ajeno.
+  if (typeof value !== 'string') {
+    throw new Error('[eva-auth-sdk] authUrl inválida: debe ser string')
+  }
+  // Chequeo sobre el string crudo: `URL.search`/`URL.hash` valen '' para un `?` o `#` solitario.
+  if (value.includes('?') || value.includes('#')) {
+    throw new Error('[eva-auth-sdk] authUrl inválida: no puede contener query (?) ni fragmento (#)')
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(value)
+  } catch {
+    throw new Error('[eva-auth-sdk] authUrl inválida: URL malformada')
+  }
+  // Esquemas con path opaco (mailto:, redis:, data:) no exponen userinfo en URL.username y
+  // validateHttpsUrl ecoaría el valor crudo: se rechazan aquí, sin incluir el input.
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('[eva-auth-sdk] authUrl inválida: protocolo no soportado (solo https, o http en loopback)')
+  }
+  if (parsed.username !== '' || parsed.password !== '') {
+    throw new Error('[eva-auth-sdk] authUrl inválida: no puede incluir credenciales (usuario/contraseña)')
+  }
+  validateHttpsUrl(parsed.href, '[eva-auth-sdk] authUrl')
+  return parsed.href.replace(/\/$/, '')
+}
+
 function validateCookieDomain(value: string): void {
   if (/[;\r\n]/.test(value)) {
     throw new Error('cookieDomain inválido: caracteres prohibidos (;, \\r, \\n)')
@@ -78,6 +112,17 @@ function validateCookieDomain(value: string): void {
 // === API pública ===
 
 export interface ConfigureEvaAuthOptions {
+  /**
+   * URL base del Auth Service. Obligatoria antes del primer uso que la necesite
+   * (`authFetch`, JWKS): si falta, esos usos lanzan `EvaAuthConfigError`.
+   * Acepta https, o http solo en loopback (localhost, 127.0.0.1, [::1]); admite path
+   * (`https://host/auth`). Rechaza userinfo, query y fragmento (incluidos `?` y `#` solitarios).
+   * Se normaliza (host en minúsculas, sin `/` final) y es inmutable: reconfigurar con el mismo
+   * valor normalizado es no-op; con otro valor lanza Error.
+   * Si se omite (undefined), no valida ni modifica el valor previo.
+   * @throws Error si la URL es inválida o difiere de la ya configurada.
+   */
+  authUrl?: string
   /**
    * Domain para Set-Cookie. Validada contra header injection (;, \r, \n).
    * Si se omite (undefined), NO resetea el valor previo.
@@ -102,28 +147,42 @@ export interface ConfigureEvaAuthOptions {
   errorWire?: 'api' | 'string'
 }
 
+const CONFIG_ERROR_NAME = 'EvaAuthConfigError'
+
+function createEvaAuthConfigError(message: string): Error {
+  const err = new Error(message)
+  err.name = CONFIG_ERROR_NAME
+  return err
+}
+
 /**
- * Configura el SDK en runtime. Idempotente — llamadas repetidas sobrescriben los campos
- * provistos. Llamar al boot del consumidor, antes del primer request.
- *
- * @throws Error si cookieDomain contiene caracteres de header injection (;, \r, \n).
+ * Indica si `err` es un error de configuración del SDK (falta `authUrl`).
+ * Uso interno: `authFetch` y `verifyAccessToken` lo relanzan en vez de mapearlo a
+ * red / token inválido. NO re-exportada desde los barrels públicos.
  */
-export function configureEvaAuth(opts: ConfigureEvaAuthOptions): void {
-  // D-07: guard de cortesía para consumidores en JS puro que aún pasen authUrl
-  // (eliminado en v2.0.0 — no tiene efecto funcional, solo emite aviso de migración)
-  if ('authUrl' in opts) {
-    // oxlint-disable-next-line no-console -- intentional consumer-facing migration warning
-    console.warn(
-      '[eva-auth-sdk] configureEvaAuth: el campo `authUrl` fue eliminado en v2.0.0 y ya no tiene efecto. ' +
-      'La URL del Auth Service se fija en build-time. Ver CHANGELOG.md#200 para migrar.',
-    )
+export function isEvaAuthConfigError(err: unknown): boolean {
+  return err instanceof Error && err.name === CONFIG_ERROR_NAME
+}
+
+/**
+ * Fase de validación de `configureEvaAuth`: pura, lanza sin mutar nada.
+ * Si cualquier campo es inválido (o `authUrl` cambia), no se confirma ningún campo.
+ */
+function buildConfigPatch(opts: ConfigureEvaAuthOptions, current: RuntimeConfig): Partial<RuntimeConfig> {
+  const patch: Partial<RuntimeConfig> = {}
+  if (opts.authUrl !== undefined) {
+    const normalized = validateAuthUrl(opts.authUrl)
+    if (current.authUrl !== undefined && current.authUrl !== normalized) {
+      throw new Error('[eva-auth-sdk] authUrl ya fue configurada y no puede cambiar en runtime')
+    }
+    patch.authUrl = normalized
   }
   if (opts.cookieDomain !== undefined) {
     validateCookieDomain(opts.cookieDomain)
-    _runtimeConfig.cookieDomain = opts.cookieDomain
+    patch.cookieDomain = opts.cookieDomain
   }
   if (opts.errorMessages !== undefined) {
-    _runtimeConfig.errorMessages = validateErrorMessagesInput(opts.errorMessages)
+    patch.errorMessages = validateErrorMessagesInput(opts.errorMessages)
   }
   if (opts.errorWire !== undefined) {
     if (opts.errorWire !== 'api' && opts.errorWire !== 'string') {
@@ -131,16 +190,40 @@ export function configureEvaAuth(opts: ConfigureEvaAuthOptions): void {
         `[eva-auth-sdk] errorWire inválido: "${opts.errorWire}". Valores válidos: 'api' | 'string'`,
       )
     }
-    _runtimeConfig.errorWire = opts.errorWire
+    patch.errorWire = opts.errorWire
   }
+  return patch
 }
 
 /**
- * Retorna la URL del Auth Service horneada en build-time.
- * El valor se fija al compilar — no es configurable en runtime.
+ * Configura el SDK en runtime. Llamar al boot del consumidor, antes del primer request;
+ * importar el SDK o crear `evaAuth()` no lee la configuración ni lanza.
+ *
+ * Es atómica: valida todos los campos y recién entonces los confirma; si uno falla, ninguno cambia.
+ * `authUrl` es inmutable (re-configurar el mismo valor normalizado es no-op). El resto de los
+ * campos provistos sobrescriben el valor previo; los omitidos (undefined) no lo resetean.
+ *
+ * @throws Error si `authUrl` es inválida o distinta de la ya configurada, si cookieDomain contiene
+ *   caracteres de header injection (;, \r, \n), o si errorMessages / errorWire son inválidos.
+ */
+export function configureEvaAuth(opts: ConfigureEvaAuthOptions): void {
+  const patch = buildConfigPatch(opts, _runtimeConfig)
+  _runtimeConfig = { ..._runtimeConfig, ...patch }
+}
+
+/**
+ * Retorna la URL del Auth Service configurada vía `configureEvaAuth({ authUrl })`
+ * (normalizada, sin `/` final).
+ * @throws Error de configuración (`name === 'EvaAuthConfigError'`) si aún no se configuró.
+ *   `authFetch` y `verifyAccessToken` lo propagan: el consumidor ve un 500, nunca un 401 o un error de red.
  */
 export function getAuthUrl(): string {
-  return BUILD_TIME_AUTH_URL
+  if (_runtimeConfig.authUrl === undefined) {
+    throw createEvaAuthConfigError(
+      '[eva-auth-sdk] authUrl no configurada: llama configureEvaAuth({ authUrl }) al arrancar',
+    )
+  }
+  return _runtimeConfig.authUrl
 }
 
 /**

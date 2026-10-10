@@ -4,12 +4,9 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const FAKE_BUILD_TIME_URL = 'http://build-time.test'
-
 beforeEach(() => {
   vi.resetModules()
   vi.unstubAllEnvs()
-  vi.stubGlobal('__EVA_AUTH_URL__', FAKE_BUILD_TIME_URL)
   vi.stubGlobal('__EVA_ENV__', 'production')
 })
 
