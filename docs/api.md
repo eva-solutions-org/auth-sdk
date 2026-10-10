@@ -10,7 +10,7 @@ Entry point principal. Core del SDK.
 
 Obtiene acceso directo al HTTP client para llamadas server-to-server al Auth Service. **Uso avanzado** — el flujo normal usa `evaAuth()` middleware y `evaAuthRoutes()` directamente, sin necesidad de llamar a esta función.
 
-No recibe parámetros. La URL del Auth Service y el entorno se hornean en build-time.
+No recibe parámetros. Usa la URL del Auth Service configurada con `configureEvaAuth({ authUrl })`; los usos que la necesitan lanzan un error de configuración si no se configuró (ver [configuration.md](configuration.md#url-del-auth-service)).
 
 ```ts
 const { client } = createEvaAuth()
@@ -55,9 +55,11 @@ if (result.ok) {
 
 Retorna `Promise<Result<EvaTokenPayload<TExtra> & TExtra>>`.
 
+Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza** un error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` no fue configurada: no se degrada a 401, el consumidor debe responder 500.
+
 ---
 
-> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<AUTH_URL>/.well-known/jwks.json`. La URL se hornea en build-time (ver [integrations.md](integrations.md)). Cache de 24 h, cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). No hay forma de invalidar la cache manualmente.
+> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<authUrl>/.well-known/jwks.json`. La URL viene de `configureEvaAuth({ authUrl })` (ver [configuration.md](configuration.md#url-del-auth-service)). Cache de 24 h, cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). No hay forma de invalidar la cache manualmente.
 
 ---
 
@@ -82,7 +84,7 @@ Retorna `Promise<Result<EvaTokenPayload<TExtra> & TExtra>>`.
 | `PrivacyState` | Estado de privacidad |
 | `ReservedJwtClaim` | Tipo union: `typeof RESERVED_JWT_CLAIMS[number]` |
 | `EvaErrorMessages` | Interface con las 16 keys de mensajes de error del SDK |
-| `ConfigureEvaAuthOptions` | Opciones de `configureEvaAuth()` incluyendo `errorMessages?` y `errorWire?` |
+| `ConfigureEvaAuthOptions` | Opciones de `configureEvaAuth()`: `authUrl?`, `cookieDomain?`, `errorMessages?` y `errorWire?` |
 
 ### Error utilities
 
@@ -283,8 +285,7 @@ Además de sus propias funciones, el entry point `/hono` re-exporta los siguient
 | `DEFAULT_ERROR_MESSAGES` | `error-messages.ts` | Defaults de mensajes de error |
 | `EvaErrorMessages` | `error-messages.ts` | Type de los 16 keys |
 | `EvaAuthRoutesOptions` | `hono/auth-routes.ts` | Opciones de `evaAuthRoutes()` |
-| `getAuthUrl` | `config.ts` | URL del Auth Service resuelta |
-| `getEvaEnv` | `config.ts` | Entorno actual |
+| `getAuthUrl` | `config.ts` | URL del Auth Service configurada con `configureEvaAuth({ authUrl })`; lanza un error de configuración (`EvaAuthConfigError`) si no se configuró |
 | `getCookieDomain` | `config.ts` | Cookie domain configurado |
 
 ---
@@ -361,6 +362,8 @@ if (result.ok) {
 
 Retorna `Promise<Result<{ payload: EvaTokenPayload<TExtra> & TExtra, newCookies?: string[] }>>`.
 
+Lanza un error de configuración (`name === 'EvaAuthConfigError'`) si la request trae algún token y `authUrl` no fue configurada; una request sin tokens devuelve `auth_required` (401) sin leer la configuración.
+
 **`VerifyRequestOptions<TExtra>`:**
 
 | Opción | Tipo | Descripción |
@@ -405,8 +408,7 @@ Retorna `string[]`.
 | `HEADERS` | `constants.ts` | Nombres de headers custom del protocolo |
 | `DEFAULT_ERROR_MESSAGES` | `error-messages.ts` | Defaults de mensajes de error |
 | `EvaErrorMessages` | `error-messages.ts` | Type de los 16 keys |
-| `getAuthUrl` | `config.ts` | URL del Auth Service resuelta |
-| `getEvaEnv` | `config.ts` | Entorno actual |
+| `getAuthUrl` | `config.ts` | URL del Auth Service configurada con `configureEvaAuth({ authUrl })`; lanza un error de configuración (`EvaAuthConfigError`) si no se configuró |
 | `getCookieDomain` | `config.ts` | Cookie domain configurado |
 
 ---

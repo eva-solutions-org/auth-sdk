@@ -4,10 +4,10 @@
 
 | Cookie | Max-Age | HttpOnly | Secure | SameSite | Path |
 |--------|---------|----------|--------|----------|------|
-| `eva_access_token` | 900 (15 min) | Sí | Sí* | Lax | `/` |
-| `eva_refresh_token` | 2592000 (30 días) | Sí | Sí* | Lax | `/` |
+| `eva_access_token` | 900 (15 min) | Sí | Sí | Lax | `/` |
+| `eva_refresh_token` | 2592000 (30 días) | Sí | Sí | Lax | `/` |
 
-\* `Secure=false` solo cuando `EVA_BUILD_ENV=local`. En `development` es `true` — se espera HTTPS. → [ADR-002, ADR-007](decisions.md)
+`Secure` es **siempre** `true`, en todos los entornos y también al limpiar las cookies, aunque la `authUrl` sea `http://localhost`. Costo: Safari descarta cookies `Secure` sobre `http://localhost`, así que en desarrollo local se sirve la app por https. → [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre) (enmienda ADR-002 y ADR-007)
 
 - Tokens **nunca** accesibles por JavaScript (HttpOnly)
 - `SameSite=Lax`: POST desde sitios externos bloqueados
@@ -76,6 +76,7 @@ Implementados con `AbortSignal.timeout()`.
 - `phone` y `code`: validación de tipo y formato (schema Zod)
 - Body de `PATCH /me`: validado como objeto no vacío
 - User-Agent truncado a **500 caracteres**
+- `authUrl`: solo https (o http en loopback), sin userinfo, query ni fragmento; inmutable una vez fijada; los mensajes de error no repiten el valor recibido (CWE-319) → [configuration.md](configuration.md#url-del-auth-service)
 
 ### Response
 - Estructura `{ data: T }` del Auth Service validada en runtime
@@ -89,6 +90,7 @@ Auth-routes usa `Set` de status codes HTTP conocidos. Status inesperado → fall
 
 - Errores del Auth Service se propagan **sin sanitizar** al frontend → [ADR-001](decisions.md)
 - HTTP 429 (rate limiting) pasa **transparente** — el SDK no implementa rate limiting propio
+- `authUrl` no configurada: el error de configuración (`EvaAuthConfigError`) se **propaga** (el consumidor responde 500) en vez de convertirse en 401 o en error de red, y no se emiten ni limpian cookies. → [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre)
 
 ---
 

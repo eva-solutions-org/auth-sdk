@@ -84,4 +84,4 @@ tests/
 ## Dependencies y build
 
 → Stack y dependencias: [architecture.md](architecture.md#stack-técnico)
-→ Build scripts y modelo build-time: [configuration.md](configuration.md)
+→ Build y distribución: [configuration.md](configuration.md#build-y-distribución)

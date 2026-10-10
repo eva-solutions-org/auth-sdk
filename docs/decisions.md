@@ -28,7 +28,7 @@ Los errores del Auth Service se propagan **sin sanitizar** al frontend. El SDK n
 ## ADR-002: Cookie Secure=true en development
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada
+**Estado**: Aceptada — enmendada por [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre): ya no existe la excepción `local`; `Secure` es siempre `true`
 
 ### Contexto
 
@@ -120,7 +120,7 @@ La public key del Auth Service se cachea localmente para evitar fetch en cada ve
 ## ADR-006: Constantes build-time vía tsup define
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada — parcialmente reemplazada por [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time) (nota: ADR-010 fue supersedido por [ADR-013](#adr-013-auth-url-build-time-puro--closed-environment-map) — el modelo vigente es build-time puro)
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre) — 2026-10-09. Histórico: parcialmente reemplazada por [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time), luego por [ADR-013](#adr-013-auth-url-build-time-puro--closed-environment-map) (build-time puro); ADR-017 abandona el modelo build-time completo.
 
 ### Contexto
 
@@ -149,7 +149,7 @@ Scripts de build: `build:local`, `build:dev`, `build:prod`, `pack:local`.
 ## ADR-007: Cookie Secure por entorno build-time
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada (reemplaza versión anterior con NODE_ENV runtime)
+**Estado**: Aceptada (reemplaza versión anterior con NODE_ENV runtime) — **enmendada** por [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre): `isSecureCookie()` y `getEvaEnv()` ya no existen; `Secure` se emite siempre, sin depender del entorno.
 
 ### Contexto
 
@@ -604,7 +604,9 @@ Hard delete de `src/errors.ts`. Ningún símbolo migrado ni deprecado.
 ## ADR-013: Auth URL Build-Time Puro — Closed Environment Map
 
 **Fecha**: 2026-06-08
-**Estado**: Aceptada (supersede [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time))
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre) — 2026-10-09 (supersede [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time)). Sigue vigente solo `validateHttpsUrl` (https, o http en loopback) que reutilizan `createS2SClient` y `createAdminClient`.
+
+> **Numeración**: existen dos documentos llamados "ADR-013". Este es "Auth URL Build-Time Puro"; el otro es [adr-013-oss-model.md](adr-013-oss-model.md) (modelo de release OSS) y sigue vigente. No se renumeró ninguno para no romper referencias.
 
 ### Contexto
 
@@ -650,6 +652,8 @@ Con el modelo build-time puro ya establecido para `getEvaEnv()` y cookies Secure
 **Fecha**: 2026-06-08
 **Estado**: Aceptada — supersede [ADR-005](#adr-005-jwks-cache-con-hard-max-ttl)
 
+> **Nota (2026-10-09, re-anclaje a [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre))**: las referencias de este ADR a ADR-013 y al "build-time puro" describen el modelo que ADR-017 reemplazó. Lo que importa para la decisión sigue igual: la `authUrl` se fija una sola vez y es inmutable, así que el singleton JWKS nunca necesita invalidarse y `clearJwksCache` no se reintroduce. Si `authUrl` no está configurada, `getJwksKeyFn()` lanza antes de asignar el singleton: no queda un JWKS envenenado.
+
 ### Contexto
 
 La implementación manual de JWKS cache en `src/jwks.ts` (ADR-005) seleccionaba la clave pública usando `keys[0]` de forma ciega, sin validar `kid`, `alg` ni `use`. Esto producía comportamiento incorrecto cuando el Auth Service emite múltiples claves (rotación). Adicionalmente, `jwtVerify` se invocaba sin especificar `algorithms`, permitiendo teóricamente algoritmos distintos de ES256 (defensa en profundidad).
@@ -691,3 +695,41 @@ Se verificó directamente el código fuente de jose v6.2.3 (`node_modules/.pnpm/
 
 - **Wrapper de hard reject sobre createRemoteJWKSet**: requeriría ~30 LOC de estado mutable adicional para rastrear el último fetch exitoso, accediendo a `JWKS.fresh` (propiedad no documentada como API estable). El test de contrato hace innecesario este wrapper — si jose cambia su comportamiento, el test lo detecta.
 - **Mantener fetchJwks/getPublicKey como wrappers**: la razón de existir de clearJwksCache era invalidar el cache cuando cambiaba la URL (ADR-010, supersedido por ADR-013 build-time puro). Sin URL dinámica, no hay caso de uso válido. Mantener exports muertos confunde la API.
+
+---
+
+## ADR-017: Auth URL en runtime, errores de configuración propagados y Secure siempre
+
+**Fecha**: 2026-10-09
+**Estado**: Aceptada (supersede [ADR-013](#adr-013-auth-url-build-time-puro--closed-environment-map) de este registro; enmienda [ADR-007](#adr-007-cookie-secure-por-entorno-build-time); re-ancla [ADR-016](#adr-016-migración-jwks-a-createremotejwkset-de-jose))
+
+### Contexto
+
+El modelo build-time (ADR-006, ADR-013) horneaba la URL del Auth Service en el paquete: un tarball por entorno. Los consumidores dependían de tarballs locales (`file:`) y no podían instalar el SDK desde un registro, lo que choca con publicarlo en npm público ([adr-013-oss-model.md](adr-013-oss-model.md), [adr-014-package-scope.md](adr-014-package-scope.md)), donde hay un único artefacto para todos los entornos.
+
+Las razones de ADR-013 siguen vigentes: evitar una URL mal configurada y la transmisión en claro de secretos (CWE-319). Cambia el mecanismo: en vez de impedir la configuración en runtime, se valida su estructura.
+
+### Decisión
+
+1. **`authUrl` se configura en runtime** con `configureEvaAuth({ authUrl })`, al arrancar y antes del primer uso que la necesite. Importar el SDK o crear `evaAuth()` no lee la configuración ni lanza.
+2. **Validación de estructura** (`validateAuthUrl`, `src/config.ts`): acepta `https`, o `http` solo en loopback (`localhost`, `127.0.0.0/8`, `[::1]`); admite path (`https://host/auth`). Rechaza valores que no sean string, URL malformada, esquemas distintos de http/https (incluidos los de path opaco como `mailto:`), userinfo, query y fragmento (también un `?` o `#` solitario). Ningún mensaje repite el valor recibido; el único caso que muestra algo es el rechazo de `http` remoto, que muestra el href ya normalizado (sin userinfo, query ni fragmento).
+3. **Normalizada, inmutable y atómica**: se guarda en minúsculas de host y sin `/` final. Reconfigurar con el mismo valor normalizado es no-op; con otro valor lanza. `configureEvaAuth` valida todos los campos antes de confirmar ninguno: si uno falla, no cambia nada.
+4. **Sin `authUrl`, error de configuración que se propaga**: `getAuthUrl()` lanza un `Error` con `name === 'EvaAuthConfigError'`. `authFetch` y `verifyAccessToken` lo relanzan en vez de mapearlo a `network` o `token_invalid`. El consumidor responde **500, nunca 401**, y el SDK no emite `clearTokenCookies()` por esta causa. Una request sin tokens sigue respondiendo 401 sin leer la configuración. El factory y el predicado del error son internos (no están en los barrels).
+5. **`Secure` siempre** en las cookies de sesión, al emitirlas y al limpiarlas. No hay predicado ni opción.
+6. **Se eliminan** `getEvaEnv`, el tipo `EvaEnv`, `isSecureCookie`, la inyección build-time (`__EVA_AUTH_URL__`, `__EVA_ENV__`) y las variantes de build: queda un único `build`.
+7. **El estado de configuración es por formato de módulo**: los builds ESM y CJS mantienen cada uno su propio estado. Un proceso que cargue ambos formatos debe llamar `configureEvaAuth` en el formato que atiende las requests; si no, `getAuthUrl()` lanza el error de configuración (un 500 explícito, no una URL equivocada en silencio).
+
+### Alternativas consideradas
+
+- **Mantener variantes build-time**: descartada por el contexto; obliga a un tarball por entorno e impide un único paquete publicado en npm.
+- **Capa de compatibilidad para consumidores 2.x**: descartada; no hay consumidores externos en npm, así que el cambio de contrato va en una major (3.0.0) sin shim.
+- **`Secure` derivado del entorno o de la `authUrl`**: descartada; agrega ramas y configuración, y la decisión fue que `Secure` sea siempre `true`.
+
+### Consecuencias
+
+- **Costo en desarrollo local**: Safari no guarda cookies `Secure` sobre `http://localhost`. En local hay que servir el consumidor por https (por ejemplo con un certificado local).
+- `verifyAccessToken` y `verifyRequest` pueden lanzar el error de configuración (documentado con `@throws`); el consumidor debe dejarlo llegar a su handler de errores como 500.
+- Un solo artefacto sirve a todos los entornos; el consumidor es responsable de pasar `authUrl` al arrancar. Olvidarla produce un 500 visible en la primera request que la necesite, no una URL equivocada.
+- La `authUrl` no cambia en runtime, por lo que el cache JWKS no necesita invalidación (ver nota en ADR-016).
+- Los tests que necesiten reiniciar la configuración usan `vi.resetModules()` con import dinámico: el SDK no exporta un reset.
+- Cambio incompatible: major 3.0.0. Guía de migración en [migration.md](migration.md).

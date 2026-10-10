@@ -29,7 +29,7 @@ It ships as tree-shakeable ESM + CJS with TypeScript declarations, sourcemaps, a
 - Tree-shakeable ESM + CJS + `.d.ts` with declaration maps and sourcemaps
 - 8 independent entry points — import only what your runtime needs
 - Typed extra JWT claims via optional Zod schema (`extraClaimsSchema`)
-- Auth Service URL baked in at build time — zero runtime config required
+- One npm package for every environment — the Auth Service URL is set at boot with `configureEvaAuth({ authUrl })`
 
 ---
 
@@ -59,7 +59,10 @@ pnpm add @hono/zod-openapi # required for @eva_solutions/auth-sdk/hono-openapi
 
 ```ts
 import { Hono } from 'hono';
+import { configureEvaAuth } from '@eva_solutions/auth-sdk';
 import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono';
+
+configureEvaAuth({ authUrl: process.env.AUTH_URL }); // once at boot, before the first request
 
 const app = new Hono();
 
@@ -72,7 +75,7 @@ app.get('/api/me', (c) => {
 });
 ```
 
-> The Auth Service URL is baked in at build time — no `configureEvaAuth` needed for the URL. See [Build variants](#configuration) below.
+> `authUrl` is required before the first request that needs the Auth Service. If it is missing, those calls throw a configuration error (HTTP 500, never 401). See [Configuration](#configuration) below.
 
 Typed extra JWT claims:
 
@@ -306,8 +309,9 @@ if (!isValid) return new Response('Forbidden', { status: 403 });
 ```ts
 import { configureEvaAuth } from '@eva_solutions/auth-sdk';
 
-// Optional — call once at application boot for cookies / error customization
+// Call once at application boot, before the first request
 configureEvaAuth({
+  authUrl: 'https://auth.example.com',  // required — Auth Service URL (see below)
   cookieDomain: '.example.com',         // share cookies across subdomains
   errorWire: 'api',                     // 'api' (default) | 'string' (legacy 0.x compat)
   errorMessages: {                      // optional — override SDK error messages
@@ -318,17 +322,18 @@ configureEvaAuth({
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
+| `authUrl` | `string` | — (required) | Base URL of the Auth Service. Immutable once set. |
 | `cookieDomain` | `string` | `undefined` | Cookie `Domain` attribute — use `'.example.com'` for subdomain sharing. |
 | `errorWire` | `'api' \| 'string'` | `'api'` | Wire shape for 4xx responses. `'api'` emits `{ error: { code, message } }`. `'string'` emits `{ error: string }` (legacy). |
 | `errorMessages` | `Partial<EvaErrorMessages>` | built-in defaults | Granular override of SDK error messages (16 keys). Unknown keys throw. |
 
-The Auth Service URL is baked in at build time — not configurable at runtime. The SDK ships in three build variants selected by `EVA_BUILD_ENV` at build time:
+The Auth Service URL is configured at runtime with `authUrl`, once at boot, before the first request that needs the Auth Service. One package serves every environment.
 
-| `EVA_BUILD_ENV` | Baked URL |
-|-----------------|-----------|
-| `local` | `http://localhost:4000` |
-| `development` | `https://auth-dev.example.com` |
-| `production` | `https://auth.example.com` (default for `pnpm build`) |
+- Accepted: `https://host` (a path is allowed), or `http` only on loopback (`localhost`, `127.0.0.1`, `[::1]`).
+- Rejected (throws, without echoing the value): remote `http`, malformed values, userinfo, query and fragment.
+- Immutable: the same value again is a no-op, a different value throws.
+- If it is missing, the calls that need it throw a configuration error (`EvaAuthConfigError`): answer **500**, never 401.
+- Auth cookies are always `Secure`. Safari drops them on `http://localhost`, so use https in local development.
 
 For full configuration details see [docs/configuration.md](docs/configuration.md).
 
@@ -408,10 +413,10 @@ Generated with TypeDoc + DMT theme. Source in `docs/`.
 |----------|----------|
 | [docs/api.md](docs/api.md) | Complete API reference per entry point |
 | [docs/architecture.md](docs/architecture.md) | Two-layer model, full auth flow, module structure |
-| [docs/configuration.md](docs/configuration.md) | Build-time model, configureEvaAuth options, errorWire |
+| [docs/configuration.md](docs/configuration.md) | configureEvaAuth options (authUrl, cookieDomain, errorWire), build and distribution |
 | [docs/security.md](docs/security.md) | Cookies, JWT, JWKS cache, deduplication |
-| [docs/integrations.md](docs/integrations.md) | How the SDK fits the EVA system: consumers, cross-repo contracts, build-time Auth URL, releasing |
-| [docs/migration.md](docs/migration.md) | Migration guide 0.x → 1.0.0 |
+| [docs/integrations.md](docs/integrations.md) | How the SDK fits the EVA system: consumers, cross-repo contracts, runtime Auth URL, releasing |
+| [docs/migration.md](docs/migration.md) | Migration guides 2.x → 3.0.0 and 0.x → 1.0.0 |
 
 ---
 

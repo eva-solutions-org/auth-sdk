@@ -130,6 +130,7 @@ import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 // También disponible desde @eva_solutions/auth-sdk/hono, /generic y /react
 
 configureEvaAuth({
+  authUrl: process.env.AUTH_URL,             // URL del Auth Service (https, o http en loopback)
   cookieDomain: process.env.COOKIE_DOMAIN,   // Domain para cookies (ej: '.miempresa.com')
 })
 ```
@@ -138,36 +139,57 @@ configureEvaAuth({
 
 | Opción | Tipo | Descripción |
 |--------|------|-------------|
+| `authUrl` | `string \| undefined` | URL base del Auth Service. Obligatoria antes del primer uso que la necesite; inmutable. Ver [URL del Auth Service](#url-del-auth-service). |
 | `cookieDomain` | `string \| undefined` | Atributo `Domain` para `Set-Cookie`. Si se omite, no resetea el valor previo. |
 | `errorWire` | `'api' \| 'string' \| undefined` | Shape HTTP que el SDK emite cuando rechaza un request. Default: `'api'`. Ver [sección errorWire](#errorwire) más abajo. |
 | `errorMessages` | `Partial<EvaErrorMessages> \| undefined` | Override de mensajes de error. Ver [sección Mensajes de error personalizados](#mensajes-de-error-personalizados). |
 
 ### Validaciones
 
+- `authUrl` debe cumplir las reglas de la tabla de [URL del Auth Service](#url-del-auth-service); si no, **lanza inmediatamente**.
 - `cookieDomain` no puede contener `;`, `\r` ni `\n` (defensa contra header injection). Si los contiene, **lanza inmediatamente**.
 
-### Idempotencia
+### Reconfiguración
 
-Llamadas repetidas sobrescriben los campos provistos. Un campo omitido (`undefined`) preserva el valor previo:
+`authUrl` es **inmutable** (ver [URL del Auth Service](#url-del-auth-service)). Los demás campos provistos sobrescriben el valor previo; un campo omitido (`undefined`) preserva el valor previo:
 
 ```ts
 configureEvaAuth({ cookieDomain: '.a.com' })
 configureEvaAuth({ cookieDomain: '.b.com' })  // sobrescribe .a.com
 ```
 
+La llamada es **atómica**: valida todos los campos y recién entonces los aplica. Si uno falla (incluido un `authUrl` distinto del ya configurado), no cambia ninguno.
+
 ### URL del Auth Service
 
-La URL del Auth Service se fija en **build-time** — no es configurable en runtime. El SDK se publica en tres variantes según `EVA_BUILD_ENV`:
+`authUrl` es la URL base del Auth Service. Se configura en runtime con `configureEvaAuth({ authUrl })`, **antes del primer uso que la necesite** (JWKS, `authFetch`, rutas de auth). Un único paquete sirve a todos los entornos; cada consumidor pasa su propia URL. Razonamiento: [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre).
 
-| `EVA_BUILD_ENV` | URL horneada |
-|-----------------|-------------|
-| `local` | `http://localhost:4000` |
-| `development` | `https://auth-dev.example.com` |
-| `production` | `https://auth.example.com` |
+```ts
+configureEvaAuth({ authUrl: process.env.AUTH_URL })
+```
 
-Para acceder al Auth Service en producción, instalar la variante `production`. No es necesario llamar `configureEvaAuth` para la URL.
+| Entrada | Resultado |
+|---------|-----------|
+| `https://auth.miempresa.com` | Aceptada |
+| `https://auth.miempresa.com/auth` (con path) | Aceptada; el JWKS se lee de `https://auth.miempresa.com/auth/.well-known/jwks.json` |
+| `http://localhost:4000`, `http://127.0.0.1:4000`, `http://[::1]:4000` | Aceptada (http solo en loopback) |
+| `http://auth.miempresa.com` (http remoto) | Lanza |
+| Malformada, no-string o esquema distinto de http/https (`ftp:`, `mailto:`, ...) | Lanza |
+| Con credenciales (`https://user:pass@host`) | Lanza |
+| Con query o fragmento (`?a=1`, `#x`, incluso un `?` o `#` solitario) | Lanza |
 
-> **Migración desde v1.x**: si usabas `configureEvaAuth({ authUrl })` o `process.env.EVA_AUTH_URL`, estos mecanismos ya no tienen efecto. Migrar a builds por entorno con `EVA_BUILD_ENV`. Ver [CHANGELOG.md](../CHANGELOG.md) entrada v2.0.0.
+- **Normalización**: host en minúsculas y sin `/` final. `getAuthUrl()` devuelve la forma normalizada.
+- **Sin eco**: los mensajes de error no repiten el valor recibido (podría traer credenciales). El rechazo de http remoto muestra solo el href normalizado.
+- **Inmutable**: repetir la llamada con el mismo valor normalizado es no-op; con otro valor lanza `authUrl ya fue configurada y no puede cambiar en runtime`.
+- **Estado por módulo**: la configuración vive en una variable del módulo. Cada proceso (o isolate, en Workers) debe llamar `configureEvaAuth` al arrancar.
+- **ESM y CJS no comparten estado**: los builds ESM y CJS del paquete mantienen cada uno su propia configuración. Si un proceso carga ambos formatos, configura el formato que atiende las requests; de lo contrario `getAuthUrl()` lanza el error de configuración.
+- **Importar no lanza**: importar el SDK o crear `evaAuth()` no lee la configuración.
+
+#### Si falta `authUrl`
+
+`getAuthUrl()` lanza un `Error` con `name === 'EvaAuthConfigError'` y el mensaje `[eva-auth-sdk] authUrl no configurada: llama configureEvaAuth({ authUrl }) al arrancar`. `authFetch` y `verifyAccessToken` lo propagan en vez de convertirlo en error de red o en token inválido; por eso `evaAuth()`, `evaAuthRoutes()` y `verifyRequest` lanzan y tu aplicación responde **500, nunca 401**, sin emitir ni limpiar cookies. Una request sin tokens sigue respondiendo 401 sin leer la configuración.
+
+> **Migración desde 2.x**: ver [migration.md](migration.md).
 
 ### Validación HTTPS en S2S y Admin
 
@@ -197,10 +219,10 @@ Sin punto leading (`miempresa.com`), el browser puede restringir la cookie al do
 
 ### Advertencia: Safari + Secure + HTTP (M-5)
 
-> **Warning**: en builds `dev` y `prod` el flag `Secure=true` está activo (ver ADR-007). Safari descarta cookies con `Secure` si la conexión no es HTTPS, incluso en `localhost`. Chrome tiene comportamiento parcialmente similar en ciertas versiones.
+> **Warning**: las cookies de sesión llevan `Secure` siempre, en todos los entornos (ver [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre)). Safari descarta cookies `Secure` sobre `http://localhost`. Chrome tiene comportamiento parcialmente similar en ciertas versiones.
 >
-> **Para desarrollo local sobre HTTP**: usar `pnpm build:local` (que setea `__EVA_ENV__=local` y desactiva `Secure`).
-> **Para staging / PR previews**: configurar HTTPS end-to-end (ej: Cloudflare, Vercel, mkcert para local).
+> **Para desarrollo local**: sirve tu aplicación por https (por ejemplo con `mkcert`). Una `authUrl` en `http://localhost` sigue siendo válida, pero no cambia el flag `Secure` de las cookies.
+> **Para staging / PR previews**: configura https de extremo a extremo (ej: Cloudflare, Vercel).
 
 ### Orden de inicialización — importa
 
@@ -209,7 +231,7 @@ Llamar `configureEvaAuth` **antes del primer request**. Las cookies ya emitidas 
 ```ts
 // boot.ts
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
-configureEvaAuth({ cookieDomain: '.miempresa.com' })  // PRIMERO
+configureEvaAuth({ authUrl: process.env.AUTH_URL, cookieDomain: '.miempresa.com' })  // PRIMERO
 
 // app.ts
 import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
@@ -291,66 +313,32 @@ RFC 6265 exige que para borrar una cookie, el `Set-Cookie; Max-Age=0` del logout
 
 ---
 
-## Modelo build-time
+## Build y distribución
 
-El SDK usa **exclusivamente** configuración horneada en build-time para la URL del Auth Service. El selector de entorno es `EVA_BUILD_ENV` al momento del build. Si `configureEvaAuth()` no se llama, todo el comportamiento se preserva con los valores build-time.
+El SDK se compila **una sola vez** (`pnpm run build`, tsdown; formatos ESM y CJS) y no hay variantes por entorno ni variables de build: la URL del Auth Service no forma parte del artefacto. El paquete publicado en npm es el mismo para todos los entornos.
 
----
-
-## Cómo funciona
-
-`tsdown.config.ts` contiene un map interno de URLs por entorno:
-
-```ts
-const envUrls = {
-  local: 'http://localhost:4000',
-  development: 'https://auth-dev.example.com',
-  production: 'https://auth.example.com',
-}
-```
-
-La variable `EVA_BUILD_ENV` controla qué valores se hornean:
-
-```ts
-define: {
-  __EVA_AUTH_URL__: JSON.stringify(envUrls[env]),
-  __EVA_ENV__: JSON.stringify(env),
-}
-```
-
-Dentro del SDK, `config.ts` expone las constantes ya resueltas — no hay lectura de `process.env` en runtime.
-
----
-
-## Scripts de build
-
-| Script | Comando | Entorno horneado | URL horneada |
-|--------|---------|------------------|--------------|
-| `pnpm build:local` | `cross-env EVA_BUILD_ENV=local tsdown` | `local` | `http://localhost:4000` |
-| `pnpm build:dev` | `cross-env EVA_BUILD_ENV=development tsdown` | `development` | `https://auth-dev.example.com` |
-| `pnpm build:prod` | `cross-env EVA_BUILD_ENV=production tsdown` | `production` | `https://auth.example.com` |
-| `pnpm pack:local` | `build:local` + `pnpm pack` | `local` | `http://localhost:4000` |
-
-`pnpm build` (sin sufijo) usa `production` por defecto.
+| Script | Uso |
+|--------|-----|
+| `pnpm run build` | Compila `dist/` |
+| `pnpm run dev` | Compila en modo watch |
 
 ---
 
 ## Cómo consume el SDK el usuario final
 
-### Producción
+### Instalación
 
 ```bash
 npm install @eva_solutions/auth-sdk
 ```
 
-El paquete publicado en npm se construye con `build:prod` — trae las constantes de producción horneadas.
-
-### Desarrollo local
+### Probar cambios locales del SDK en un consumidor
 
 ```bash
 # En el repo del SDK
-pnpm pack:local
-# Genera eva_solutions-auth-sdk-<version>.tgz (ej. eva_solutions-auth-sdk-2.0.1.tgz)
+pnpm run build
+pnpm pack
+# Genera eva_solutions-auth-sdk-<version>.tgz en la raíz del repo (*.tgz está en .gitignore)
 
 # En el proyecto consumidor
 npm install ../path/to/eva_solutions-auth-sdk-<version>.tgz
@@ -358,16 +346,17 @@ npm install ../path/to/eva_solutions-auth-sdk-<version>.tgz
 
 ### En código
 
-No hay paso de inicialización obligatorio. El middleware y las rutas funcionan directamente:
+Configura `authUrl` una vez al arrancar, antes de montar rutas o middleware:
 
 ```ts
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
+
+configureEvaAuth({ authUrl: process.env.AUTH_URL })   // PRIMERO
 
 app.route('/auth', evaAuthRoutes())
 app.use('/api/*', evaAuth())
 ```
-
-Sin parámetros, sin env vars, sin configuración. Todo viene horneado.
 
 #### Uso avanzado: acceso directo al client
 
@@ -386,7 +375,7 @@ Esto es opcional — el flujo normal no lo requiere.
 
 ## Cookies, JWKS Cache y seguridad
 
-→ Ver [security.md](security.md) para configuración completa de cookies (flags, TTLs, Secure por entorno), JWKS cache y modelo de seguridad.
+→ Ver [security.md](security.md) para configuración completa de cookies (flags, TTLs, `Secure` siempre), JWKS cache y modelo de seguridad.
 
 ---
 
@@ -685,10 +674,9 @@ Al testear handlers o middlewares que usan el SDK, es preferible mockear los mó
 ```ts
 import { vi } from 'vitest'
 
-// 1. Mock de config — evita dependencia de variables de entorno
+// 1. Mock de config — evita llamar configureEvaAuth({ authUrl }) en cada test
 vi.mock('@eva_solutions/auth-sdk/src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
-  getEvaEnv: () => 'production' as const,
   getCookieDomain: () => undefined,
   configureEvaAuth: vi.fn(),
   getErrorMessages: vi.fn().mockReturnValue(undefined),

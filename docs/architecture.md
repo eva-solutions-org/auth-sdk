@@ -56,8 +56,7 @@ Comunicación con el navegador del usuario:
 - No parsea tokens
 - No gestiona refresh
 - No configura CORS para tokens
-- No conoce la URL del Auth Service (viene horneada en el SDK)
-- No configura variables de entorno
+- No depende de variables de entorno propias del SDK (el SDK no lee `process.env`); solo pasa `authUrl` a `configureEvaAuth` al arrancar
 - No gestiona la public key
 
 ---
@@ -67,7 +66,7 @@ Comunicación con el navegador del usuario:
 ```
 src/
 ├── client.ts          # createEvaAuth(), punto de entrada público del SDK → ADR-008
-├── config.ts          # Constantes build-time: AUTH_URL y ENV (horneadas por tsdown define)
+├── config.ts          # Config runtime: configureEvaAuth, getAuthUrl (authUrl inmutable), validación y errores de configuración → ADR-017
 ├── types.ts           # Todos los tipos exportados
 ├── errors.ts          # EvaAuthError, createAuthError, isAuthError
 ├── constants.ts       # HEADERS, COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
@@ -133,4 +132,4 @@ src/
 
 - **Runtime**: Edge + Node.js (cero dependencias de Node.js)
 - **Build**: tsdown (ESM + CJS), target ES2022, declarations `.d.ts`
-- **Build-time config**: → Ver [configuration.md](configuration.md)
+- **Configuración**: la URL del Auth Service se fija en runtime → Ver [configuration.md](configuration.md#url-del-auth-service)

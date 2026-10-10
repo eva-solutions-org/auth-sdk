@@ -1,3 +1,141 @@
+# Migration Guide — @eva_solutions/auth-sdk 2.x → 3.0.0
+
+La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **un solo paquete** para todos los entornos: ya no se instala un tarball por entorno. Razonamiento: [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre).
+
+## Ruta rápida
+
+1. Instala desde npm: `npm install @eva_solutions/auth-sdk@^3.0.0` (reemplaza cualquier dependencia `file:` a un tarball).
+2. Llama `configureEvaAuth({ authUrl })` al arrancar, antes del primer request.
+3. Borra todo uso de `getEvaEnv` y del tipo `EvaEnv`.
+4. Si desarrollas en local, sirve tu app por https (las cookies ahora son siempre `Secure`).
+5. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
+
+## Resumen de breaking changes
+
+| # | Área | Cambio |
+|---|------|--------|
+| 1 | `configureEvaAuth` | Vuelve `authUrl` (obligatoria antes del primer uso que la necesite) |
+| 2 | `getAuthUrl()` | Lanza un error de configuración si `authUrl` no fue configurada |
+| 3 | Errores de configuración | `verifyAccessToken`, `verifyRequest`, `authFetch` y las rutas/middleware propagan el error: el consumidor responde **500**, nunca 401 |
+| 4 | Cookies | `Secure` siempre, en cualquier entorno |
+| 5 | `getEvaEnv` / `EvaEnv` | Eliminados |
+| 6 | Build | Una sola variante: ya no existen `build:local`, `build:dev`, `build:prod` ni `pack:local` |
+| 7 | `authUrl` | Inmutable: un segundo valor distinto lanza |
+
+---
+
+## 1. `authUrl` en runtime
+
+### Antes (2.x)
+
+La URL venía horneada en el paquete (`EVA_BUILD_ENV` al compilar el SDK). No había nada que configurar en el consumidor, y `configureEvaAuth({ authUrl })` no existía.
+
+### Después (3.0.0)
+
+```ts
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
+
+// Al boot, antes de registrar rutas o middleware:
+configureEvaAuth({ authUrl: process.env.AUTH_URL })
+```
+
+Formas aceptadas y rechazadas:
+
+| Entrada | Resultado |
+|---------|-----------|
+| `https://auth.miempresa.com` | Aceptada |
+| `https://auth.miempresa.com/auth` (con path) | Aceptada |
+| `http://localhost:4000`, `http://127.0.0.1:4000`, `http://[::1]:4000` | Aceptada (http solo en loopback) |
+| `http://auth.miempresa.com` (http remoto) | Lanza |
+| URL malformada, no-string, o esquema distinto de http/https (`ftp:`, `mailto:`, ...) | Lanza |
+| Con credenciales (`https://user:pass@host`) | Lanza |
+| Con query o fragmento (`?a=1`, `#x`, incluso un `?` o `#` solitario) | Lanza |
+
+- Los mensajes de error **no repiten** el valor recibido (podría contener credenciales).
+- La URL se normaliza (host en minúsculas, sin `/` final). `getAuthUrl()` devuelve la forma normalizada.
+- Es **inmutable**: repetir la llamada con el mismo valor normalizado es no-op; con otro valor lanza `authUrl ya fue configurada y no puede cambiar en runtime`.
+- `configureEvaAuth` es atómica: si algún campo es inválido, no se aplica ninguno.
+- Importar el SDK o crear `evaAuth()` no lee la configuración ni lanza.
+- `createS2SClient` y `createAdminClient` no cambian: siguen recibiendo `baseUrl` como argumento.
+
+Detalle de opciones: [configuration.md](configuration.md).
+
+### Estado por formato de módulo (ESM y CJS)
+
+Los builds ESM y CJS del paquete mantienen cada uno su propio estado de configuración. Si tu proceso carga ambos formatos, llama `configureEvaAuth` en el formato que atiende las requests; si no, `getAuthUrl()` lanza el error de configuración. Un consumidor solo-ESM o solo-CJS no se ve afectado.
+
+---
+
+## 2. Error de configuración: 500, no 401
+
+Si `authUrl` no fue configurada, `getAuthUrl()` lanza un `Error` con `name === 'EvaAuthConfigError'` y el mensaje `[eva-auth-sdk] authUrl no configurada: llama configureEvaAuth({ authUrl }) al arrancar`.
+
+| Llamada | Comportamiento sin `authUrl` |
+|---------|------------------------------|
+| `evaAuth()` con access token, o con solo refresh token | Lanza → tu handler de errores responde 500; no se emiten `Set-Cookie` |
+| `evaAuthRoutes()` (por ejemplo `logout`) | Lanza → 500; **no** se limpian las cookies |
+| `verifyAccessToken(token)` | Lanza (antes devolvía `token_invalid` 401) |
+| `verifyRequest(request)` con algún token | Lanza |
+| Request **sin** tokens | Sigue devolviendo `auth_required` (401): no lee la configuración |
+
+El SDK no exporta el predicado del error. Si necesitas distinguirlo, compara `err.name === 'EvaAuthConfigError'`. En Hono basta con dejar que llegue al `app.onError` (o al manejador por defecto, que responde 500).
+
+---
+
+## 3. Cookies `Secure` siempre
+
+Las cookies `eva_access_token` y `eva_refresh_token` llevan `Secure` al emitirse y al limpiarse, también con `authUrl` en `http://localhost`. Antes `Secure=false` solo ocurría con el build `local`.
+
+Consecuencia: **Safari no guarda cookies `Secure` sobre `http://localhost`**. En desarrollo local sirve tu app por https (por ejemplo con un certificado local) o prueba con un navegador que acepte el caso.
+
+---
+
+## 4. `getEvaEnv` y `EvaEnv` eliminados
+
+Ya no hay entorno horneado. Borra los usos:
+
+```ts
+// Antes (2.x)
+import { getEvaEnv } from '@eva_solutions/auth-sdk'
+if (getEvaEnv() === 'local') { /* ... */ }
+
+// Después (3.0.0): decide con tu propia configuración (NODE_ENV, variable de entorno, etc.)
+```
+
+Si mockeabas el módulo de config en tus tests (ver [configuration.md](configuration.md#mock-para-tests)), quita la clave `getEvaEnv`.
+
+---
+
+## 5. Build único
+
+Si construías el SDK desde el repo para tus entornos: ya no existen `build:local`, `build:dev`, `build:prod` ni `pack:local`; usa `pnpm run build`. No hay variable `EVA_BUILD_ENV`. Para consumir el SDK basta `npm install` desde el registro; un build propio solo hace falta para probar cambios locales del SDK.
+
+---
+
+## 6. Tests de tu aplicación
+
+`authUrl` es inmutable y el SDK no exporta un reset. Para cambiar de URL entre tests, reinicia el módulo:
+
+```ts
+import { beforeEach, vi } from 'vitest'
+
+beforeEach(() => { vi.resetModules() })
+
+it('...', async () => {
+  const { configureEvaAuth } = await import('@eva_solutions/auth-sdk')
+  configureEvaAuth({ authUrl: 'http://localhost:4000' })
+  // ...
+})
+```
+
+---
+
+## Versiones anteriores
+
+Las secciones siguientes corresponden a la migración 0.x → 1.0.0 y se conservan como referencia.
+
+---
+
 # Migration Guide — @eva_solutions/auth-sdk 0.x → 1.0.0
 
 > **Package scope rename (public release)**: The SDK was developed internally under a private name that was never published to npm. The public package is `@eva_solutions/auth-sdk`. If you were using a local tarball under the old internal name, update your `package.json` dependency to `@eva_solutions/auth-sdk`. See [ADR-014](adr-014-package-scope.md) for details.

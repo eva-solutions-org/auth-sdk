@@ -58,6 +58,14 @@ export type VerifyAccessTokenOptions<TExtra extends Record<string, unknown>> = {
   extraClaimsSchema?: ZodType<TExtra>
 }
 
+/**
+ * Verifica un access token (firma ES256 vía JWKS, issuer, audience y claims base).
+ * Un token inválido o expirado devuelve `{ ok: false }` (401); no lanza.
+ *
+ * @throws Error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` no fue
+ *   configurada con `configureEvaAuth({ authUrl })`: es un error del consumidor, no un token
+ *   inválido, así que se propaga en vez de degradarse a 401. El consumidor ve un 500.
+ */
 export async function verifyAccessToken<TExtra extends Record<string, unknown> = {}>(
   token: string,
   opts: VerifyAccessTokenOptions<TExtra> = {},

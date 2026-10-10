@@ -19,6 +19,15 @@ type VerifyResult<TExtra extends Record<string, unknown>> = {
 
 const client = createHttpClient()
 
+/**
+ * Verifica una Request (cookies, JWT y auto-refresh) y devuelve un `Result`; los rechazos de
+ * autenticación (401) no lanzan.
+ *
+ * @throws Error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` no fue
+ *   configurada con `configureEvaAuth({ authUrl })` y la request trae algún token: se necesita
+ *   para el JWKS o el refresh. El consumidor debe responder 500, nunca 401 ni limpiar cookies.
+ *   Una request sin tokens devuelve `auth_required` (401) sin leer la configuración.
+ */
 export async function verifyRequest<TExtra extends Record<string, unknown> = {}>(
   request: Request,
   opts: VerifyRequestOptions<TExtra> = {},
