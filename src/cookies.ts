@@ -1,15 +1,12 @@
 import { COOKIES, COOKIE_MAX_AGE } from './constants'
-import { getEvaEnv, getCookieDomain } from './config'
+import { getCookieDomain } from './config'
 import type { TokenPair } from './types'
 
-function isSecureCookie(): boolean {
-  return getEvaEnv() !== 'local'
-}
-
+// Secure siempre: no depende del entorno ni de la URL del Auth Service (ADR-017).
+// Safari descarta cookies Secure sobre http://localhost: en desarrollo local usar https.
 function getCookieOptions() {
   return {
     httpOnly: true,
-    secure: isSecureCookie(),
     sameSite: 'lax' as const,
     path: '/',
     domain: getCookieDomain(),
@@ -21,7 +18,7 @@ function serializeCookie(name: string, value: string, maxAge: number): string {
   const parts = [
     `${name}=${value}`,
     'HttpOnly',
-    ...(opts.secure ? ['Secure'] : []),
+    'Secure',
     `SameSite=${opts.sameSite[0].toUpperCase()}${opts.sameSite.slice(1)}`,
     `Path=${opts.path}`,
     // Domain inyectado condicionalmente — solo cuando está configurado vía configureEvaAuth.
@@ -39,7 +36,7 @@ function serializeClearCookie(name: string): string {
   const parts = [
     `${name}=`,
     'HttpOnly',
-    ...(opts.secure ? ['Secure'] : []),
+    'Secure',
     `SameSite=${opts.sameSite[0].toUpperCase()}${opts.sameSite.slice(1)}`,
     `Path=${opts.path}`,
     // Ver FOOTGUN (M-4) en serializeCookie.

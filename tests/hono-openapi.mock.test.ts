@@ -10,7 +10,6 @@ import { createTokenPair, createUser } from './helpers/fixtures'
 
 vi.mock('../src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
-  getEvaEnv: () => 'production' as const,
   getCookieDomain: () => undefined,
   configureEvaAuth: vi.fn(),
   getErrorMessages: vi.fn().mockReturnValue(undefined),

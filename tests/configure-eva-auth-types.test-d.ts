@@ -65,3 +65,19 @@ describe('ConfigureEvaAuthOptions — campos válidos aceptados (REQ-CFG-08)', (
     assertType<void>(configureEvaAuth({ errorWire: 'string' }))
   })
 })
+
+// ─── REQ-SDK-34: getEvaEnv / EvaEnv ya no forman parte de la API pública ─────
+
+describe('barrels — getEvaEnv y EvaEnv eliminados (REQ-SDK-34)', () => {
+  it('getEvaEnv no existe en los barrels', () => {
+    expectTypeOf<typeof import('../src/index')>().not.toHaveProperty('getEvaEnv')
+    expectTypeOf<typeof import('../src/hono/index')>().not.toHaveProperty('getEvaEnv')
+    expectTypeOf<typeof import('../src/generic/index')>().not.toHaveProperty('getEvaEnv')
+  })
+
+  it('el tipo EvaEnv no es importable desde el barrel raíz', () => {
+    // @ts-expect-error — EvaEnv fue eliminado en v3
+    type Removed = import('../src/index').EvaEnv
+    expectTypeOf<Removed>().toBeAny()
+  })
+})

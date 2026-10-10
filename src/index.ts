@@ -2,7 +2,7 @@ export { createEvaAuth } from './client'
 export { createHttpClient, type EvaHttpClient } from './http-client'
 export { verifyAccessToken } from './jwt'
 export type { VerifyAccessTokenOptions } from './jwt'
-export { configureEvaAuth, type ConfigureEvaAuthOptions, getAuthUrl, getEvaEnv, getCookieDomain } from './config'
+export { configureEvaAuth, type ConfigureEvaAuthOptions, getAuthUrl, getCookieDomain } from './config'
 export type {
   EvaUser,
   EvaSession,

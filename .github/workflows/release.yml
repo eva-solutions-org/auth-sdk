@@ -2,55 +2,48 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
-  contents: write
-  pull-requests: write
-  # id-token:write is required for npm provenance via OIDC trusted publishing.
-  # Configure the npm trusted publisher at:
-  # https://www.npmjs.com/settings/eva_solutions/trusted-publishers
-  # (org: eva-solutions-org, repo: auth-sdk, workflow: release.yml)
-  id-token: write
+  contents: read
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write # OIDC trusted publishing + provenance
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
-      - name: Setup Node 22
-        uses: actions/setup-node@v6
+      - name: Setup Node 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: 22.x
+          node-version: 24.x
           cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
+          # no registry-url: avoids a generated .npmrc with an empty NODE_AUTH_TOKEN competing with OIDC
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: pnpm run build:prod
-
       - name: Create Release Pull Request or Publish
-        # TODO: verify this SHA against the latest stable release of changesets/action
-        # before the first real release. Run:
-        #   gh api repos/changesets/action/git/ref/tags/v1.4.10 --jq '.object.sha'
-        # gh was not available at apply time (RISK-D02) — SHA below is v1.4.10 known stable.
-        # With npm OIDC trusted publishing (recommended), NODE_AUTH_TOKEN is not needed.
-        # If using a classic npm token as fallback, add NPM_TOKEN as a GitHub secret.
-        uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
-          publish: npm publish --provenance --access public
+          publish: pnpm exec changeset publish
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PNPM_CONFIG_PROVENANCE: 'true'
+          # Bootstrap only (first publish creates the package). Removed in U6b.
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -19,5 +19,5 @@ Closes #
 - [ ] Tests added or updated
 - [ ] Documentation updated (README, docs/, JSDoc)
 - [ ] Changeset added (`pnpm run changeset`) — required for user-facing changes
-- [ ] CI passes locally (`pnpm run lint && pnpm run type-check && pnpm run test:run && pnpm run build:prod`)
+- [ ] CI passes locally (`pnpm run lint && pnpm run type-check && pnpm run test:run && pnpm run build`)
 - [ ] Breaking changes documented in the changeset description

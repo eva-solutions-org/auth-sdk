@@ -21,7 +21,7 @@
   "excludeInternal": true,
   "githubPages": false,
   "hideGenerator": true,
-  "intentionallyNotExported": ["AuthHandlerOptions", "VerifyResult", "EvaAuth", "EvaEnv"],
+  "intentionallyNotExported": ["AuthHandlerOptions", "VerifyResult", "EvaAuth"],
   "blockTags": [
     "@param",
     "@returns",

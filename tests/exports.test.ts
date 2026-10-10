@@ -58,7 +58,6 @@ import {
   createHttpClient,
   createEvaAuth,
   getAuthUrl,
-  getEvaEnv,
   getCookieDomain,
 } from '../src/index'
 
@@ -216,9 +215,8 @@ describe('exports preexistentes — regresión (T-035 no rompió nada)', () => {
     expect(typeof createEvaAuth).toBe('function')
   })
 
-  it('getAuthUrl / getEvaEnv / getCookieDomain son funciones', () => {
+  it('getAuthUrl / getCookieDomain son funciones', () => {
     expect(typeof getAuthUrl).toBe('function')
-    expect(typeof getEvaEnv).toBe('function')
     expect(typeof getCookieDomain).toBe('function')
   })
 })
@@ -467,5 +465,30 @@ describe('requireScope overloads — runtime type checks', () => {
   it('requireScope({ any }) returns function', () => {
     const mw = requireScope({ any: ['data:read', 'data:write'] })
     expect(typeof mw).toBe('function')
+  })
+})
+
+// ──────────────────────────────────────────────────────────────────────────────
+// v3: getEvaEnv/EvaEnv eliminados y internos de config no públicos (REQ-SDK-34, REQ-SDK-35)
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('exports eliminados / internos', () => {
+  const barrels = [
+    ['index', () => import('../src/index')],
+    ['hono', () => import('../src/hono/index')],
+    ['generic', () => import('../src/generic/index')],
+  ] as const
+
+  // EvaEnv es un tipo (sin valor en runtime): su ausencia se cubre en configure-eva-auth-types.test-d.ts.
+  it.each(barrels)('getEvaEnv_not_exported: %s', async (_name, load) => {
+    const barrel = await load()
+    expect(Object.keys(barrel)).not.toContain('getEvaEnv')
+  })
+
+  it.each(barrels)('config_error_internals_not_exported: %s', async (_name, load) => {
+    const barrel = await load()
+    const names = Object.keys(barrel)
+    expect(names).not.toContain('isEvaAuthConfigError')
+    expect(names).not.toContain('createEvaAuthConfigError')
   })
 })

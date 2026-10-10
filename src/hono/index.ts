@@ -2,7 +2,7 @@ export { evaAuth, type EvaAuthOptions, type EvaAuthVariables } from './middlewar
 export { evaAuthRoutes, type EvaAuthRoutesOptions } from './auth-routes'
 export { getEvaPayload, getSessionId } from './helpers'
 export { parseDeviceInfo } from './device-info'
-export { configureEvaAuth, type ConfigureEvaAuthOptions, getAuthUrl, getEvaEnv, getCookieDomain } from '../config'
+export { configureEvaAuth, type ConfigureEvaAuthOptions, getAuthUrl, getCookieDomain } from '../config'
 export { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../cookies'
 export { HEADERS, COOKIES, COOKIE_MAX_AGE } from '../constants'
 export type { EvaErrorMessages } from '../error-messages'

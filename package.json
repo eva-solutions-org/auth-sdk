@@ -126,9 +126,6 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "build:local": "cross-env EVA_BUILD_ENV=local tsdown",
-    "build:dev": "cross-env EVA_BUILD_ENV=development tsdown",
-    "build:prod": "cross-env EVA_BUILD_ENV=production tsdown",
     "dev": "tsdown --watch",
     "test": "vitest",
     "test:run": "vitest run",
@@ -136,8 +133,7 @@
     "lint": "oxlint .",
     "fmt": "oxfmt --write src/",
     "type-check": "tsc --noEmit",
-    "prepublishOnly": "pnpm run lint && pnpm run type-check && pnpm run test:run && pnpm run build:prod",
-    "pack:local": "pnpm run build:local && pnpm pack",
+    "prepublishOnly": "pnpm run lint && pnpm run type-check && pnpm run test:run && pnpm run build",
     "changeset": "changeset",
     "version": "changeset version",
     "docs": "typedoc",
@@ -171,7 +167,6 @@
     "@types/node": "^25.8.0",
     "@types/react": "^19.2.14",
     "@typhonjs-typedoc/typedoc-theme-dmt": "^0.4.0",
-    "cross-env": "^10.1.0",
     "expect-type": "^1.3.0",
     "hono": "^4.12.19",
     "oxlint": "^1.65.0",
@@ -190,5 +185,5 @@
     "provenance": true
   },
   "sideEffects": false,
-  "packageManager": "pnpm@11.1.2"
+  "packageManager": "pnpm@11.28.2"
 }

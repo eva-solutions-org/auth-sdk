@@ -4,7 +4,6 @@ import { createTokenPair, createUser } from './helpers/fixtures'
 
 vi.mock('../src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
-  getEvaEnv: () => 'production' as const,
   getCookieDomain: () => undefined,
   configureEvaAuth: vi.fn(),
   getErrorMessages: vi.fn().mockReturnValue(undefined),
@@ -283,5 +282,29 @@ describe('evaAuthRoutes — errorMessages override (T-44)', () => {
 
     expect(res.status).toBe(401)
     expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token de acceso no encontrado' } })
+  })
+})
+
+describe('evaAuthRoutes sin authUrl configurada (REQ-SDK-29)', () => {
+  it('evaAuthRoutes_without_authUrl_returns_500', async () => {
+    // El cliente HTTP real relanza el error de configuración; aquí se simula con su mismo name.
+    mockLogin.mockRejectedValue(Object.assign(new Error('authUrl no configurada'), { name: 'EvaAuthConfigError' }))
+    // Captura lo que llega a Hono: el error de configuración debe propagarse sin ser traducido a otro status.
+    let reached: Error | undefined
+    app.onError((err, c) => {
+      reached = err
+      return c.text('internal', 500)
+    })
+
+    const res = await app.request('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '+51999999999', code: '123456' }),
+    })
+
+    expect(res.status).toBe(500)
+    expect(reached?.name).toBe('EvaAuthConfigError')
+    expect(res.headers.get('set-cookie')).toBeNull()
+    expect(setTokenCookies).not.toHaveBeenCalled()
   })
 })

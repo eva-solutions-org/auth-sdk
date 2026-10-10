@@ -4,8 +4,6 @@ import {
   type EvaErrorMessages,
 } from './error-messages'
 
-export type EvaEnv = 'local' | 'development' | 'production'
-
 // Schema generado dinámicamente desde DEFAULT_ERROR_MESSAGES → keys siempre sincronizadas.
 // .partial() → todas las keys son opcionales. .strict() → rechaza keys desconocidas.
 const ErrorMessagesSchema = z.object(
@@ -15,9 +13,6 @@ const ErrorMessagesSchema = z.object(
     ),
   ) as Record<keyof EvaErrorMessages, z.ZodString>,
 ).partial().strict()
-
-// === Fallback build-time (constante interna, NO exportada) ===
-const BUILD_TIME_ENV: EvaEnv = __EVA_ENV__ as EvaEnv
 
 // === Estado runtime mutable (NO exportado directamente) ===
 type RuntimeConfig = {
@@ -231,14 +226,6 @@ export function getAuthUrl(): string {
  */
 export function getCookieDomain(): string | undefined {
   return _runtimeConfig.cookieDomain
-}
-
-/**
- * Retorna el entorno horneado en build-time (local | development | production).
- * No es afectado por configureEvaAuth.
- */
-export function getEvaEnv(): EvaEnv {
-  return BUILD_TIME_ENV
 }
 
 /**

@@ -3,13 +3,11 @@ import { COOKIES, COOKIE_MAX_AGE } from '../src/constants'
 import { createTokenPair } from './helpers/fixtures'
 
 const mockConfig = vi.hoisted(() => ({
-  env: 'production' as string,
   cookieDomain: undefined as string | undefined,
 }))
 
 vi.mock('../src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
-  getEvaEnv: () => mockConfig.env,
   getCookieDomain: () => mockConfig.cookieDomain,
   configureEvaAuth: vi.fn(),
 }))
@@ -17,7 +15,6 @@ vi.mock('../src/config', () => ({
 import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
 
 beforeEach(() => {
-  mockConfig.env = 'production'
   mockConfig.cookieDomain = undefined
 })
 
@@ -89,23 +86,12 @@ describe('setTokenCookies', () => {
     }
   })
 
-  it('incluye Secure cuando EVA_ENV no es local', () => {
-    mockConfig.env = 'production'
-    const tokens = createTokenPair()
-    const cookies = setTokenCookies(tokens)
+  it('set_cookies_are_secure: ambas cookies llevan Secure, después de HttpOnly', () => {
+    const cookies = setTokenCookies(createTokenPair())
 
     for (const cookie of cookies) {
-      expect(cookie).toContain('Secure')
-    }
-  })
-
-  it('NO incluye Secure cuando EVA_ENV es local', () => {
-    mockConfig.env = 'local'
-    const tokens = createTokenPair()
-    const cookies = setTokenCookies(tokens)
-
-    for (const cookie of cookies) {
-      expect(cookie).not.toContain('Secure')
+      expect(cookie.split('; ')).toContain('Secure')
+      expect(cookie.indexOf('Secure')).toBeGreaterThan(cookie.indexOf('HttpOnly'))
     }
   })
 
@@ -186,6 +172,14 @@ describe('clearTokenCookies', () => {
     expect(refreshCookie).toContain(`${COOKIES.REFRESH_TOKEN}=`)
   })
 
+  it('clear_cookies_are_secure: ambas cookies de borrado llevan Secure', () => {
+    const cookies = clearTokenCookies()
+
+    for (const cookie of cookies) {
+      expect(cookie.split('; ')).toContain('Secure')
+    }
+  })
+
   it('incluye HttpOnly, SameSite=Lax, Path=/', () => {
     const cookies = clearTokenCookies()
 
@@ -229,5 +223,20 @@ describe('clearTokenCookies', () => {
     }
     // El browser NO borra la cookie original que tenía Domain=.miempresa.com — footgun documentado,
     // no mitigado en código (sería over-engineering). Ver docs/configuration.md.
+  })
+})
+
+describe('Secure con authUrl http loopback', () => {
+  // Config REAL (sin el mock del archivo): Secure ya no depende del entorno ni de la URL del Auth Service.
+  it('secure_even_with_http_loopback_authUrl', async () => {
+    vi.resetModules()
+    vi.doUnmock('../src/config')
+    const { configureEvaAuth } = await import('../src/config')
+    const cookies = await import('../src/cookies')
+    configureEvaAuth({ authUrl: 'http://localhost:4000' })
+
+    for (const cookie of [...cookies.setTokenCookies(createTokenPair()), ...cookies.clearTokenCookies()]) {
+      expect(cookie.split('; ')).toContain('Secure')
+    }
   })
 })

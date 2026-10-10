@@ -85,3 +85,28 @@ describe('getJwksKeyFn', () => {
     expect(typeof keyFn).toBe('function')
   })
 })
+
+describe('getJwksKeyFn — URL derivada de la authUrl configurada (config real)', () => {
+  // Sin el mock de constants: getAuthServiceUrl lee la authUrl real de configureEvaAuth.
+  async function requestedJwksUrl(authUrl: string): Promise<string> {
+    vi.resetModules()
+    vi.doUnmock('../src/constants')
+    const { configureEvaAuth } = await import('../src/config')
+    const { getJwksKeyFn } = await import('../src/jwks')
+    const { createRemoteJWKSet } = await import('jose')
+    vi.mocked(createRemoteJWKSet).mockReturnValue(vi.fn() as any)
+
+    configureEvaAuth({ authUrl })
+    getJwksKeyFn()
+
+    return (vi.mocked(createRemoteJWKSet).mock.calls[0][0] as URL).href
+  }
+
+  it('jwks_url_from_authUrl', async () => {
+    expect(await requestedJwksUrl('https://a.com')).toBe('https://a.com/.well-known/jwks.json')
+  })
+
+  it('jwks_url_keeps_authUrl_path', async () => {
+    expect(await requestedJwksUrl('https://a.com/auth')).toBe('https://a.com/auth/.well-known/jwks.json')
+  })
+})

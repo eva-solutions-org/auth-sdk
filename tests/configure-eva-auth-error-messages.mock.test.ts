@@ -7,7 +7,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 beforeEach(() => {
   vi.resetModules()
   vi.unstubAllEnvs()
-  vi.stubGlobal('__EVA_ENV__', 'production')
 })
 
 afterEach(() => {
