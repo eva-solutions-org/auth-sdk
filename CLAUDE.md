@@ -12,7 +12,7 @@ Package manager: `pnpm`. Run scripts as `pnpm run <script>` (`version` and `docs
 | `dev` | Build in watch mode |
 | `test` / `test:run` / `test:types` | Vitest watch / single run / type tests only |
 | `lint` | oxlint |
-| `fmt` | oxfmt (writes `src/`) |
+| `fmt` / `fmt:check` | oxfmt on `src/` (write / check only) |
 | `type-check` | `tsc --noEmit` |
 | `changeset` / `version` | Add a changeset / apply version bumps |
 | `docs` | Generate TypeDoc into `docs-site/` |
