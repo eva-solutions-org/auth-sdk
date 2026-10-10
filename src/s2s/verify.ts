@@ -10,9 +10,16 @@
  * para que el entry point ./s2s sea completamente tree-shakeable.
  */
 
+import { S2SMalformedQueryError } from './errors'
 import { buildS2SCanonicalString } from './sign'
 import { S2S_NONCE_REGEX, S2S_TIMESTAMP_WINDOW_SECONDS } from './constants'
-import type { S2SCanonicalParts, S2SVerifyError, S2SVerifyOptions, S2SVerifyReason, S2SVerifyResult } from './types'
+import type {
+  S2SCanonicalParts,
+  S2SVerifyError,
+  S2SVerifyOptions,
+  S2SVerifyReason,
+  S2SVerifyResult,
+} from './types'
 
 // ---------------------------------------------------------------------------
 // Helpers criptográficos locales (D-12 LOCKED — duplicado de sign.ts)
@@ -58,7 +65,10 @@ const DUMMY_HMAC_KEY_HEX = '00'.repeat(32)
 /** Regex: timestamp must be 1–11 decimal digits (unsigned Unix epoch in seconds). */
 const TIMESTAMP_REGEX = /^\d{1,11}$/
 
-/** Regex: signature must be `sha256=` followed by exactly 64 lowercase hex chars. */
+/**
+ * Regex: signature must be `sha256=` followed by exactly 64 hex chars. Case-insensitive on
+ * purpose (`/i`): the verifier accepts upper or lower case; signers always emit lowercase.
+ */
 const SIGNATURE_REGEX = /^sha256=([0-9a-f]{64})$/i
 
 /** Human-readable messages for each reason. */
@@ -105,6 +115,14 @@ function okResult<T>(data: T): S2SVerifyResult<T> {
  *   the given clientId, or null if unknown. Return null — do NOT throw — for unknown clients.
  * @param opts.timestampWindowSeconds - Override timestamp window (default: 120 s).
  *
+ * @throws If `secretStore` returns a non-null value that is not valid hex (empty, odd length
+ *   or non-hex chars). This is a server misconfiguration, so it is NOT mapped to a 401; the
+ *   error message never contains the secret.
+ *
+ * @remarks A query string with malformed percent-encoding (e.g. `?a=%ZZ`) cannot be
+ *   canonicalized; it fails closed with `signature_invalid`, following the same path as an
+ *   invalid signature (secret lookup and HMAC included, `replayCache` not touched).
+ *
  * @returns `S2SVerifyResult<{ clientId: string }>` — discriminated union.
  *   `ok: true`  → `data.clientId` is the authenticated service client slug.
  *   `ok: false` → `error.reason` narrows the failure; `error.message` is human-readable.
@@ -136,7 +154,11 @@ export async function verifyS2SRequest(
   request: Request,
   opts: S2SVerifyOptions,
 ): Promise<S2SVerifyResult<{ clientId: string }>> {
-  const { secretStore, timestampWindowSeconds = S2S_TIMESTAMP_WINDOW_SECONDS, replayCache } = opts
+  const {
+    secretStore,
+    timestampWindowSeconds = S2S_TIMESTAMP_WINDOW_SECONDS,
+    replayCache,
+  } = opts
 
   // PASO PRE — i18n merge (D12): spread natural respeta '' como override explícito
   const effectiveMessages = { ...VERIFY_MESSAGES, ...opts.messages }
@@ -147,7 +169,12 @@ export async function verifyS2SRequest(
   const nonce = request.headers.get('x-eva-nonce')
   const signatureHeader = request.headers.get('x-eva-signature')
 
-  if (clientId === null || timestampStr === null || nonce === null || signatureHeader === null) {
+  if (
+    clientId === null ||
+    timestampStr === null ||
+    nonce === null ||
+    signatureHeader === null
+  ) {
     return verifyErr('header_missing', effectiveMessages)
   }
 
@@ -197,16 +224,32 @@ export async function verifyS2SRequest(
     clientId, // D-02: extracted from header, bound into canonical
     bodyBytes,
   }
-  const canonical = await buildS2SCanonicalString(parts)
+  // Un query con percent-encoding malformado (`%ZZ`) no se puede canonicalizar. Falla cerrado
+  // como `signature_invalid` (401), pero sigue el mismo camino que una firma inválida:
+  // consulta el secreto y ejecuta el HMAC (sobre un canonical vacío, cuyo resultado se descarta).
+  let canonical = ''
+  let canonicalizable = true
+  try {
+    canonical = await buildS2SCanonicalString(parts)
+  } catch (err) {
+    // Solo la malformación del query es un 401; cualquier otro fallo (p. ej. crypto) se relanza.
+    if (!(err instanceof S2SMalformedQueryError)) throw err
+    canonicalizable = false
+  }
   const canonicalBytes = encoder.encode(canonical)
 
   // PASO 7 — Secret lookup (timing-safe: always proceed to HMAC regardless of result)
   const secretHex = await secretStore(clientId)
   const keyHex = secretHex ?? DUMMY_HMAC_KEY_HEX
   const keyBytes = hexToBytes(keyHex)
-  // keyHex is always valid hex: either from secretStore (caller contract) or DUMMY_HMAC_KEY_HEX
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  const keyBytesNN = keyBytes!
+  if (keyBytes === null) {
+    // Misconfiguration of the caller (the contract requires hex): fail loudly instead of
+    // answering 401. The message never includes the secret or the (attacker-supplied) clientId.
+    throw new Error(
+      '[eva-auth-sdk] s2s: secretStore devolvió un secreto con formato inválido (se requiere hex, longitud par)',
+    )
+  }
+  const keyBytesNN = keyBytes
 
   // PASO 8 — HMAC verify — ALWAYS reaches this point (timing-safe invariant AC-10)
   const cryptoKey = await crypto.subtle.importKey(
@@ -228,7 +271,7 @@ export async function verifyS2SRequest(
     // Discard verify result — client_unknown takes precedence for timing-safe path
     return verifyErr('client_unknown', effectiveMessages)
   }
-  if (!verified) {
+  if (!verified || !canonicalizable) {
     return verifyErr('signature_invalid', effectiveMessages)
   }
 

@@ -45,13 +45,24 @@ const encoder = new TextEncoder()
 export type S2SClient = {
   getUser(userId: string): Promise<Result<S2SGetUserResult>>
   batchUsers(input: S2SBatchUsersInput): Promise<Result<S2SBatchUsersResult>>
-  createWebhookSubscription(input: CreateWebhookSubscriptionInput): Promise<Result<WebhookSubscriptionWithSecret>>
-  listWebhookSubscriptions(): Promise<Result<{ subscriptions: WebhookSubscription[] }>>
+  createWebhookSubscription(
+    input: CreateWebhookSubscriptionInput,
+  ): Promise<Result<WebhookSubscriptionWithSecret>>
+  listWebhookSubscriptions(): Promise<
+    Result<{ subscriptions: WebhookSubscription[] }>
+  >
   getWebhookSubscription(id: string): Promise<Result<WebhookSubscription>>
-  updateWebhookSubscription(id: string, input: UpdateWebhookSubscriptionInput): Promise<Result<WebhookSubscription>>
+  updateWebhookSubscription(
+    id: string,
+    input: UpdateWebhookSubscriptionInput,
+  ): Promise<Result<WebhookSubscription>>
   deleteWebhookSubscription(id: string): Promise<Result<void>>
-  rotateWebhookSubscriptionSecret(id: string): Promise<Result<RotateWebhookSecretResult>>
-  listWebhookDeliveries(query?: ListWebhookDeliveriesQuery): Promise<Result<{ deliveries: WebhookDelivery[] }>>
+  rotateWebhookSubscriptionSecret(
+    id: string,
+  ): Promise<Result<RotateWebhookSecretResult>>
+  listWebhookDeliveries(
+    query?: ListWebhookDeliveriesQuery,
+  ): Promise<Result<{ deliveries: WebhookDelivery[] }>>
 }
 
 // ---------------------------------------------------------------------------
@@ -62,14 +73,48 @@ export type S2SClient = {
  * Construye el query string a partir de un objeto de parámetros.
  * Omite valores undefined.
  */
-function buildQueryString(params: Record<string, string | number | undefined>): string {
+function buildQueryString(
+  params: Record<string, string | number | undefined>,
+): string {
   const parts: string[] = []
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) {
-      parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+      parts.push(
+        `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`,
+      )
     }
   }
   return parts.join('&')
+}
+
+/**
+ * Valida y codifica un id para usarlo como UN segmento del path. Retorna `null` si el id es
+ * vacío, `.` o `..` (crudo o percent-decodificado, `%2e` en cualquier caso): como el
+ * cliente firma el pathname normalizado, un id así redirigiría la request firmada a otro
+ * endpoint. `encodeURIComponent` solo no basta: no codifica `.`.
+ */
+function encodePathSegment(id: string): string | null {
+  const isDotSegment = (value: string) => value === '.' || value === '..'
+  let decoded = id
+  try {
+    decoded = decodeURIComponent(id)
+  } catch {
+    // percent-encoding malformado: no decodifica a nada peligroso; se codifica tal cual.
+  }
+  if (id === '' || isDotSegment(id) || isDotSegment(decoded)) return null
+  return encodeURIComponent(id)
+}
+
+function invalidIdResult(method: string): Result<never> {
+  return {
+    ok: false,
+    error: {
+      kind: 'sdk',
+      reason: 'malformed',
+      message: `${method}: id inválido (no puede ser vacío, "." ni "..")`,
+      status: 0,
+    },
+  }
 }
 
 /**
@@ -91,20 +136,25 @@ async function s2sFetch<T>({
 }): Promise<Result<T>> {
   try {
     const bodyBytes: Uint8Array =
-      body !== undefined ? encoder.encode(JSON.stringify(body)) : new Uint8Array(0)
-
-    const authHeaders = await signS2SHeaders({
-      method,
-      path: pathname,
-      rawQuery,
-      bodyBytes,
-      clientId: config.clientId,
-      secretHex: config.secretHex,
-    })
+      body !== undefined
+        ? encoder.encode(JSON.stringify(body))
+        : new Uint8Array(0)
 
     const url = rawQuery
       ? `${config.baseUrl}${pathname}?${rawQuery}`
       : `${config.baseUrl}${pathname}`
+
+    // Se firma el pathname y el query de la URL FINAL (incluido el prefijo de `baseUrl`,
+    // p. ej. `https://host/auth`), que es lo que el verificador lee en `request.url`.
+    const target = new URL(url)
+    const authHeaders = await signS2SHeaders({
+      method,
+      path: target.pathname,
+      rawQuery: target.search.slice(1),
+      bodyBytes,
+      clientId: config.clientId,
+      secretHex: config.secretHex,
+    })
 
     const headers: Record<string, string> = {
       'content-type': 'application/json',
@@ -167,10 +217,12 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
   validateHttpsUrl(config.baseUrl, 'S2SClientConfig.baseUrl')
   return {
     async getUser(userId: string): Promise<Result<S2SGetUserResult>> {
+      const segment = encodePathSegment(userId)
+      if (segment === null) return invalidIdResult('getUser')
       return s2sFetch<S2SGetUserResult>({
         config,
         method: 'GET',
-        pathname: `/internal/users/${userId}`,
+        pathname: `/internal/users/${segment}`,
       })
     },
 
@@ -181,7 +233,9 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
      * @param input.ids - Máximo `USERS_BATCH_MAX_IDS` (100) IDs por llamada.
      *   Si se superan, retorna error sin hacer fetch al API.
      */
-    async batchUsers(input: S2SBatchUsersInput): Promise<Result<S2SBatchUsersResult>> {
+    async batchUsers(
+      input: S2SBatchUsersInput,
+    ): Promise<Result<S2SBatchUsersResult>> {
       if (input.ids.length > USERS_BATCH_MAX_IDS) {
         return {
           ok: false,
@@ -212,7 +266,9 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       })
     },
 
-    async listWebhookSubscriptions(): Promise<Result<{ subscriptions: WebhookSubscription[] }>> {
+    async listWebhookSubscriptions(): Promise<
+      Result<{ subscriptions: WebhookSubscription[] }>
+    > {
       return s2sFetch<{ subscriptions: WebhookSubscription[] }>({
         config,
         method: 'GET',
@@ -220,11 +276,15 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       })
     },
 
-    async getWebhookSubscription(id: string): Promise<Result<WebhookSubscription>> {
+    async getWebhookSubscription(
+      id: string,
+    ): Promise<Result<WebhookSubscription>> {
+      const segment = encodePathSegment(id)
+      if (segment === null) return invalidIdResult('getWebhookSubscription')
       return s2sFetch<WebhookSubscription>({
         config,
         method: 'GET',
-        pathname: `/internal/webhooks/subscriptions/${id}`,
+        pathname: `/internal/webhooks/subscriptions/${segment}`,
       })
     },
 
@@ -232,34 +292,46 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       id: string,
       input: UpdateWebhookSubscriptionInput,
     ): Promise<Result<WebhookSubscription>> {
+      const segment = encodePathSegment(id)
+      if (segment === null) return invalidIdResult('updateWebhookSubscription')
       return s2sFetch<WebhookSubscription>({
         config,
         method: 'PATCH',
-        pathname: `/internal/webhooks/subscriptions/${id}`,
+        pathname: `/internal/webhooks/subscriptions/${segment}`,
         body: input,
       })
     },
 
     async deleteWebhookSubscription(id: string): Promise<Result<void>> {
+      const segment = encodePathSegment(id)
+      if (segment === null) return invalidIdResult('deleteWebhookSubscription')
       return s2sFetch<void>({
         config,
         method: 'DELETE',
-        pathname: `/internal/webhooks/subscriptions/${id}`,
+        pathname: `/internal/webhooks/subscriptions/${segment}`,
       })
     },
 
-    async rotateWebhookSubscriptionSecret(id: string): Promise<Result<RotateWebhookSecretResult>> {
+    async rotateWebhookSubscriptionSecret(
+      id: string,
+    ): Promise<Result<RotateWebhookSecretResult>> {
+      const segment = encodePathSegment(id)
+      if (segment === null)
+        return invalidIdResult('rotateWebhookSubscriptionSecret')
       return s2sFetch<RotateWebhookSecretResult>({
         config,
         method: 'POST',
-        pathname: `/internal/webhooks/subscriptions/${id}/rotate-secret`,
+        pathname: `/internal/webhooks/subscriptions/${segment}/rotate-secret`,
       })
     },
 
     async listWebhookDeliveries(
       query?: ListWebhookDeliveriesQuery,
     ): Promise<Result<{ deliveries: WebhookDelivery[] }>> {
-      if (query?.limit !== undefined && (query.limit < 1 || query.limit > 100)) {
+      if (
+        query?.limit !== undefined &&
+        (query.limit < 1 || query.limit > 100)
+      ) {
         return {
           ok: false,
           error: {
@@ -281,7 +353,9 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
           },
         }
       }
-      const rawQuery = query ? buildQueryString(query as Record<string, string | number | undefined>) : ''
+      const rawQuery = query
+        ? buildQueryString(query as Record<string, string | number | undefined>)
+        : ''
       return s2sFetch<{ deliveries: WebhookDelivery[] }>({
         config,
         method: 'GET',

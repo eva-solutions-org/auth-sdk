@@ -14,6 +14,7 @@
  */
 
 import { S2S_NONCE_REGEX } from './constants'
+import { S2SMalformedQueryError } from './errors'
 import type { S2SCanonicalParts } from './types'
 
 // ---------------------------------------------------------------------------
@@ -96,7 +97,10 @@ function canonicalizeQuery(rawQuery: string): string {
   })
 
   return pairs
-    .map(({ name, value }) => `${uriEncodeRFC3986(name)}=${uriEncodeRFC3986(value)}`)
+    .map(
+      ({ name, value }) =>
+        `${uriEncodeRFC3986(name)}=${uriEncodeRFC3986(value)}`,
+    )
     .join('&')
 }
 
@@ -129,19 +133,39 @@ export function generateS2SNonce(): string {
  *
  * @param parts - Componentes del request a firmar.
  */
-export async function buildS2SCanonicalString(parts: S2SCanonicalParts): Promise<string> {
+export async function buildS2SCanonicalString(
+  parts: S2SCanonicalParts,
+): Promise<string> {
   const METHOD = parts.method.toUpperCase()
   const PATH = parts.path
-  const CANONICAL_QUERY = canonicalizeQuery(parts.rawQuery)
   const TIMESTAMP = parts.timestamp
   const NONCE = parts.nonce
   const CLIENT_ID = parts.clientId
+  // El body se hashea ANTES de canonicalizar el query: si el query es inválido, el
+  // verificador ya hizo el mismo trabajo que en una petición válida (tiempo comparable).
   const BODY_HASH =
     parts.bodyBytes.length === 0
       ? EMPTY_BODY_SHA256_HEX
       : await sha256Hex(parts.bodyBytes)
+  let CANONICAL_QUERY: string
+  try {
+    CANONICAL_QUERY = canonicalizeQuery(parts.rawQuery)
+  } catch (err) {
+    if (err instanceof URIError) {
+      throw new S2SMalformedQueryError()
+    }
+    throw err
+  }
 
-  return [METHOD, PATH, CANONICAL_QUERY, TIMESTAMP, NONCE, CLIENT_ID, BODY_HASH].join('\n')
+  return [
+    METHOD,
+    PATH,
+    CANONICAL_QUERY,
+    TIMESTAMP,
+    NONCE,
+    CLIENT_ID,
+    BODY_HASH,
+  ].join('\n')
 }
 
 /**
@@ -159,14 +183,18 @@ export async function signS2SRequest({
   secretHex: string
 }): Promise<string> {
   if (!S2S_NONCE_REGEX.test(parts.nonce)) {
-    throw new Error('[eva-auth-sdk] s2s: nonce inválido (se requieren 32 hex en minúsculas)')
+    throw new Error(
+      '[eva-auth-sdk] s2s: nonce inválido (se requieren 32 hex en minúsculas)',
+    )
   }
 
   const canonical = await buildS2SCanonicalString(parts)
 
   const keyBytes = hexToBytes(secretHex)
   if (keyBytes === null) {
-    throw new Error('[eva-auth-sdk] s2s: secretHex inválido (formato hex requerido)')
+    throw new Error(
+      '[eva-auth-sdk] s2s: secretHex inválido (formato hex requerido)',
+    )
   }
 
   const cryptoKey = await crypto.subtle.importKey(

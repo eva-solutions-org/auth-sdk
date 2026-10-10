@@ -752,6 +752,10 @@ const rotated = await s2s.rotateWebhookSubscriptionSecret('subscription-id')
 const deliveries = await s2s.listWebhookDeliveries({ status: 'failed', limit: 20 })
 ```
 
+`baseUrl` puede llevar un prefijo de path (por ejemplo `https://host/auth`). El cliente firma el pathname de la URL final (`/auth/internal/users/...`), que es el que lee el verificador en `request.url`. Si un proxy quita ese prefijo antes de llegar al verificador, la firma falla con `signature_invalid` (ver [migration.md](migration.md), sección 7).
+
+Los ids que recibe el cliente (`getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription`, `rotateWebhookSubscriptionSecret`) se validan y se codifican como un solo segmento de path: un id vacío, `.` o `..` (crudo o percent-decodificado) devuelve `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }` sin hacer fetch, y el resto pasa por `encodeURIComponent` (`a/b` → `a%2Fb`). Los UUID no cambian.
+
 ### Firma HMAC automática
 
 El cliente genera automáticamente los headers de autenticación S2S (cuatro, todos obligatorios):
@@ -818,8 +822,12 @@ Orden de las comprobaciones: headers presentes → formato y ventana del timesta
 | `timestamp_invalid` / `timestamp_expired` | Timestamp no entero / fuera de ±`timestampWindowSeconds` (default 120) |
 | `nonce_malformed` | `x-eva-nonce` no cumple `^[0-9a-f]{32}$` (mayúsculas incluidas). Se decide antes de consultar el secreto |
 | `signature_malformed` | `x-eva-signature` no es `sha256=<hex64>` |
-| `client_unknown` / `signature_invalid` | Cliente desconocido / HMAC no coincide (mismo mensaje: "Authentication failed") |
+| `client_unknown` / `signature_invalid` | Cliente desconocido / HMAC no coincide (mismo mensaje: "Authentication failed"). `signature_invalid` también cubre un query con percent-encoding malformado (por ejemplo `?a=%ZZ`), que no se puede canonicalizar |
 | `replay_detected` | La clave `${clientId}:${nonce}` ya fue vista (solo con `replayCache`) |
+
+Un query malformado sigue el mismo camino que una firma inválida (consulta `secretStore` y ejecuta el HMAC; no toca `replayCache`) y responde 401, no 500. Del lado firmante, `signS2SRequest` / `buildS2SCanonicalString` lanzan `[eva-auth-sdk] s2s: rawQuery inválido` si el `rawQuery` está malformado.
+
+**`secretStore` mal configurado**: si devuelve un valor no nulo que no es hex (vacío, longitud impar o caracteres no hex), `verifyS2SRequest` lanza un `Error` explícito (con `s2sAuth`, HTTP 500) en vez de responder 401. Es un error de configuración del servidor; el mensaje no incluye el secreto.
 
 **`replayCache`**: `setIfAbsent(key, ttlSeconds)` debe ser atómico (por ejemplo Redis `SET key 1 NX EX ttl`). La clave que arma el SDK es `${clientId}:${nonce}` y el TTL es `2 * timestampWindowSeconds + 1` (241 s con el default): la hora se trunca a segundos y la ventana es inclusiva (±W), así que un request firmado sigue siendo aceptable durante 2W + 1 segundos y la clave debe sobrevivirlo. Compártelo entre todas las instancias que comparten el par clientId/secreto. El chequeo ocurre después de verificar el HMAC.
 

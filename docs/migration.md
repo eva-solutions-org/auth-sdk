@@ -138,6 +138,11 @@ Las firmas S2S ahora incluyen un nonce por request. No hay modo de compatibilida
 
 **Si usas `createS2SClient`**: no hagas nada, ya envía el nonce.
 
+**Cambios de `createS2SClient` que sí pueden afectarte:**
+
+- **Prefijo de `baseUrl` en la firma.** El cliente firma el pathname de la URL final, incluido el prefijo de `baseUrl` (por ejemplo `/auth/internal/users/...`). Si entre el cliente y el verificador hay un proxy o gateway que **quita** ese prefijo, el verificador verá `/internal/users/...`, la firma no coincidirá y responderá `signature_invalid`. Opciones: que el proxy conserve el prefijo, o usar un `baseUrl` sin prefijo y enrutar por host.
+- **Ids validados y codificados.** `getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription` y `rotateWebhookSubscriptionSecret` devuelven `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }`, sin hacer fetch, si el id es vacío, `.` o `..` (crudo o percent-decodificado, `%2e` en cualquier caso). Cualquier otro id pasa por `encodeURIComponent`: `a/b` viaja como `a%2Fb`, `a?b` como `a%3Fb`. Los UUID no cambian.
+
 **Si firmas a mano** con `signS2SRequest` y armas los headers tú:
 
 ```ts

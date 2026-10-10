@@ -32,6 +32,10 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es/1.0.0/). Este
 
 - **`clearJwksCache` eliminado** — el export `clearJwksCache(): void` ya no existe. Con la URL del Auth Service siendo build-time pura (ADR-013), no hay caso de uso válido para invalidar el cache manualmente.
 
+### Documentation correction
+
+- **Nota (corrección de documentación)** — 2.0.0 ya incluía el lado servidor de S2S (`verifyS2SRequest`, el middleware `s2sAuth`, `requireScope` y la opción `replayCache`), que nunca se listó en este changelog.
+
 ### Migration Guide
 
 #### Si usabas `configureEvaAuth({ authUrl })`
