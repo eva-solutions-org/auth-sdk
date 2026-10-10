@@ -58,7 +58,9 @@ const getCodeRoute = createRoute({
   responses: {
     200: {
       description: 'Código enviado al teléfono',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     400: {
       description: 'Teléfono inválido o JSON malformado',
@@ -119,7 +121,9 @@ const logoutRoute = createRoute({
   responses: {
     200: {
       description: 'Logout exitoso',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     401: {
       description: 'Refresh token ausente',
@@ -136,7 +140,9 @@ const getMeRoute = createRoute({
   responses: {
     200: {
       description: 'Usuario',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     401: {
       description: 'Access token ausente',
@@ -159,7 +165,9 @@ const updateMeRoute = createRoute({
   responses: {
     200: {
       description: 'Usuario actualizado',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     400: {
       description: 'Body inválido',
@@ -180,7 +188,9 @@ const deleteMeRoute = createRoute({
   responses: {
     200: {
       description: 'Cuenta eliminada',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     401: {
       description: 'Access token ausente',
@@ -197,7 +207,9 @@ const getEmpresasRoute = createRoute({
   responses: {
     200: {
       description: 'Lista de empresas',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     401: {
       description: 'Access token ausente',
@@ -214,7 +226,9 @@ const getSessionsRoute = createRoute({
   responses: {
     200: {
       description: 'Lista de sesiones',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     401: {
       description: 'Access token ausente',
@@ -231,7 +245,9 @@ const deleteSessionRoute = createRoute({
   responses: {
     200: {
       description: 'Sesión cerrada',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     400: {
       description: 'ID de sesión inválido',
@@ -252,7 +268,9 @@ const deleteAllSessionsRoute = createRoute({
   responses: {
     200: {
       description: 'Todas las sesiones cerradas',
-      content: { 'application/json': { schema: z.object({ data: z.unknown() }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
     },
     401: {
       description: 'Refresh token ausente',
@@ -271,7 +289,9 @@ const deleteAllSessionsRoute = createRoute({
  * Si el parent es `new Hono()`, los paths NO aparecerán en el documento `/doc`.
  * Ver honojs/middleware#952 y docs/configuration.md sección "Variante OpenAPI".
  */
-export function evaAuthOpenAPIRoutes(opts: EvaAuthOpenAPIRoutesOptions = {}): OpenAPIHono {
+export function evaAuthOpenAPIRoutes(
+  opts: EvaAuthOpenAPIRoutesOptions = {},
+): OpenAPIHono {
   const app = new OpenAPIHono()
   const h = buildAuthHandlers(opts)
 
@@ -281,17 +301,46 @@ export function evaAuthOpenAPIRoutes(opts: EvaAuthOpenAPIRoutesOptions = {}): Op
   // es una type assertion específica (no as never — mantiene el tipo target concreto).
   // Justificación: el factory pattern compartido entre variante plana y OpenAPI requiere
   // handlers genéricos; la inference TS no atraviesa el indirection del factory.
-  app.openapi(getCodeRoute, h.getCode as unknown as RouteHandler<typeof getCodeRoute>)
+  app.openapi(
+    getCodeRoute,
+    h.getCode as unknown as RouteHandler<typeof getCodeRoute>,
+  )
   app.openapi(loginRoute, h.login as unknown as RouteHandler<typeof loginRoute>)
-  app.openapi(refreshRoute, h.refresh as unknown as RouteHandler<typeof refreshRoute>)
-  app.openapi(logoutRoute, h.logout as unknown as RouteHandler<typeof logoutRoute>)
+  app.openapi(
+    refreshRoute,
+    h.refresh as unknown as RouteHandler<typeof refreshRoute>,
+  )
+  app.openapi(
+    logoutRoute,
+    h.logout as unknown as RouteHandler<typeof logoutRoute>,
+  )
   app.openapi(getMeRoute, h.getMe as unknown as RouteHandler<typeof getMeRoute>)
-  app.openapi(updateMeRoute, h.updateMe as unknown as RouteHandler<typeof updateMeRoute>)
-  app.openapi(deleteMeRoute, h.deleteMe as unknown as RouteHandler<typeof deleteMeRoute>)
-  app.openapi(getEmpresasRoute, h.getEmpresas as unknown as RouteHandler<typeof getEmpresasRoute>)
-  app.openapi(getSessionsRoute, h.getSessions as unknown as RouteHandler<typeof getSessionsRoute>)
-  app.openapi(deleteSessionRoute, h.deleteSession as unknown as RouteHandler<typeof deleteSessionRoute>)
-  app.openapi(deleteAllSessionsRoute, h.deleteAllSessions as unknown as RouteHandler<typeof deleteAllSessionsRoute>)
+  app.openapi(
+    updateMeRoute,
+    h.updateMe as unknown as RouteHandler<typeof updateMeRoute>,
+  )
+  app.openapi(
+    deleteMeRoute,
+    h.deleteMe as unknown as RouteHandler<typeof deleteMeRoute>,
+  )
+  app.openapi(
+    getEmpresasRoute,
+    h.getEmpresas as unknown as RouteHandler<typeof getEmpresasRoute>,
+  )
+  app.openapi(
+    getSessionsRoute,
+    h.getSessions as unknown as RouteHandler<typeof getSessionsRoute>,
+  )
+  app.openapi(
+    deleteSessionRoute,
+    h.deleteSession as unknown as RouteHandler<typeof deleteSessionRoute>,
+  )
+  app.openapi(
+    deleteAllSessionsRoute,
+    h.deleteAllSessions as unknown as RouteHandler<
+      typeof deleteAllSessionsRoute
+    >,
+  )
 
   return app
 }

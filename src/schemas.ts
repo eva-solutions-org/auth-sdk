@@ -23,10 +23,9 @@ export const LoginSchema = z.object({
  * Schema para PATCH /me — record no vacío.
  * Validación extra con .refine() para rechazar body vacío.
  */
-export const UpdateUserSchema = z.record(z.string(), z.unknown()).refine(
-  obj => Object.keys(obj).length > 0,
-  'Cuerpo de actualización vacío',
-)
+export const UpdateUserSchema = z
+  .record(z.string(), z.unknown())
+  .refine((obj) => Object.keys(obj).length > 0, 'Cuerpo de actualización vacío')
 
 // === Response schemas ===
 
@@ -77,10 +76,15 @@ export function parseErrorResponse(status: number, body: unknown): EvaError {
     'error' in body &&
     typeof (body as Record<string, unknown>).error === 'object' &&
     (body as Record<string, unknown>).error !== null &&
-    typeof ((body as Record<string, unknown>).error as Record<string, unknown>).code === 'string' &&
-    typeof ((body as Record<string, unknown>).error as Record<string, unknown>).message === 'string'
+    typeof ((body as Record<string, unknown>).error as Record<string, unknown>)
+      .code === 'string' &&
+    typeof ((body as Record<string, unknown>).error as Record<string, unknown>)
+      .message === 'string'
   ) {
-    const err = (body as Record<string, unknown>).error as { code: string; message: string }
+    const err = (body as Record<string, unknown>).error as {
+      code: string
+      message: string
+    }
     return {
       kind: 'api',
       code: err.code,

@@ -46,24 +46,26 @@ export interface EvaErrorMessages {
  * Defaults regression-locked: strings exactos que el SDK escribe hoy.
  * Frozen para prevenir mutación accidental entre tests/requests.
  */
-export const DEFAULT_ERROR_MESSAGES: Readonly<EvaErrorMessages> = Object.freeze({
-  authRequired: 'Autenticación requerida',
-  tokenInvalid: 'Tokens no válidos',
-  tokenExpired: 'Token expirado',
-  tokenClaimsInvalid: 'Claims del token inválidas',
-  tokenNotFound: 'Token de acceso no encontrado',
-  verifyFailedAfterRefresh: 'Verificación fallida tras refresh: {0}',
-  refreshNoNewTokens: 'El refresco no retornó nuevos tokens',
-  refreshFailed: 'Falló el refresco de tokens',
-  loginFailed: 'Teléfono o código inválido',
-  registrationFailed: 'Registro fallido',
-  logoutFailed: 'Logout fallido',
-  invalidJsonBody: 'JSON inválido en el body',
-  invalidPhone: 'Teléfono inválido',
-  invalidUpdateBody: 'Cuerpo de actualización vacío',
-  sessionInvalid: 'ID de sesión inválido',
-  internalError: 'Error interno',
-})
+export const DEFAULT_ERROR_MESSAGES: Readonly<EvaErrorMessages> = Object.freeze(
+  {
+    authRequired: 'Autenticación requerida',
+    tokenInvalid: 'Tokens no válidos',
+    tokenExpired: 'Token expirado',
+    tokenClaimsInvalid: 'Claims del token inválidas',
+    tokenNotFound: 'Token de acceso no encontrado',
+    verifyFailedAfterRefresh: 'Verificación fallida tras refresh: {0}',
+    refreshNoNewTokens: 'El refresco no retornó nuevos tokens',
+    refreshFailed: 'Falló el refresco de tokens',
+    loginFailed: 'Teléfono o código inválido',
+    registrationFailed: 'Registro fallido',
+    logoutFailed: 'Logout fallido',
+    invalidJsonBody: 'JSON inválido en el body',
+    invalidPhone: 'Teléfono inválido',
+    invalidUpdateBody: 'Cuerpo de actualización vacío',
+    sessionInvalid: 'ID de sesión inválido',
+    internalError: 'Error interno',
+  },
+)
 
 /**
  * Resuelve los mensajes de error con precedencia: local > global > default.

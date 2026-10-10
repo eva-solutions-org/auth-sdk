@@ -77,9 +77,7 @@ export type EvaError = EvaApiError | EvaSdkError
  * Resultado de operaciones asincrónicas del SDK.
  * D-10 LOCKED: status vive SOLO en error.status (no duplicado en el Result top-level).
  */
-export type Result<T> =
-  | { ok: true; data: T }
-  | { ok: false; error: EvaError }
+export type Result<T> = { ok: true; data: T } | { ok: false; error: EvaError }
 
 export type DeviceInfo = {
   deviceType: string
@@ -92,5 +90,3 @@ export type TokenPair = {
   accessToken: string
   refreshToken: string
 }
-
-

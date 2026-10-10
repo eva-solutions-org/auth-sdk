@@ -75,22 +75,30 @@ export function matchSdkReason<TReason extends SdkErrorReason>(
 // ---------------------------------------------------------------------------
 
 /** El recurso solicitado no existe (HTTP 404). */
-export function isNotFound(err: EvaError): err is EvaApiError & { code: 'not_found' } {
+export function isNotFound(
+  err: EvaError,
+): err is EvaApiError & { code: 'not_found' } {
   return matchError(err, ERROR_CODES.not_found)
 }
 
 /** Token o credenciales inválidos (HTTP 401). */
-export function isUnauthorized(err: EvaError): err is EvaApiError & { code: 'unauthorized' } {
+export function isUnauthorized(
+  err: EvaError,
+): err is EvaApiError & { code: 'unauthorized' } {
   return matchError(err, ERROR_CODES.unauthorized)
 }
 
 /** Acción no permitida para el usuario autenticado (HTTP 403). */
-export function isForbidden(err: EvaError): err is EvaApiError & { code: 'forbidden' } {
+export function isForbidden(
+  err: EvaError,
+): err is EvaApiError & { code: 'forbidden' } {
   return matchError(err, ERROR_CODES.forbidden)
 }
 
 /** El recurso ya existe o hay conflicto de estado (HTTP 409). */
-export function isConflict(err: EvaError): err is EvaApiError & { code: 'conflict' } {
+export function isConflict(
+  err: EvaError,
+): err is EvaApiError & { code: 'conflict' } {
   return matchError(err, ERROR_CODES.conflict)
 }
 
@@ -102,7 +110,9 @@ export function isValidationError(
 }
 
 /** Límite de requests excedido (HTTP 429). */
-export function isRateLimited(err: EvaError): err is EvaApiError & { code: 'rate_limited' } {
+export function isRateLimited(
+  err: EvaError,
+): err is EvaApiError & { code: 'rate_limited' } {
   return matchError(err, ERROR_CODES.rate_limited)
 }
 
@@ -119,12 +129,16 @@ export function isUnprocessableEntity(
 }
 
 /** Request malformada o con parámetros inválidos (HTTP 400). */
-export function isBadRequest(err: EvaError): err is EvaApiError & { code: 'bad_request' } {
+export function isBadRequest(
+  err: EvaError,
+): err is EvaApiError & { code: 'bad_request' } {
   return matchError(err, ERROR_CODES.bad_request)
 }
 
 /** Error interno del servidor (HTTP 500). */
-export function isInternalError(err: EvaError): err is EvaApiError & { code: 'internal_error' } {
+export function isInternalError(
+  err: EvaError,
+): err is EvaApiError & { code: 'internal_error' } {
   return matchError(err, ERROR_CODES.internal_error)
 }
 
@@ -147,17 +161,23 @@ export function isAccountStateLocked(
 // ---------------------------------------------------------------------------
 
 /** Fallo de red o fetch (no se pudo contactar al servidor). */
-export function isNetworkError(err: EvaError): err is EvaSdkError & { reason: 'network' } {
+export function isNetworkError(
+  err: EvaError,
+): err is EvaSdkError & { reason: 'network' } {
   return matchSdkReason(err, SDK_ERROR_REASONS.network)
 }
 
 /** Token presente pero inválido (signature/format/expiry). */
-export function isTokenInvalid(err: EvaError): err is EvaSdkError & { reason: 'token_invalid' } {
+export function isTokenInvalid(
+  err: EvaError,
+): err is EvaSdkError & { reason: 'token_invalid' } {
   return matchSdkReason(err, SDK_ERROR_REASONS.token_invalid)
 }
 
 /** No hay tokens en el request (sin cookies de autenticación). */
-export function isAuthRequired(err: EvaError): err is EvaSdkError & { reason: 'auth_required' } {
+export function isAuthRequired(
+  err: EvaError,
+): err is EvaSdkError & { reason: 'auth_required' } {
   return matchSdkReason(err, SDK_ERROR_REASONS.auth_required)
 }
 
@@ -169,11 +189,15 @@ export function isRefreshNoTokens(
 }
 
 /** Fallo de verificación no clasificable (post-refresh). */
-export function isVerifyFailed(err: EvaError): err is EvaSdkError & { reason: 'verify_failed' } {
+export function isVerifyFailed(
+  err: EvaError,
+): err is EvaSdkError & { reason: 'verify_failed' } {
   return matchSdkReason(err, SDK_ERROR_REASONS.verify_failed)
 }
 
 /** Respuesta HTTP no parseable o sin el shape esperado. */
-export function isMalformed(err: EvaError): err is EvaSdkError & { reason: 'malformed' } {
+export function isMalformed(
+  err: EvaError,
+): err is EvaSdkError & { reason: 'malformed' } {
   return matchSdkReason(err, SDK_ERROR_REASONS.malformed)
 }

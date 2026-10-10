@@ -4,7 +4,11 @@ import { readTokensFromCookies, setTokenCookies } from '../cookies'
 import { createHttpClient } from '../http-client'
 import { deduplicateRefresh } from '../refresh-dedup'
 import type { EvaTokenPayload, Result, EvaSdkError } from '../types'
-import { resolveErrorMessages, formatMessage, type EvaErrorMessages } from '../error-messages'
+import {
+  resolveErrorMessages,
+  formatMessage,
+  type EvaErrorMessages,
+} from '../error-messages'
 import { getErrorMessages, validateErrorMessagesInput } from '../config'
 
 export type VerifyRequestOptions<TExtra extends Record<string, unknown>> = {
@@ -28,7 +32,9 @@ const client = createHttpClient()
  *   para el JWKS o el refresh. El consumidor debe responder 500, nunca 401 ni limpiar cookies.
  *   Una request sin tokens devuelve `auth_required` (401) sin leer la configuración.
  */
-export async function verifyRequest<TExtra extends Record<string, unknown> = {}>(
+export async function verifyRequest<
+  TExtra extends Record<string, unknown> = {},
+>(
   request: Request,
   opts: VerifyRequestOptions<TExtra> = {},
 ): Promise<Result<VerifyResult<TExtra>>> {
@@ -60,7 +66,9 @@ export async function verifyRequest<TExtra extends Record<string, unknown> = {}>
     }
   }
 
-  const refreshResult = await deduplicateRefresh(refreshToken, () => client.refresh({ refreshToken }))
+  const refreshResult = await deduplicateRefresh(refreshToken, () =>
+    client.refresh({ refreshToken }),
+  )
 
   if (!refreshResult.ok) {
     // Refresh falló con error del API — propagar el error tal cual (EvaApiError o EvaSdkError)
@@ -90,7 +98,9 @@ export async function verifyRequest<TExtra extends Record<string, unknown> = {}>
   if (!verifyResult.ok) {
     // Obtener mensaje del error (EvaSdkError tiene .message; compatibilidad defensiva para mocks)
     const innerMessage =
-      typeof verifyResult.error === 'object' && verifyResult.error !== null && 'message' in verifyResult.error
+      typeof verifyResult.error === 'object' &&
+      verifyResult.error !== null &&
+      'message' in verifyResult.error
         ? (verifyResult.error as { message: string }).message
         : String(verifyResult.error)
     return {

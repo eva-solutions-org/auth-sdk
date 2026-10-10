@@ -41,8 +41,8 @@ function assertSchemaNoReservedKeys(schema: ZodType<unknown>): void {
       if (EXCLUDED_FROM_EXTRAS.has(key)) {
         throw new Error(
           `extraClaimsSchema declara un claim reservado o del shape base: "${key}". ` +
-          `Claims reservados (RFC 7519/8725 + OIDC Core 1.0 §2): ${RESERVED_JWT_CLAIMS.join(', ')}. ` +
-          `Shape base del SDK (no permitidos en extraClaimsSchema): id, sessionId.`,
+            `Claims reservados (RFC 7519/8725 + OIDC Core 1.0 §2): ${RESERVED_JWT_CLAIMS.join(', ')}. ` +
+            `Shape base del SDK (no permitidos en extraClaimsSchema): id, sessionId.`,
         )
       }
     }
@@ -66,7 +66,9 @@ export type VerifyAccessTokenOptions<TExtra extends Record<string, unknown>> = {
  *   configurada con `configureEvaAuth({ authUrl })`: es un error del consumidor, no un token
  *   inválido, así que se propaga en vez de degradarse a 401. El consumidor ve un 500.
  */
-export async function verifyAccessToken<TExtra extends Record<string, unknown> = {}>(
+export async function verifyAccessToken<
+  TExtra extends Record<string, unknown> = {},
+>(
   token: string,
   opts: VerifyAccessTokenOptions<TExtra> = {},
 ): Promise<Result<EvaTokenPayload<TExtra>>> {
@@ -141,7 +143,8 @@ export async function verifyAccessToken<TExtra extends Record<string, unknown> =
   } catch (err: unknown) {
     // Falta de configuración (authUrl): no es un token inválido, no debe degradarse a 401.
     if (isEvaAuthConfigError(err)) throw err
-    const message = err instanceof Error ? err.message : 'Verificación de token fallida'
+    const message =
+      err instanceof Error ? err.message : 'Verificación de token fallida'
     return {
       ok: false,
       error: {

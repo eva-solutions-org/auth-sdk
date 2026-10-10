@@ -1,5 +1,9 @@
 export { EvaAuthProvider } from './eva-auth-provider'
-export type { AuthState, AuthContextValue, EvaAuthProviderProps } from './eva-auth-provider'
+export type {
+  AuthState,
+  AuthContextValue,
+  EvaAuthProviderProps,
+} from './eva-auth-provider'
 export { useAuth } from './use-auth'
 export { useUser } from './use-user'
 export { useSessions } from './use-sessions'

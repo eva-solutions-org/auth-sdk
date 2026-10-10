@@ -12,9 +12,9 @@ export function getJwksKeyFn(): JwksKeyFn {
   if (!_jwks) {
     const url = new URL(`${getAuthServiceUrl()}/.well-known/jwks.json`)
     _jwks = createRemoteJWKSet(url, {
-      cacheMaxAge: 86_400_000,   // 24h — alineado con TTL normal de ADR-005
-      cooldownDuration: 30_000,  // 30s — anti-abuse contra JWKS endpoint (explícito)
-      timeoutDuration: 5_000,    // 5s — equivalente al JWKS_FETCH_TIMEOUT actual
+      cacheMaxAge: 86_400_000, // 24h — alineado con TTL normal de ADR-005
+      cooldownDuration: 30_000, // 30s — anti-abuse contra JWKS endpoint (explícito)
+      timeoutDuration: 5_000, // 5s — equivalente al JWKS_FETCH_TIMEOUT actual
     })
   }
   return _jwks

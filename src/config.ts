@@ -1,18 +1,18 @@
 import { z } from 'zod'
-import {
-  DEFAULT_ERROR_MESSAGES,
-  type EvaErrorMessages,
-} from './error-messages'
+import { DEFAULT_ERROR_MESSAGES, type EvaErrorMessages } from './error-messages'
 
 // Schema generado dinámicamente desde DEFAULT_ERROR_MESSAGES → keys siempre sincronizadas.
 // .partial() → todas las keys son opcionales. .strict() → rechaza keys desconocidas.
-const ErrorMessagesSchema = z.object(
-  Object.fromEntries(
-    (Object.keys(DEFAULT_ERROR_MESSAGES) as (keyof EvaErrorMessages)[]).map(
-      k => [k, z.string()],
-    ),
-  ) as Record<keyof EvaErrorMessages, z.ZodString>,
-).partial().strict()
+const ErrorMessagesSchema = z
+  .object(
+    Object.fromEntries(
+      (Object.keys(DEFAULT_ERROR_MESSAGES) as (keyof EvaErrorMessages)[]).map(
+        (k) => [k, z.string()],
+      ),
+    ) as Record<keyof EvaErrorMessages, z.ZodString>,
+  )
+  .partial()
+  .strict()
 
 // === Estado runtime mutable (NO exportado directamente) ===
 type RuntimeConfig = {
@@ -49,17 +49,21 @@ export function validateHttpsUrl(value: string, label: string): void {
     // oxlint-disable-next-line prefer-string-starts-ends-with -- regex anclada requerida para seguridad (CWE-319): startsWith('127.') aceptaría '127.evil.com'
     if (
       hostname === 'localhost' ||
-      hostname === '::1' ||   // defensa: dead-code en Node 20+ (Ada 2.0 retorna '[::1]' con corchetes)
+      hostname === '::1' || // defensa: dead-code en Node 20+ (Ada 2.0 retorna '[::1]' con corchetes)
       hostname === '[::1]' || // Node.js 20+ (WHATWG Ada 2.0): .hostname de IPv6 literal incluye corchetes
       /^127(?:\.\d{1,3}){3}$/.test(hostname) // forma IPv4 completa anclada — bloquea '127.evil.com'
     ) {
       return // loopback http: permitido (tests + desarrollo local)
     }
-    throw new Error(`${label} inválida: se requiere https (o loopback http): ${value}`)
+    throw new Error(
+      `${label} inválida: se requiere https (o loopback http): ${value}`,
+    )
   }
 
   if (parsed.protocol !== 'https:') {
-    throw new Error(`${label} inválida: protocolo no soportado (${parsed.protocol}): ${value}`)
+    throw new Error(
+      `${label} inválida: protocolo no soportado (${parsed.protocol}): ${value}`,
+    )
   }
   // https: → válido, void
 }
@@ -78,7 +82,9 @@ function validateAuthUrl(value: unknown): string {
   }
   // Chequeo sobre el string crudo: `URL.search`/`URL.hash` valen '' para un `?` o `#` solitario.
   if (value.includes('?') || value.includes('#')) {
-    throw new Error('[eva-auth-sdk] authUrl inválida: no puede contener query (?) ni fragmento (#)')
+    throw new Error(
+      '[eva-auth-sdk] authUrl inválida: no puede contener query (?) ni fragmento (#)',
+    )
   }
   let parsed: URL
   try {
@@ -89,10 +95,14 @@ function validateAuthUrl(value: unknown): string {
   // Esquemas con path opaco (mailto:, redis:, data:) no exponen userinfo en URL.username y
   // validateHttpsUrl ecoaría el valor crudo: se rechazan aquí, sin incluir el input.
   if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-    throw new Error('[eva-auth-sdk] authUrl inválida: protocolo no soportado (solo https, o http en loopback)')
+    throw new Error(
+      '[eva-auth-sdk] authUrl inválida: protocolo no soportado (solo https, o http en loopback)',
+    )
   }
   if (parsed.username !== '' || parsed.password !== '') {
-    throw new Error('[eva-auth-sdk] authUrl inválida: no puede incluir credenciales (usuario/contraseña)')
+    throw new Error(
+      '[eva-auth-sdk] authUrl inválida: no puede incluir credenciales (usuario/contraseña)',
+    )
   }
   validateHttpsUrl(parsed.href, '[eva-auth-sdk] authUrl')
   return parsed.href.replace(/\/$/, '')
@@ -100,7 +110,9 @@ function validateAuthUrl(value: unknown): string {
 
 function validateCookieDomain(value: string): void {
   if (/[;\r\n]/.test(value)) {
-    throw new Error('cookieDomain inválido: caracteres prohibidos (;, \\r, \\n)')
+    throw new Error(
+      'cookieDomain inválido: caracteres prohibidos (;, \\r, \\n)',
+    )
   }
 }
 
@@ -163,12 +175,17 @@ export function isEvaAuthConfigError(err: unknown): boolean {
  * Fase de validación de `configureEvaAuth`: pura, lanza sin mutar nada.
  * Si cualquier campo es inválido (o `authUrl` cambia), no se confirma ningún campo.
  */
-function buildConfigPatch(opts: ConfigureEvaAuthOptions, current: RuntimeConfig): Partial<RuntimeConfig> {
+function buildConfigPatch(
+  opts: ConfigureEvaAuthOptions,
+  current: RuntimeConfig,
+): Partial<RuntimeConfig> {
   const patch: Partial<RuntimeConfig> = {}
   if (opts.authUrl !== undefined) {
     const normalized = validateAuthUrl(opts.authUrl)
     if (current.authUrl !== undefined && current.authUrl !== normalized) {
-      throw new Error('[eva-auth-sdk] authUrl ya fue configurada y no puede cambiar en runtime')
+      throw new Error(
+        '[eva-auth-sdk] authUrl ya fue configurada y no puede cambiar en runtime',
+      )
     }
     patch.authUrl = normalized
   }
@@ -256,7 +273,7 @@ export function validateErrorMessagesInput(
   const result = ErrorMessagesSchema.safeParse(input)
   if (!result.success) {
     throw new Error(
-      `[eva-auth-sdk] errorMessages inválido: ${result.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
+      `[eva-auth-sdk] errorMessages inválido: ${result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
     )
   }
   return result.data

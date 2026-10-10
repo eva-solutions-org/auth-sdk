@@ -2,7 +2,14 @@ import { z } from 'zod'
 import { isEvaAuthConfigError } from './config'
 import { HEADERS, getAuthServiceUrl } from './constants'
 import { parseErrorResponse } from './schemas'
-import type { EvaUser, EvaSession, EvaEmpresa, Result, TokenPair, DeviceInfo } from './types'
+import type {
+  EvaUser,
+  EvaSession,
+  EvaEmpresa,
+  Result,
+  TokenPair,
+  DeviceInfo,
+} from './types'
 
 const AuthServiceResponseSchema = z.object({
   data: z.unknown(),
@@ -24,7 +31,10 @@ const extractTokens = (headers: Headers): TokenPair | undefined => {
   return { accessToken, refreshToken }
 }
 
-const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<Result<T & { tokens?: TokenPair }>> => {
+const authFetch = async <T>(
+  path: string,
+  options: FetchOptions = {},
+): Promise<Result<T & { tokens?: TokenPair }>> => {
   const { method = 'GET', accessToken, refreshToken, body } = options
 
   const headers: Record<string, string> = {
@@ -52,7 +62,12 @@ const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<R
     if (!parsed.success) {
       return {
         ok: false,
-        error: { kind: 'sdk', reason: 'malformed', message: 'Estructura de respuesta inválida', status: 502 },
+        error: {
+          kind: 'sdk',
+          reason: 'malformed',
+          message: 'Estructura de respuesta inválida',
+          status: 502,
+        },
       }
     }
     const data = parsed.data.data as T
@@ -70,50 +85,92 @@ const authFetch = async <T>(path: string, options: FetchOptions = {}): Promise<R
   }
 }
 
-const getCode = (params: { phone: string }): Promise<Result<{ message: string }>> =>
+const getCode = (params: {
+  phone: string
+}): Promise<Result<{ message: string }>> =>
   authFetch('login/get-code', { method: 'POST', body: { phone: params.phone } })
 
-const login = (params: { phone: string; code: string } & DeviceInfo): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> => {
+const login = (
+  params: { phone: string; code: string } & DeviceInfo,
+): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> => {
   const { phone, code, deviceType, os, browser, userAgent } = params
-  return authFetch('login', { method: 'POST', body: { phone, code, deviceType, os, browser, userAgent } })
+  return authFetch('login', {
+    method: 'POST',
+    body: { phone, code, deviceType, os, browser, userAgent },
+  })
 }
 
-const refresh = (params: { refreshToken: string }): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> =>
-  authFetch('login/refresh', { method: 'POST', refreshToken: params.refreshToken })
+const refresh = (params: {
+  refreshToken: string
+}): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> =>
+  authFetch('login/refresh', {
+    method: 'POST',
+    refreshToken: params.refreshToken,
+  })
 
-const logout = (params: { refreshToken: string }): Promise<Result<{ message: string }>> =>
-  authFetch('login/logout', { method: 'POST', refreshToken: params.refreshToken })
+const logout = (params: {
+  refreshToken: string
+}): Promise<Result<{ message: string }>> =>
+  authFetch('login/logout', {
+    method: 'POST',
+    refreshToken: params.refreshToken,
+  })
 
 const getUser = (params: { accessToken: string }): Promise<Result<EvaUser>> =>
   authFetch('user', { accessToken: params.accessToken })
 
-const updateUser = (params: { accessToken: string; data: Record<string, unknown> }): Promise<Result<EvaUser>> =>
-  authFetch('user', { method: 'PATCH', accessToken: params.accessToken, body: params.data })
+const updateUser = (params: {
+  accessToken: string
+  data: Record<string, unknown>
+}): Promise<Result<EvaUser>> =>
+  authFetch('user', {
+    method: 'PATCH',
+    accessToken: params.accessToken,
+    body: params.data,
+  })
 
-const deleteUser = (params: { accessToken: string }): Promise<Result<{ message: string }>> =>
+const deleteUser = (params: {
+  accessToken: string
+}): Promise<Result<{ message: string }>> =>
   authFetch('user', { method: 'DELETE', accessToken: params.accessToken })
 
-const getUserEmpresas = (params: { accessToken: string }): Promise<Result<EvaEmpresa[]>> =>
+const getUserEmpresas = (params: {
+  accessToken: string
+}): Promise<Result<EvaEmpresa[]>> =>
   authFetch('user/empresas', { accessToken: params.accessToken })
 
-const getSessions = (params: { accessToken: string }): Promise<Result<EvaSession[]>> =>
+const getSessions = (params: {
+  accessToken: string
+}): Promise<Result<EvaSession[]>> =>
   authFetch('sessions', { accessToken: params.accessToken })
 
-const deleteSession = (params: { accessToken: string; sessionId: string }): Promise<Result<{ message: string }>> => {
+const deleteSession = (params: {
+  accessToken: string
+  sessionId: string
+}): Promise<Result<{ message: string }>> => {
   if (!/^[\w-]+$/.test(params.sessionId)) {
     return Promise.resolve({
       ok: false,
-      error: { kind: 'sdk', reason: 'malformed', message: 'ID de sesión inválido', status: 400 },
+      error: {
+        kind: 'sdk',
+        reason: 'malformed',
+        message: 'ID de sesión inválido',
+        status: 400,
+      },
     })
   }
-  return authFetch(`sessions/${params.sessionId}`, { method: 'DELETE', accessToken: params.accessToken })
+  return authFetch(`sessions/${params.sessionId}`, {
+    method: 'DELETE',
+    accessToken: params.accessToken,
+  })
 }
 
-const deleteAllSessions = (params: { refreshToken: string }): Promise<Result<{ message: string; count: number }>> =>
+const deleteAllSessions = (params: {
+  refreshToken: string
+}): Promise<Result<{ message: string; count: number }>> =>
   authFetch('sessions', { method: 'DELETE', refreshToken: params.refreshToken })
 
-const health = (): Promise<Result<{ status: string }>> =>
-  authFetch('health')
+const health = (): Promise<Result<{ status: string }>> => authFetch('health')
 
 export function createHttpClient() {
   return {

@@ -2,7 +2,12 @@ export { createEvaAuth } from './client'
 export { createHttpClient, type EvaHttpClient } from './http-client'
 export { verifyAccessToken } from './jwt'
 export type { VerifyAccessTokenOptions } from './jwt'
-export { configureEvaAuth, type ConfigureEvaAuthOptions, getAuthUrl, getCookieDomain } from './config'
+export {
+  configureEvaAuth,
+  type ConfigureEvaAuthOptions,
+  getAuthUrl,
+  getCookieDomain,
+} from './config'
 export type {
   EvaUser,
   EvaSession,
@@ -26,15 +31,8 @@ export { readTokensFromCookies } from './cookies'
 export type { EvaErrorMessages } from './error-messages'
 export { DEFAULT_ERROR_MESSAGES } from './error-messages'
 // Error codes + reasons (D-07/D-08 LOCKED)
-export {
-  ERROR_CODES,
-  SDK_ERROR_REASONS,
-} from './error-codes'
-export type {
-  CoreErrorCode,
-  ErrorCode,
-  SdkErrorReason,
-} from './error-codes'
+export { ERROR_CODES, SDK_ERROR_REASONS } from './error-codes'
+export type { CoreErrorCode, ErrorCode, SdkErrorReason } from './error-codes'
 // getMessage helper (migración gradual 0.x → 1.0.0)
 export { getMessage } from './get-message'
 // Error helpers semánticos (Batch 15 — ad-hoc post-archive v2)
@@ -63,7 +61,12 @@ export {
   isMalformed,
 } from './error-helpers'
 // Módulo webhooks (REQ-EXPORTS-02 — accesible desde raíz)
-export { verifyWebhookSignature, WEBHOOK_TIMESTAMP_WINDOW_SECONDS, EVENT_CODES, WEBHOOK_HEADERS } from './webhooks'
+export {
+  verifyWebhookSignature,
+  WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
+  EVENT_CODES,
+  WEBHOOK_HEADERS,
+} from './webhooks'
 export type {
   EventCode,
   WebhookPayload,

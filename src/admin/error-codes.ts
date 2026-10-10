@@ -19,4 +19,5 @@ export const ADMIN_ERROR_CODES = {
 } as const
 
 /** Unión de literales de los error codes específicos del módulo Admin. */
-export type AdminErrorCode = (typeof ADMIN_ERROR_CODES)[keyof typeof ADMIN_ERROR_CODES]
+export type AdminErrorCode =
+  (typeof ADMIN_ERROR_CODES)[keyof typeof ADMIN_ERROR_CODES]

@@ -13,7 +13,7 @@ export const COOKIES = {
 } as const
 
 export const COOKIE_MAX_AGE = {
-  ACCESS_TOKEN: 15 * 60,            // 15 min
+  ACCESS_TOKEN: 15 * 60, // 15 min
   REFRESH_TOKEN: 30 * 24 * 60 * 60, // 30 días
 } as const
 

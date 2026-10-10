@@ -10,14 +10,21 @@ const ApiResponseSchema = z.object({
 
 const FETCH_TIMEOUT = 30_000
 
-const sdkError = (reason: EvaSdkError['reason'], message: string, status: number): EvaSdkError => ({
+const sdkError = (
+  reason: EvaSdkError['reason'],
+  message: string,
+  status: number,
+): EvaSdkError => ({
   kind: 'sdk',
   reason,
   message,
   status,
 })
 
-export const authFetch = async <T>(url: string, options?: RequestInit): Promise<Result<T>> => {
+export const authFetch = async <T>(
+  url: string,
+  options?: RequestInit,
+): Promise<Result<T>> => {
   try {
     const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT)
     const signal = options?.signal
@@ -40,16 +47,36 @@ export const authFetch = async <T>(url: string, options?: RequestInit): Promise<
     const json: unknown = await res.json()
     const parsed = ApiResponseSchema.safeParse(json)
     if (!parsed.success) {
-      return { ok: false, error: sdkError(SDK_ERROR_REASONS.malformed, 'Estructura de respuesta inválida', 502) }
+      return {
+        ok: false,
+        error: sdkError(
+          SDK_ERROR_REASONS.malformed,
+          'Estructura de respuesta inválida',
+          502,
+        ),
+      }
     }
     return { ok: true, data: parsed.data.data as T }
   } catch (err) {
     if (err instanceof DOMException && err.name === 'TimeoutError') {
-      return { ok: false, error: sdkError(SDK_ERROR_REASONS.network, 'Tiempo de espera agotado', 0) }
+      return {
+        ok: false,
+        error: sdkError(
+          SDK_ERROR_REASONS.network,
+          'Tiempo de espera agotado',
+          0,
+        ),
+      }
     }
     if (err instanceof DOMException && err.name === 'AbortError') {
-      return { ok: false, error: sdkError(SDK_ERROR_REASONS.network, 'Solicitud cancelada', 0) }
+      return {
+        ok: false,
+        error: sdkError(SDK_ERROR_REASONS.network, 'Solicitud cancelada', 0),
+      }
     }
-    return { ok: false, error: sdkError(SDK_ERROR_REASONS.network, 'Error de red', 0) }
+    return {
+      ok: false,
+      error: sdkError(SDK_ERROR_REASONS.network, 'Error de red', 0),
+    }
   }
 }

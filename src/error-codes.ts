@@ -58,4 +58,5 @@ export const SDK_ERROR_REASONS = {
 /**
  * Unión cerrada de los 6 reasons internos del SDK.
  */
-export type SdkErrorReason = (typeof SDK_ERROR_REASONS)[keyof typeof SDK_ERROR_REASONS]
+export type SdkErrorReason =
+  (typeof SDK_ERROR_REASONS)[keyof typeof SDK_ERROR_REASONS]

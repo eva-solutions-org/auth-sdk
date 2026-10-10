@@ -18,25 +18,28 @@ export const useAuthData = <T>(path: string): AuthDataResult<T> => {
   const [error, setError] = useState<EvaError | null>(null)
   const controllerRef = useRef<AbortController | null>(null)
 
-  const fetchData = useCallback(async (signal?: AbortSignal) => {
-    setIsLoading(true)
-    setError(null)
+  const fetchData = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoading(true)
+      setError(null)
 
-    try {
-      const result = await authFetch<T>(`${basePath}${path}`, { signal })
-      if (signal?.aborted) return
+      try {
+        const result = await authFetch<T>(`${basePath}${path}`, { signal })
+        if (signal?.aborted) return
 
-      if (result.ok) {
-        setData(result.data)
-        setError(null)
-      } else {
-        setData(null)
-        setError(result.error)
+        if (result.ok) {
+          setData(result.data)
+          setError(null)
+        } else {
+          setData(null)
+          setError(result.error)
+        }
+      } finally {
+        if (!signal?.aborted) setIsLoading(false)
       }
-    } finally {
-      if (!signal?.aborted) setIsLoading(false)
-    }
-  }, [basePath, path])
+    },
+    [basePath, path],
+  )
 
   useEffect(() => {
     if (!isAuthenticated) {

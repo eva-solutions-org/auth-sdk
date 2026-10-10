@@ -18,7 +18,12 @@ export {
   EMPTY_BODY_SHA256_HEX,
 } from './sign'
 
-export { S2S_TIMESTAMP_WINDOW_SECONDS, USERS_BATCH_MAX_IDS, S2S_SCOPES, S2S_RESPONSE_HEADERS } from './constants'
+export {
+  S2S_TIMESTAMP_WINDOW_SECONDS,
+  USERS_BATCH_MAX_IDS,
+  S2S_SCOPES,
+  S2S_RESPONSE_HEADERS,
+} from './constants'
 export type { S2SScope } from './constants'
 
 export type {
@@ -38,4 +43,9 @@ export type {
 
 // S2S server-side verify (v1.1.0)
 export { verifyS2SRequest } from './verify'
-export type { S2SVerifyReason, S2SVerifyError, S2SVerifyResult, S2SVerifyOptions } from './types'
+export type {
+  S2SVerifyReason,
+  S2SVerifyError,
+  S2SVerifyResult,
+  S2SVerifyOptions,
+} from './types'

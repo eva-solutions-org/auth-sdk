@@ -35,10 +35,17 @@ import type {
  * Tipo del cliente Admin retornado por `createAdminClient`.
  */
 export type AdminClient = {
-  createServiceClient(input: CreateServiceClientInput): Promise<Result<CreateServiceClientResult>>
+  createServiceClient(
+    input: CreateServiceClientInput,
+  ): Promise<Result<CreateServiceClientResult>>
   listServiceClients(): Promise<Result<{ clientes: ServiceClientPublic[] }>>
-  getServiceClient(slug: string): Promise<Result<{ cliente: ServiceClientPublic }>>
-  updateServiceClient(slug: string, input: UpdateServiceClientInput): Promise<Result<UpdateServiceClientResult>>
+  getServiceClient(
+    slug: string,
+  ): Promise<Result<{ cliente: ServiceClientPublic }>>
+  updateServiceClient(
+    slug: string,
+    input: UpdateServiceClientInput,
+  ): Promise<Result<UpdateServiceClientResult>>
   deleteServiceClient(slug: string): Promise<Result<void>>
   rotateServiceClientSecret(slug: string): Promise<Result<RotateSecretResult>>
   restoreUser(userId: string): Promise<Result<RestoreUserResult>>
@@ -139,7 +146,9 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       })
     },
 
-    async listServiceClients(): Promise<Result<{ clientes: ServiceClientPublic[] }>> {
+    async listServiceClients(): Promise<
+      Result<{ clientes: ServiceClientPublic[] }>
+    > {
       return adminFetch<{ clientes: ServiceClientPublic[] }>({
         config,
         method: 'GET',
@@ -147,7 +156,9 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       })
     },
 
-    async getServiceClient(slug: string): Promise<Result<{ cliente: ServiceClientPublic }>> {
+    async getServiceClient(
+      slug: string,
+    ): Promise<Result<{ cliente: ServiceClientPublic }>> {
       return adminFetch<{ cliente: ServiceClientPublic }>({
         config,
         method: 'GET',
@@ -175,7 +186,9 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       })
     },
 
-    async rotateServiceClientSecret(slug: string): Promise<Result<RotateSecretResult>> {
+    async rotateServiceClientSecret(
+      slug: string,
+    ): Promise<Result<RotateSecretResult>> {
       return adminFetch<RotateSecretResult>({
         config,
         method: 'POST',

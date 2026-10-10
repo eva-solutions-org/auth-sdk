@@ -47,27 +47,45 @@ function serializeClearCookie(name: string): string {
   return parts.join('; ')
 }
 
-export function readTokensFromCookies(cookieHeader: string | null): Partial<TokenPair> {
+export function readTokensFromCookies(
+  cookieHeader: string | null,
+): Partial<TokenPair> {
   if (!cookieHeader) return {}
 
   const cookies = Object.fromEntries(
-    cookieHeader.split(';').map(c => {
+    cookieHeader.split(';').map((c) => {
       const [k, ...v] = c.trim().split('=')
       const raw = v.join('=')
-      try { return [k, decodeURIComponent(raw)] } catch { return [k, raw] }
-    })
+      try {
+        return [k, decodeURIComponent(raw)]
+      } catch {
+        return [k, raw]
+      }
+    }),
   )
 
   return {
-    ...(cookies[COOKIES.ACCESS_TOKEN] && { accessToken: cookies[COOKIES.ACCESS_TOKEN] }),
-    ...(cookies[COOKIES.REFRESH_TOKEN] && { refreshToken: cookies[COOKIES.REFRESH_TOKEN] }),
+    ...(cookies[COOKIES.ACCESS_TOKEN] && {
+      accessToken: cookies[COOKIES.ACCESS_TOKEN],
+    }),
+    ...(cookies[COOKIES.REFRESH_TOKEN] && {
+      refreshToken: cookies[COOKIES.REFRESH_TOKEN],
+    }),
   }
 }
 
 export function setTokenCookies(tokens: TokenPair): string[] {
   return [
-    serializeCookie(COOKIES.ACCESS_TOKEN, tokens.accessToken, COOKIE_MAX_AGE.ACCESS_TOKEN),
-    serializeCookie(COOKIES.REFRESH_TOKEN, tokens.refreshToken, COOKIE_MAX_AGE.REFRESH_TOKEN),
+    serializeCookie(
+      COOKIES.ACCESS_TOKEN,
+      tokens.accessToken,
+      COOKIE_MAX_AGE.ACCESS_TOKEN,
+    ),
+    serializeCookie(
+      COOKIES.REFRESH_TOKEN,
+      tokens.refreshToken,
+      COOKIE_MAX_AGE.REFRESH_TOKEN,
+    ),
   ]
 }
 

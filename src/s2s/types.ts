@@ -159,7 +159,9 @@ export type S2SVerifyError = {
  * const { clientId } = result.data
  * ```
  */
-export type S2SVerifyResult<T> = { ok: true; data: T } | { ok: false; error: S2SVerifyError }
+export type S2SVerifyResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: S2SVerifyError }
 
 /**
  * Input options for `verifyS2SRequest`.

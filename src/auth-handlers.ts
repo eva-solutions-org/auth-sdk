@@ -5,14 +5,19 @@
  */
 import type { Context } from 'hono'
 import { createHttpClient } from './http-client'
-import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from './cookies'
+import {
+  readTokensFromCookies,
+  setTokenCookies,
+  clearTokenCookies,
+} from './cookies'
 import { deduplicateRefresh } from './refresh-dedup'
 import { parseDeviceInfo } from './hono/device-info'
+import { resolveErrorMessages, type EvaErrorMessages } from './error-messages'
 import {
-  resolveErrorMessages,
-  type EvaErrorMessages,
-} from './error-messages'
-import { getErrorMessages, getErrorWire, validateErrorMessagesInput } from './config'
+  getErrorMessages,
+  getErrorWire,
+  validateErrorMessagesInput,
+} from './config'
 import { GetCodeSchema, LoginSchema, UpdateUserSchema } from './schemas'
 import type { EvaError, EvaSdkError } from './types'
 import type { SdkErrorReason } from './error-codes'
@@ -37,7 +42,9 @@ export interface AuthHandlers {
 
 type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 429 | 500 | 502 | 503
 
-const KNOWN_ERROR_STATUSES = new Set<number>([400, 401, 403, 404, 409, 429, 500, 502, 503])
+const KNOWN_ERROR_STATUSES = new Set<number>([
+  400, 401, 403, 404, 409, 429, 500, 502, 503,
+])
 
 const REASON_TO_CODE: Record<SdkErrorReason, string> = {
   auth_required: 'unauthorized',
@@ -53,16 +60,29 @@ function resolveCode(evaError: EvaError): string {
   return REASON_TO_CODE[evaError.reason]
 }
 
-function errorResponse(c: Context, evaError: EvaError, status: number): Response {
-  const safeStatus = KNOWN_ERROR_STATUSES.has(status) ? (status as ErrorStatus) : 500
+function errorResponse(
+  c: Context,
+  evaError: EvaError,
+  status: number,
+): Response {
+  const safeStatus = KNOWN_ERROR_STATUSES.has(status)
+    ? (status as ErrorStatus)
+    : 500
   const wire = getErrorWire()
   if (wire === 'api') {
-    return c.json({ error: { code: resolveCode(evaError), message: evaError.message } }, safeStatus)
+    return c.json(
+      { error: { code: resolveCode(evaError), message: evaError.message } },
+      safeStatus,
+    )
   }
   return c.json({ error: evaError.message }, safeStatus)
 }
 
-function sdkError(reason: SdkErrorReason, message: string, status: number): EvaSdkError {
+function sdkError(
+  reason: SdkErrorReason,
+  message: string,
+  status: number,
+): EvaSdkError {
   return { kind: 'sdk', reason, message, status }
 }
 
@@ -82,18 +102,29 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
   const client = createHttpClient()
 
   // Resolución diferida por-request (M2)
-  const messages = () => resolveErrorMessages(opts.errorMessages, getErrorMessages())
+  const messages = () =>
+    resolveErrorMessages(opts.errorMessages, getErrorMessages())
 
   return {
     // POST /get-code
     getCode: async (c: Context): Promise<Response> => {
       let raw: unknown
-      try { raw = await c.req.json() } catch {
-        return errorResponse(c, sdkError('malformed', messages().invalidJsonBody, 400), 400)
+      try {
+        raw = await c.req.json()
+      } catch {
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().invalidJsonBody, 400),
+          400,
+        )
       }
       const parsed = GetCodeSchema.safeParse(raw)
       if (!parsed.success) {
-        return errorResponse(c, sdkError('malformed', messages().invalidPhone, 400), 400)
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().invalidPhone, 400),
+          400,
+        )
       }
       const result = await client.getCode(parsed.data)
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
@@ -103,12 +134,22 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     // POST /login
     login: async (c: Context): Promise<Response> => {
       let raw: unknown
-      try { raw = await c.req.json() } catch {
-        return errorResponse(c, sdkError('malformed', messages().invalidJsonBody, 400), 400)
+      try {
+        raw = await c.req.json()
+      } catch {
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().invalidJsonBody, 400),
+          400,
+        )
       }
       const parsed = LoginSchema.safeParse(raw)
       if (!parsed.success) {
-        return errorResponse(c, sdkError('malformed', messages().loginFailed, 400), 400)
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().loginFailed, 400),
+          400,
+        )
       }
       const deviceInfo = parseDeviceInfo(c.req.raw)
       const result = await client.login({ ...parsed.data, ...deviceInfo })
@@ -126,8 +167,15 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     refresh: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { refreshToken } = readTokensFromCookies(cookieHeader)
-      if (!refreshToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
-      const result = await deduplicateRefresh(refreshToken, () => client.refresh({ refreshToken }))
+      if (!refreshToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
+      const result = await deduplicateRefresh(refreshToken, () =>
+        client.refresh({ refreshToken }),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       if (result.data.tokens) {
         const cookieHeaders = setTokenCookies(result.data.tokens)
@@ -142,7 +190,12 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     logout: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { refreshToken } = readTokensFromCookies(cookieHeader)
-      if (!refreshToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
+      if (!refreshToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
       const result = await client.logout({ refreshToken })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       const clearHeaders = clearTokenCookies()
@@ -156,7 +209,12 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     getMe: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { accessToken } = readTokensFromCookies(cookieHeader)
-      if (!accessToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
+      if (!accessToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
       const result = await client.getUser({ accessToken })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
@@ -166,14 +224,29 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     updateMe: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { accessToken } = readTokensFromCookies(cookieHeader)
-      if (!accessToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
+      if (!accessToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
       let raw: unknown
-      try { raw = await c.req.json() } catch {
-        return errorResponse(c, sdkError('malformed', messages().invalidJsonBody, 400), 400)
+      try {
+        raw = await c.req.json()
+      } catch {
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().invalidJsonBody, 400),
+          400,
+        )
       }
       const parsed = UpdateUserSchema.safeParse(raw)
       if (!parsed.success) {
-        return errorResponse(c, sdkError('malformed', messages().invalidUpdateBody, 400), 400)
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().invalidUpdateBody, 400),
+          400,
+        )
       }
       const result = await client.updateUser({ accessToken, data: parsed.data })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
@@ -184,7 +257,12 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     deleteMe: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { accessToken } = readTokensFromCookies(cookieHeader)
-      if (!accessToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
+      if (!accessToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
       const result = await client.deleteUser({ accessToken })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       const clearHeaders = clearTokenCookies()
@@ -198,7 +276,12 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     getEmpresas: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { accessToken } = readTokensFromCookies(cookieHeader)
-      if (!accessToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
+      if (!accessToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
       const result = await client.getUserEmpresas({ accessToken })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
@@ -208,7 +291,12 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     getSessions: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { accessToken } = readTokensFromCookies(cookieHeader)
-      if (!accessToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
+      if (!accessToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
       const result = await client.getSessions({ accessToken })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
@@ -218,10 +306,19 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     deleteSession: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { accessToken } = readTokensFromCookies(cookieHeader)
-      if (!accessToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
+      if (!accessToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
       const sessionId = c.req.param('id')
       if (!sessionId || !/^[\w-]+$/.test(sessionId)) {
-        return errorResponse(c, sdkError('malformed', messages().sessionInvalid, 400), 400)
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().sessionInvalid, 400),
+          400,
+        )
       }
       const result = await client.deleteSession({ accessToken, sessionId })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
@@ -232,7 +329,12 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     deleteAllSessions: async (c: Context): Promise<Response> => {
       const cookieHeader = c.req.header('cookie') || null
       const { refreshToken } = readTokensFromCookies(cookieHeader)
-      if (!refreshToken) return errorResponse(c, sdkError('auth_required', messages().tokenNotFound, 401), 401)
+      if (!refreshToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
       const result = await client.deleteAllSessions({ refreshToken })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       const clearHeaders = clearTokenCookies()

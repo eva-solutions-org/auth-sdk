@@ -181,7 +181,9 @@ export function s2sAuth(
  * app.use('/data/*', s2sAuth({ secretStore }), requireScope({ any: ['data:read', 'data:write'] }))
  * ```
  */
-export function requireScope(scope: string): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
+export function requireScope(
+  scope: string,
+): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
 /**
  * Hono middleware that requires **all** listed scopes to be present (AND semantics).
  *
@@ -190,7 +192,9 @@ export function requireScope(scope: string): ReturnType<typeof createMiddleware<
  * @since v1.1.0
  * @throws `TypeError` at setup-time if `all` is an empty array.
  */
-export function requireScope(spec: { all: readonly string[] }): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
+export function requireScope(spec: {
+  all: readonly string[]
+}): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
 /**
  * Hono middleware that requires **at least one** of the listed scopes to be present (OR semantics).
  *
@@ -199,7 +203,9 @@ export function requireScope(spec: { all: readonly string[] }): ReturnType<typeo
  * @since v1.1.0
  * @throws `TypeError` at setup-time if `any` is an empty array.
  */
-export function requireScope(spec: { any: readonly string[] }): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
+export function requireScope(spec: {
+  any: readonly string[]
+}): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>>
 export function requireScope(
   arg: string | { all?: readonly string[]; any?: readonly string[] },
 ): ReturnType<typeof createMiddleware<{ Variables: S2sAuthVariables }>> {
@@ -247,7 +253,13 @@ export function requireScope(
       const missing = required.filter((s) => !vars.includes(s))
       if (missing.length > 0) {
         return c.json(
-          { error: { code: 'insufficient_scope', requiredAll: required, missing } },
+          {
+            error: {
+              code: 'insufficient_scope',
+              requiredAll: required,
+              missing,
+            },
+          },
           403,
         )
       }
