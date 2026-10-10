@@ -350,10 +350,10 @@ El paquete publicado en npm se construye con `build:prod` — trae las constante
 ```bash
 # En el repo del SDK
 pnpm pack:local
-# Genera eva-auth-sdk-x.x.x.tgz
+# Genera eva_solutions-auth-sdk-<version>.tgz (ej. eva_solutions-auth-sdk-2.0.1.tgz)
 
 # En el proyecto consumidor
-npm install ../path/to/eva-auth-sdk-x.x.x.tgz
+npm install ../path/to/eva_solutions-auth-sdk-<version>.tgz
 ```
 
 ### En código

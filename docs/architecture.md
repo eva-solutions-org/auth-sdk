@@ -67,12 +67,12 @@ Comunicación con el navegador del usuario:
 ```
 src/
 ├── client.ts          # createEvaAuth(), punto de entrada público del SDK → ADR-008
-├── config.ts          # Constantes build-time: AUTH_URL y ENV (horneadas por tsup define)
+├── config.ts          # Constantes build-time: AUTH_URL y ENV (horneadas por tsdown define)
 ├── types.ts           # Todos los tipos exportados
 ├── errors.ts          # EvaAuthError, createAuthError, isAuthError
 ├── constants.ts       # HEADERS, COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
 ├── refresh-dedup.ts   # Deduplicación de refresh compartida (Map por refreshToken)
-├── jwks.ts            # JWKS fetch, cache, ETag/304, dedup con pendingFetch
+├── jwks.ts            # JWKS remoto lazy (jose createRemoteJWKSet): cache 24h, cooldown 30s, timeout 5s
 ├── jwt.ts             # verifyAccessToken con jose
 ├── cookies.ts         # Lectura/escritura de cookies (decodeURIComponent en parsing)
 ├── http-client.ts     # Cliente HTTP tipado contra Auth Service (timeout 10s, validación de IDs)
@@ -117,13 +117,20 @@ src/
 
 - **TypeScript** — Tipado estricto
 - **jose v6** — JWT verification y JWKS (ES256/ECDSA P-256)
+- **zod v4** — Validación de schemas
 - **bowser** — User-Agent parsing
-- **Peer dependencies**: hono >=4, react >=18 (ambos opcionales)
+- **Peer dependencies** (los tres opcionales): `hono >=4.12.19`, `react >=19.2.6`, `@hono/zod-openapi >=1.4.0` (solo para `/hono-openapi`)
+- **tsdown** — Build (ESM + CJS)
+- **Vitest** — Tests
+- **oxlint / oxfmt** — Lint y formato
+- **Changesets** — Versionado y changelog
+- **TypeDoc** — Documentación de API generada
+- **Node.js** `>=20`, gestor `pnpm`
 
 ---
 
 ## Runtime y build
 
 - **Runtime**: Edge + Node.js (cero dependencias de Node.js)
-- **Build**: tsup (ESM + CJS), target ES2022, declarations `.d.ts`
+- **Build**: tsdown (ESM + CJS), target ES2022, declarations `.d.ts`
 - **Build-time config**: → Ver [configuration.md](configuration.md)

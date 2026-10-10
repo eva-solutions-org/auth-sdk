@@ -57,39 +57,7 @@ Retorna `Promise<Result<EvaTokenPayload<TExtra> & TExtra>>`.
 
 ---
 
-#### `getPublicKey()`
-
-Obtiene la public key del JWKS endpoint. Usa cache con ETag/304.
-
-```ts
-const key = await getPublicKey()
-```
-
-Retorna `Promise<CryptoKey>`.
-
----
-
-#### `fetchJwks()`
-
-Fuerza un fetch del JWKS, ignorando la cache.
-
-```ts
-await fetchJwks()
-```
-
-Retorna `Promise<void>`.
-
----
-
-#### `clearJwksCache()`
-
-Limpia la cache local del JWKS.
-
-```ts
-clearJwksCache()
-```
-
-Retorna `void`.
+> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<AUTH_URL>/.well-known/jwks.json`. La URL se hornea en build-time (ver [integrations.md](integrations.md)). Cache de 24 h, cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). No hay forma de invalidar la cache manualmente.
 
 ---
 
@@ -323,7 +291,7 @@ Además de sus propias funciones, el entry point `/hono` re-exporta los siguient
 
 ## `@eva_solutions/auth-sdk/hono-openapi`
 
-Variante de las rutas de auth compatible con OpenAPI 3.1. Requiere `@hono/zod-openapi >=1.3.0` instalado en el proyecto consumidor.
+Variante de las rutas de auth compatible con OpenAPI 3.1. Requiere `@hono/zod-openapi >=1.4.0` instalado en el proyecto consumidor.
 
 > **Importante**: `evaAuthOpenAPIRoutes()` retorna un `OpenAPIHono`. Para que `/doc` funcione, el app padre también debe ser `OpenAPIHono`. Si se monta sobre `new Hono()`, los handlers funcionan pero la documentación no estará disponible.
 
@@ -797,11 +765,13 @@ El SDK construye el canonical string de la firma como:
 ```
 METHOD\n
 /path\n
-rawQuery\n
+canonicalQuery\n
 timestamp\n
 clientId\n
 sha256(bodyBytes)
 ```
+
+`canonicalQuery` no es el query string tal cual: se parte por `&`, se decodifica cada nombre/valor, se ordena por (nombre, valor), se re-codifica en RFC 3986 y se une de nuevo. Un query vacío da `""`. Fuente: `canonicalizeQuery` en `src/s2s/sign.ts`.
 
 Para requests sin body, se usa el hash del cuerpo vacío (`EMPTY_BODY_SHA256_HEX`).
 

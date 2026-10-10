@@ -19,7 +19,7 @@ It ships as tree-shakeable ESM + CJS with TypeScript declarations, sourcemaps, a
 
 ## Features
 
-- JWT verification with ES256 + automatic JWKS rotation (24 h cache + ETag/304)
+- JWT verification with ES256 + automatic JWKS rotation (24 h cache, 30 s refetch cooldown)
 - Secure HttpOnly cookie session management — no tokens exposed to JavaScript
 - React hooks for client-side auth state (`useAuth`, `useUser`, `useSessions`, `useEmpresas`)
 - Hono middleware and pre-built auth routes for server-side route protection
@@ -341,10 +341,10 @@ The SDK exports 8 independent entry points. Import only what your runtime needs.
 | Import | Description | Required peer |
 |--------|-------------|---------------|
 | `@eva_solutions/auth-sdk` | Core: client factory, JWT verify, JWKS, error system, types, constants | — |
-| `@eva_solutions/auth-sdk/hono` | `evaAuth()` middleware, `evaAuthRoutes()`, helpers, cookies | `hono >=4` |
-| `@eva_solutions/auth-sdk/react` | `EvaAuthProvider`, `useAuth`, `useUser`, `useSessions`, `useEmpresas`, `authFetch` | `react >=18` |
+| `@eva_solutions/auth-sdk/hono` | `evaAuth()` middleware, `evaAuthRoutes()`, helpers, cookies | `hono >=4.12.19` |
+| `@eva_solutions/auth-sdk/react` | `EvaAuthProvider`, `useAuth`, `useUser`, `useSessions`, `useEmpresas`, `authFetch` | `react >=19.2.6` |
 | `@eva_solutions/auth-sdk/generic` | `verifyRequest()`, `setTokenCookies()`, `clearTokenCookies()` — Web API `Request` | — |
-| `@eva_solutions/auth-sdk/hono-openapi` | `evaAuthOpenAPIRoutes()` — OpenAPI 3.1 variant with `/doc` | `hono >=4`, `@hono/zod-openapi >=1.3.0` |
+| `@eva_solutions/auth-sdk/hono-openapi` | `evaAuthOpenAPIRoutes()` — OpenAPI 3.1 variant with `/doc` | `hono >=4.12.19`, `@hono/zod-openapi >=1.4.0` |
 | `@eva_solutions/auth-sdk/webhooks` | `verifyWebhookSignature()`, `EVENT_CODES`, webhook types | — |
 | `@eva_solutions/auth-sdk/admin` | `createAdminClient()` — service clients and user management | — |
 | `@eva_solutions/auth-sdk/s2s` | `createS2SClient()`, `signS2SRequest()` — HMAC S2S signing | — |
@@ -410,6 +410,7 @@ Generated with TypeDoc + DMT theme. Source in `docs/`.
 | [docs/architecture.md](docs/architecture.md) | Two-layer model, full auth flow, module structure |
 | [docs/configuration.md](docs/configuration.md) | Build-time model, configureEvaAuth options, errorWire |
 | [docs/security.md](docs/security.md) | Cookies, JWT, JWKS cache, deduplication |
+| [docs/integrations.md](docs/integrations.md) | How the SDK fits the EVA system: consumers, cross-repo contracts, build-time Auth URL, releasing |
 | [docs/migration.md](docs/migration.md) | Migration guide 0.x → 1.0.0 |
 
 ---
