@@ -1,4 +1,5 @@
 import {
+  appendFileSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -8,6 +9,14 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import * as contract from '../src/index'
+import {
+  ERROR_CODES,
+  HEADERS,
+  INTERNAL_HEADERS,
+  type CoreErrorCode,
+} from '../src/constants'
+import { API_PREFIX, AUTH_ROUTES } from '../src/routes'
 
 const PACKAGE_ROOT = join(import.meta.dirname, '..')
 const SRC_DIR = join(PACKAGE_ROOT, 'src')
@@ -46,7 +55,14 @@ const DENYLIST: ReadonlyArray<{ name: string; pattern: RegExp }> = [
   },
   { name: 'process.env', pattern: /process\.env/ },
   { name: 'import.meta.env', pattern: /import\.meta\.env/ },
-  { name: 'secret-like', pattern: /\b(?:pepper|secret|rate[-_ ]?limit)/i },
+  // No `\b`: identifiers glue the term to other words (`clientSecret`, `OTP_PEPPER`, `authRateLimit`,
+  // `MAX_RATE_LIMIT`), and `_`/camelCase boundaries are not word boundaries. The wire error code
+  // `rate_limited` is a legitimate constant, not a threshold, so `limit` followed by `ed` is allowed
+  // except as the `RATE_LIMITED_MAX` threshold name.
+  {
+    name: 'secret-like',
+    pattern: /pepper|secret|rate[-_ ]?limit(?!ed)|rate[-_ ]?limited[-_ ]?max/i,
+  },
   { name: 'drizzle', pattern: /drizzle/i },
 ]
 
@@ -118,6 +134,195 @@ describe('contract source denylist', () => {
       )
 
       expect(scanForDenylist(temp)).toHaveLength(1)
+    } finally {
+      rmSync(temp, { recursive: true, force: true })
+    }
+  })
+
+  it('denylist_scan_flags_rate_limit_thresholds_but_not_the_rate_limited_code (negative control)', () => {
+    const temp = mkdtempSync(join(tmpdir(), 'auth-contracts-denylist-'))
+    try {
+      writeFileSync(
+        join(temp, 'allowed.ts'),
+        "export const code = 'rate_limited'\n",
+      )
+      expect(scanForDenylist(temp)).toEqual([])
+
+      writeFileSync(join(temp, 'planted.ts'), 'export const rateLimit = 5\n')
+      expect(scanForDenylist(temp)).toHaveLength(1)
+    } finally {
+      rmSync(temp, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    'clientSecret',
+    'otpSecret',
+    'OTP_PEPPER',
+    'authPepper',
+    'authRateLimit',
+    'AUTH_RATE_LIMIT',
+    'MAX_RATE_LIMIT',
+    'RATE_LIMITED_MAX',
+  ])('denylist_flags_glued_term_%s (negative control)', (identifier) => {
+    const temp = mkdtempSync(join(tmpdir(), 'auth-contracts-denylist-'))
+    try {
+      writeFileSync(
+        join(temp, 'planted.ts'),
+        `export const ${identifier} = 1\n`,
+      )
+
+      expect(scanForDenylist(temp)).toHaveLength(1)
+    } finally {
+      rmSync(temp, { recursive: true, force: true })
+    }
+  })
+
+  it('denylist_allows_the_rate_limited_code_in_every_legitimate_spelling', () => {
+    const temp = mkdtempSync(join(tmpdir(), 'auth-contracts-denylist-'))
+    try {
+      writeFileSync(
+        join(temp, 'allowed.ts'),
+        "export const ERROR_CODES = { rate_limited: 'rate_limited' }\nexport const c = ERROR_CODES.rate_limited\n",
+      )
+
+      expect(scanForDenylist(temp)).toEqual([])
+    } finally {
+      rmSync(temp, { recursive: true, force: true })
+    }
+  })
+})
+
+// Wire values copied from the API sources (`src/core/constants/{error-codes,headers,internal-headers}.ts`).
+// HEADERS here has 4 entries: the API adds `CF_CONNECTING_IP` on top, it is not a wire contract.
+const TODAY_ERROR_CODES = {
+  account_state_locked: 'account_state_locked',
+  unauthorized: 'unauthorized',
+  validation_error: 'validation_error',
+  not_found: 'not_found',
+  conflict: 'conflict',
+  forbidden: 'forbidden',
+  rate_limited: 'rate_limited',
+  gone: 'gone',
+  unprocessable_entity: 'unprocessable_entity',
+  bad_request: 'bad_request',
+  internal_error: 'internal_error',
+  service_unavailable: 'service_unavailable',
+}
+
+const TODAY_HEADERS = {
+  AUTHORIZATION: 'authorization',
+  REFRESH_TOKEN: 'x-eva-refresh-token',
+  NEW_ACCESS_TOKEN: 'x-eva-new-access-token',
+  NEW_REFRESH_TOKEN: 'x-eva-new-refresh-token',
+}
+
+const TODAY_INTERNAL_HEADERS = {
+  X_EVA_CLIENT_ID: 'x-eva-client-id',
+  X_EVA_TIMESTAMP: 'x-eva-timestamp',
+  X_EVA_NONCE: 'x-eva-nonce',
+  X_EVA_SIGNATURE: 'x-eva-signature',
+  X_EVA_SERVER_TIME: 'x-eva-server-time',
+}
+
+describe('contract wire constants (REQ-CONTRACT-08)', () => {
+  it('wire_values_equal_today', () => {
+    expect({ ...ERROR_CODES }).toEqual(TODAY_ERROR_CODES)
+    expect({ ...HEADERS }).toEqual(TODAY_HEADERS)
+    expect({ ...INTERNAL_HEADERS }).toEqual(TODAY_INTERNAL_HEADERS)
+    expect(Object.keys(ERROR_CODES)).toHaveLength(12)
+  })
+
+  it('error_codes_are_key_equal_value', () => {
+    for (const [key, value] of Object.entries(ERROR_CODES)) {
+      expect(value).toBe(key)
+    }
+    const code: CoreErrorCode = ERROR_CODES.not_found
+    expect(code).toBe('not_found')
+  })
+
+  it('barrel_re_exports_the_constants', () => {
+    expect(contract.ERROR_CODES).toBe(ERROR_CODES)
+    expect(contract.HEADERS).toBe(HEADERS)
+    expect(contract.INTERNAL_HEADERS).toBe(INTERNAL_HEADERS)
+  })
+})
+
+describe('contract route descriptors (REQ-CONTRACT-09)', () => {
+  it('route_descriptors_relative_and_complete', () => {
+    expect(API_PREFIX).toBe('/api/v1')
+    expect({ ...AUTH_ROUTES }).toEqual({
+      getCode: { method: 'post', path: '/login/get-code' },
+      login: { method: 'post', path: '/login' },
+      refresh: { method: 'post', path: '/login/refresh' },
+      logout: { method: 'post', path: '/login/logout' },
+    })
+    for (const { path } of Object.values(AUTH_ROUTES)) {
+      expect(path.startsWith('/')).toBe(true)
+      expect(path.startsWith(API_PREFIX)).toBe(false)
+    }
+  })
+})
+
+describe('contract export surface (REQ-CONTRACT-13)', () => {
+  it('api_only_artifacts_not_exported', () => {
+    const names = Object.keys(contract)
+    const apiOnly = [
+      'refreshTokenHeaderSchema',
+      'createRoute',
+      'secretFormatSchema',
+      'crearErrorResponse',
+      'obtenerCodigoSchema',
+      'loginSchema',
+      'CF_CONNECTING_IP',
+    ]
+
+    expect(names.filter((name) => apiOnly.includes(name))).toEqual([])
+    expect(names.filter((name) => /^createRoute|Router$/.test(name))).toEqual(
+      [],
+    )
+    expect('CF_CONNECTING_IP' in HEADERS).toBe(false)
+  })
+})
+
+// REQ-CONTRACT-15 (D-35): constants.ts and routes.ts are PURE. The SDK `react` entry imports their
+// VALUES; a zod or schema-module import would drag `.meta()` side effects into that closure.
+const PURE_MODULES = ['constants', 'routes']
+
+const importSpecifiers = (source: string): string[] =>
+  [...source.matchAll(/(?:\bfrom|\bimport)\s+['"]([^'"]+)['"]/g)].map(
+    (match) => match[1] as string,
+  )
+
+const purityViolations = (file: string): string[] =>
+  importSpecifiers(readFileSync(file, 'utf8')).filter((specifier) => {
+    if (!specifier.startsWith('.')) return true // zod or any bare specifier
+    const target = specifier.replace(/^\.\//, '').replace(/\.(?:js|ts)$/, '')
+    return !PURE_MODULES.includes(target)
+  })
+
+describe('contract pure modules (REQ-CONTRACT-15)', () => {
+  it('pure_modules_import_no_zod_nor_schema_modules', () => {
+    for (const name of PURE_MODULES) {
+      expect(purityViolations(join(SRC_DIR, `${name}.ts`))).toEqual([])
+    }
+  })
+
+  it('purity_scan_flags_a_planted_zod_or_schema_import (negative control)', () => {
+    const temp = mkdtempSync(join(tmpdir(), 'auth-contracts-purity-'))
+    try {
+      for (const name of PURE_MODULES) {
+        const copy = join(temp, `${name}.ts`)
+        writeFileSync(copy, readFileSync(join(SRC_DIR, `${name}.ts`), 'utf8'))
+        expect(purityViolations(copy)).toEqual([])
+
+        appendFileSync(copy, "\nimport { z } from 'zod'\n")
+        expect(purityViolations(copy)).toEqual(['zod'])
+
+        writeFileSync(copy, readFileSync(join(SRC_DIR, `${name}.ts`), 'utf8'))
+        appendFileSync(copy, "\nimport './auth'\n")
+        expect(purityViolations(copy)).toEqual(['./auth'])
+      }
     } finally {
       rmSync(temp, { recursive: true, force: true })
     }
