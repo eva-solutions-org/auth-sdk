@@ -1,7 +1,9 @@
 import { z } from 'zod'
+import { AUTH_ROUTES } from '@eva_solutions/auth-contracts'
+import { apiPath } from './api-path'
 import { isEvaAuthConfigError } from './config'
 import { HEADERS, getAuthServiceUrl } from './constants'
-import { parseErrorResponse } from './schemas'
+import { parseErrorResponse } from './parse-error-response'
 import type {
   EvaUser,
   EvaSession,
@@ -45,7 +47,7 @@ const authFetch = async <T>(
   if (refreshToken) headers[HEADERS.REFRESH_TOKEN] = refreshToken
 
   try {
-    const res = await fetch(`${getAuthServiceUrl()}/${path}`, {
+    const res = await fetch(`${getAuthServiceUrl()}${path}`, {
       method,
       headers,
       signal: AbortSignal.timeout(AUTH_SERVICE_TIMEOUT),
@@ -71,6 +73,12 @@ const authFetch = async <T>(
       }
     }
     const data = parsed.data.data as T
+    // Un array (`/sessions`, `/user/empresas`) se devuelve intacto: esparcirlo en un objeto lo
+    // convertiria en `{ "0": …, "1": … }`. Esos endpoints se piden solo con access token, asi que
+    // no hay tokens nuevos que adjuntar.
+    if (Array.isArray(data))
+      return { ok: true, data: data as T & { tokens?: TokenPair } }
+
     const tokens = extractTokens(res.headers)
 
     return { ok: true, data: { ...data, ...(tokens ? { tokens } : {}) } }
@@ -94,7 +102,10 @@ const authFetch = async <T>(
 const getCode = (params: {
   phone: string
 }): Promise<Result<{ message: string; challengeId: string }>> =>
-  authFetch('login/get-code', { method: 'POST', body: { phone: params.phone } })
+  authFetch(apiPath(AUTH_ROUTES.getCode), {
+    method: 'POST',
+    body: { phone: params.phone },
+  })
 
 /**
  * Verifica el código OTP. `challengeId` es obligatorio: debe ser el que
@@ -106,7 +117,7 @@ const login = (
 ): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> => {
   const { phone, code, challengeId, deviceType, os, browser, userAgent } =
     params
-  return authFetch('login', {
+  return authFetch(apiPath(AUTH_ROUTES.login), {
     method: 'POST',
     body: { phone, code, challengeId, deviceType, os, browser, userAgent },
   })
@@ -115,7 +126,7 @@ const login = (
 const refresh = (params: {
   refreshToken: string
 }): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> =>
-  authFetch('login/refresh', {
+  authFetch(apiPath(AUTH_ROUTES.refresh), {
     method: 'POST',
     refreshToken: params.refreshToken,
   })
@@ -123,19 +134,19 @@ const refresh = (params: {
 const logout = (params: {
   refreshToken: string
 }): Promise<Result<{ message: string }>> =>
-  authFetch('login/logout', {
+  authFetch(apiPath(AUTH_ROUTES.logout), {
     method: 'POST',
     refreshToken: params.refreshToken,
   })
 
 const getUser = (params: { accessToken: string }): Promise<Result<EvaUser>> =>
-  authFetch('user', { accessToken: params.accessToken })
+  authFetch('/user', { accessToken: params.accessToken })
 
 const updateUser = (params: {
   accessToken: string
   data: Record<string, unknown>
 }): Promise<Result<EvaUser>> =>
-  authFetch('user', {
+  authFetch('/user', {
     method: 'PATCH',
     accessToken: params.accessToken,
     body: params.data,
@@ -144,17 +155,17 @@ const updateUser = (params: {
 const deleteUser = (params: {
   accessToken: string
 }): Promise<Result<{ message: string }>> =>
-  authFetch('user', { method: 'DELETE', accessToken: params.accessToken })
+  authFetch('/user', { method: 'DELETE', accessToken: params.accessToken })
 
 const getUserEmpresas = (params: {
   accessToken: string
 }): Promise<Result<EvaEmpresa[]>> =>
-  authFetch('user/empresas', { accessToken: params.accessToken })
+  authFetch('/user/empresas', { accessToken: params.accessToken })
 
 const getSessions = (params: {
   accessToken: string
 }): Promise<Result<EvaSession[]>> =>
-  authFetch('sessions', { accessToken: params.accessToken })
+  authFetch('/sessions', { accessToken: params.accessToken })
 
 const deleteSession = (params: {
   accessToken: string
@@ -171,7 +182,7 @@ const deleteSession = (params: {
       },
     })
   }
-  return authFetch(`sessions/${params.sessionId}`, {
+  return authFetch(`/sessions/${params.sessionId}`, {
     method: 'DELETE',
     accessToken: params.accessToken,
   })
@@ -180,9 +191,12 @@ const deleteSession = (params: {
 const deleteAllSessions = (params: {
   refreshToken: string
 }): Promise<Result<{ message: string; count: number }>> =>
-  authFetch('sessions', { method: 'DELETE', refreshToken: params.refreshToken })
+  authFetch('/sessions', {
+    method: 'DELETE',
+    refreshToken: params.refreshToken,
+  })
 
-const health = (): Promise<Result<{ status: string }>> => authFetch('health')
+const health = (): Promise<Result<{ status: string }>> => authFetch('/health')
 
 export function createHttpClient() {
   return {

@@ -1,10 +1,52 @@
 /**
- * Tests unitarios para src/error-codes.ts y src/schemas.ts (parseErrorResponse).
- * REQs cubiertos: REQ-ERR-01, REQ-ERR-02, REQ-ERR-08, REQ-ERR-09, REQ-ERR-10, REQ-SCHEMA-01, REQ-SCHEMA-02.
+ * Tests unitarios para src/error-codes.ts y src/parse-error-response.ts (parseErrorResponse).
+ * REQs cubiertos: REQ-ERR-01, REQ-ERR-02, REQ-ERR-08, REQ-ERR-09, REQ-ERR-10, REQ-SCHEMA-01, REQ-SCHEMA-02,
+ * REQ-SDK-08 (módulo puro, sin zod, fuera de schemas.ts).
  */
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { ERROR_CODES, SDK_ERROR_REASONS } from '../src/error-codes'
-import { parseErrorResponse } from '../src/schemas'
+import { parseErrorResponse } from '../src/parse-error-response'
+
+const SRC_DIR = join(import.meta.dirname, '..', 'src')
+
+// ─── parse-error-response.ts es un módulo puro (REQ-SDK-08, D-35) ──────────────
+
+describe('parse-error-response module purity (REQ-SDK-08)', () => {
+  it('no_zod_import_nor_error_response_schema', () => {
+    const source = readFileSync(
+      join(SRC_DIR, 'parse-error-response.ts'),
+      'utf8',
+    )
+
+    expect(source).not.toMatch(/from\s+['"]zod['"]/)
+    expect(source).not.toContain('errorResponseSchema')
+    expect(source).not.toContain('ErrorResponseSchema')
+  })
+
+  it('only_type_imports_from_types', () => {
+    const source = readFileSync(
+      join(SRC_DIR, 'parse-error-response.ts'),
+      'utf8',
+    )
+    const imports = [...source.matchAll(/^import\s.*$/gm)].map((m) => m[0])
+
+    expect(imports.length).toBeGreaterThan(0)
+    for (const line of imports) {
+      expect(line).toMatch(/^import type\s.*from\s+'\.\/types'$/)
+    }
+  })
+
+  it('schemas_ts_does_not_export_parse_error_response', () => {
+    const source = readFileSync(join(SRC_DIR, 'schemas.ts'), 'utf8')
+
+    expect(source).not.toMatch(
+      /export\s+(?:async\s+)?function\s+parseErrorResponse/,
+    )
+    expect(source).not.toMatch(/export\s*\{[^}]*parseErrorResponse/)
+  })
+})
 
 // ─── ERROR_CODES ───────────────────────────────────────────────────────────────
 

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Result } from '../types'
 import type { EvaSdkError } from '../types'
 import { SDK_ERROR_REASONS } from '../error-codes'
-import { parseErrorResponse } from '../schemas'
+import { parseErrorResponse } from '../parse-error-response'
 
 const ApiResponseSchema = z.object({
   data: z.unknown().optional(),

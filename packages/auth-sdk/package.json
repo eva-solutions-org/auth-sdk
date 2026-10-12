@@ -117,6 +117,16 @@
         "default": "./dist/s2s/index.cjs"
       }
     },
+    "./contracts": {
+      "import": {
+        "types": "./dist/contracts/index.d.ts",
+        "default": "./dist/contracts/index.js"
+      },
+      "require": {
+        "types": "./dist/contracts/index.d.cts",
+        "default": "./dist/contracts/index.cjs"
+      }
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -134,7 +144,10 @@
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json",
     "prepublishOnly": "pnpm -w run lint && pnpm -w run fmt:check && pnpm -w run build:contracts && pnpm run type-check && pnpm run test:run && pnpm run build",
     "docs": "typedoc",
-    "attw": "attw --pack . --ignore-rules no-resolution"
+    "attw": "attw --pack . --ignore-rules no-resolution",
+    "check:self-contained": "node scripts/check-self-contained.mjs dist",
+    "check:react-closure": "node scripts/react-closure-size.mjs dist --max 11272 --max-cjs 12380 --forbid \"\\.meta\\(\"",
+    "prepack": "pnpm -w run build:contracts && pnpm run build && pnpm run check:self-contained && pnpm run check:react-closure"
   },
   "peerDependencies": {
     "@hono/zod-openapi": ">=1.4.0",
@@ -159,6 +172,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",
+    "@eva_solutions/auth-contracts": "workspace:*",
     "@hono/zod-openapi": "^1.4.0",
     "@types/node": "^25.8.0",
     "@types/react": "^19.2.14",

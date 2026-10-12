@@ -536,3 +536,52 @@ describe('http-client.getCode return type', () => {
     >()
   })
 })
+
+// ───── S1 contract aliases (D-28): old SDK type == contract type, proven before the swap ─────
+
+import type { z as zod } from 'zod'
+import type {
+  ErrorResponse as ContractErrorResponse,
+  GetCodeResponse as ContractGetCodeResponse,
+  LoginResponse as ContractLoginResponse,
+  ERROR_CODES as CONTRACT_ERROR_CODES,
+  HEADERS as CONTRACT_HEADERS,
+} from '@eva_solutions/auth-contracts'
+import type {
+  ErrorResponseSchema,
+  GetCodeResponseSchema,
+  LoginResponseSchema,
+  RefreshResponseSchema,
+} from '../src/schemas'
+import type { ERROR_CODES as SDK_ERROR_CODES } from '../src/error-codes'
+import type { HEADERS as SDK_HEADERS } from '../src/constants'
+
+describe('S1 SDK mirrors equal the contract (D-28)', () => {
+  it('ErrorResponseSchema output == contract ErrorResponse', () => {
+    expectTypeOf<
+      zod.output<typeof ErrorResponseSchema>
+    >().toEqualTypeOf<ContractErrorResponse>()
+  })
+
+  it('GetCodeResponseSchema output == contract GetCodeResponse', () => {
+    expectTypeOf<
+      zod.output<typeof GetCodeResponseSchema>
+    >().toEqualTypeOf<ContractGetCodeResponse>()
+  })
+
+  it('LoginResponseSchema and RefreshResponseSchema output == contract LoginResponse', () => {
+    expectTypeOf<
+      zod.output<typeof LoginResponseSchema>
+    >().toEqualTypeOf<ContractLoginResponse>()
+    expectTypeOf<
+      zod.output<typeof RefreshResponseSchema>
+    >().toEqualTypeOf<ContractLoginResponse>()
+  })
+
+  it('ERROR_CODES and HEADERS have the contract type', () => {
+    expectTypeOf<typeof SDK_ERROR_CODES>().toEqualTypeOf<
+      typeof CONTRACT_ERROR_CODES
+    >()
+    expectTypeOf<typeof SDK_HEADERS>().toEqualTypeOf<typeof CONTRACT_HEADERS>()
+  })
+})

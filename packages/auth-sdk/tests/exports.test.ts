@@ -548,3 +548,233 @@ describe('package manifest (workspace S0: REQ-WS-09, REQ-SDK-11)', () => {
     expect(manifest.dependencies.zod).toBe('^4.4.3')
   })
 })
+
+// ──────────────────────────────────────────────────────────────────────────────
+// S1 contract adoption: the public runtime surface of every entry is unchanged (REQ-SDK-09)
+// and the `./contracts` subpath is declared for ESM and CJS (REQ-SDK-01).
+// ──────────────────────────────────────────────────────────────────────────────
+
+const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
+  root: [
+    'ACCOUNT_STATES',
+    'ADMIN_ERROR_CODES',
+    'COOKIES',
+    'COOKIE_MAX_AGE',
+    'DEFAULT_ERROR_MESSAGES',
+    'EMPTY_BODY_SHA256_HEX',
+    'ERROR_CODES',
+    'EVENT_CODES',
+    'HEADERS',
+    'JWT_CONFIG',
+    'S2S_RESPONSE_HEADERS',
+    'S2S_SCOPES',
+    'S2S_TIMESTAMP_WINDOW_SECONDS',
+    'SDK_ERROR_REASONS',
+    'USERS_BATCH_MAX_IDS',
+    'WEBHOOK_HEADERS',
+    'WEBHOOK_TIMESTAMP_WINDOW_SECONDS',
+    'buildS2SCanonicalString',
+    'configureEvaAuth',
+    'createAdminClient',
+    'createEvaAuth',
+    'createHttpClient',
+    'createS2SClient',
+    'generateS2SNonce',
+    'getAuthUrl',
+    'getCookieDomain',
+    'getMessage',
+    'isAccountStateLocked',
+    'isApiError',
+    'isAuthRequired',
+    'isBadRequest',
+    'isConflict',
+    'isForbidden',
+    'isGone',
+    'isInternalError',
+    'isMalformed',
+    'isNetworkError',
+    'isNotFound',
+    'isRateLimited',
+    'isRefreshNoTokens',
+    'isSdkError',
+    'isServiceUnavailable',
+    'isTokenInvalid',
+    'isUnauthorized',
+    'isUnprocessableEntity',
+    'isValidationError',
+    'isVerifyFailed',
+    'matchError',
+    'matchSdkReason',
+    'readTokensFromCookies',
+    'signS2SHeaders',
+    'signS2SRequest',
+    'verifyAccessToken',
+    'verifyS2SRequest',
+    'verifyWebhookSignature',
+  ],
+  hono: [
+    'COOKIES',
+    'COOKIE_MAX_AGE',
+    'DEFAULT_ERROR_MESSAGES',
+    'HEADERS',
+    'clearTokenCookies',
+    'configureEvaAuth',
+    'evaAuth',
+    'evaAuthRoutes',
+    'getAuthUrl',
+    'getCookieDomain',
+    'getEvaPayload',
+    'getSessionId',
+    'parseDeviceInfo',
+    'readTokensFromCookies',
+    'requireScope',
+    's2sAuth',
+    'setTokenCookies',
+  ],
+  generic: [
+    'COOKIES',
+    'COOKIE_MAX_AGE',
+    'DEFAULT_ERROR_MESSAGES',
+    'HEADERS',
+    'clearTokenCookies',
+    'configureEvaAuth',
+    'getAuthUrl',
+    'getCookieDomain',
+    'readTokensFromCookies',
+    'setTokenCookies',
+    'verifyRequest',
+  ],
+  react: [
+    'COOKIES',
+    'COOKIE_MAX_AGE',
+    'DEFAULT_ERROR_MESSAGES',
+    'ERROR_CODES',
+    'EvaAuthProvider',
+    'HEADERS',
+    'SDK_ERROR_REASONS',
+    'authFetch',
+    'configureEvaAuth',
+    'isAccountStateLocked',
+    'isApiError',
+    'isAuthRequired',
+    'isBadRequest',
+    'isConflict',
+    'isForbidden',
+    'isGone',
+    'isInternalError',
+    'isMalformed',
+    'isNetworkError',
+    'isNotFound',
+    'isRateLimited',
+    'isRefreshNoTokens',
+    'isSdkError',
+    'isServiceUnavailable',
+    'isTokenInvalid',
+    'isUnauthorized',
+    'isUnprocessableEntity',
+    'isValidationError',
+    'isVerifyFailed',
+    'matchError',
+    'matchSdkReason',
+    'readTokensFromCookies',
+    'useAuth',
+    'useEmpresas',
+    'useSessions',
+    'useUser',
+  ],
+  'hono-openapi': [
+    'OpenAPIHono',
+    'createRoute',
+    'defineOpenAPIRoute',
+    'evaAuthOpenAPIRoutes',
+  ],
+  webhooks: [
+    'EVENT_CODES',
+    'WEBHOOK_HEADERS',
+    'WEBHOOK_TIMESTAMP_WINDOW_SECONDS',
+    'verifyWebhookSignature',
+  ],
+  admin: ['ADMIN_ERROR_CODES', 'createAdminClient'],
+  s2s: [
+    'EMPTY_BODY_SHA256_HEX',
+    'S2S_RESPONSE_HEADERS',
+    'S2S_SCOPES',
+    'S2S_TIMESTAMP_WINDOW_SECONDS',
+    'USERS_BATCH_MAX_IDS',
+    'buildS2SCanonicalString',
+    'createS2SClient',
+    'generateS2SNonce',
+    'signS2SHeaders',
+    'signS2SRequest',
+    'verifyS2SRequest',
+  ],
+}
+
+const ENTRY_LOADERS: Record<string, () => Promise<object>> = {
+  root: () => import('../src/index'),
+  hono: () => import('../src/hono/index'),
+  generic: () => import('../src/generic/index'),
+  react: () => import('../src/react/index'),
+  'hono-openapi': () => import('../src/hono-openapi/index'),
+  webhooks: () => import('../src/webhooks/index'),
+  admin: () => import('../src/admin/index'),
+  s2s: () => import('../src/s2s/index'),
+}
+
+describe('public_export_names_preserved (REQ-SDK-09)', () => {
+  it.each(Object.keys(PUBLIC_EXPORT_NAMES))(
+    '%s entry exports exactly the names it exported before the contract',
+    async (entry) => {
+      const loaded = await ENTRY_LOADERS[entry]!()
+
+      expect(Object.keys(loaded).sort()).toEqual(PUBLIC_EXPORT_NAMES[entry])
+    },
+  )
+})
+
+describe('contracts_subpath_esm_cjs (REQ-SDK-01)', () => {
+  const read = (relative: string) =>
+    readFileSync(new URL(relative, import.meta.url), 'utf8')
+  const manifest = JSON.parse(read('../package.json')) as {
+    exports: Record<string, unknown>
+    dependencies: Record<string, string>
+    peerDependencies: Record<string, string>
+    devDependencies: Record<string, string>
+  }
+
+  it('declares ./contracts with ESM and CJS conditions, each with types', () => {
+    expect(manifest.exports['./contracts']).toEqual({
+      import: {
+        types: './dist/contracts/index.d.ts',
+        default: './dist/contracts/index.js',
+      },
+      require: {
+        types: './dist/contracts/index.d.cts',
+        default: './dist/contracts/index.cjs',
+      },
+    })
+  })
+
+  it('keeps the contract a devDependency only, never a dependency or peer', () => {
+    const name = '@eva_solutions/auth-contracts'
+
+    expect(manifest.devDependencies[name]).toBe('workspace:*')
+    expect(manifest.dependencies[name]).toBeUndefined()
+    expect(manifest.peerDependencies[name]).toBeUndefined()
+  })
+
+  it('builds the subpath as an entry and bundles the contract', () => {
+    const config = read('../tsdown.config.ts')
+
+    expect(config).toContain("'src/contracts/index.ts'")
+    expect(config).toMatch(
+      /alwaysBundle:\s*\['@eva_solutions\/auth-contracts'\]/,
+    )
+  })
+
+  it('re-exports the whole contract barrel from the subpath entry', () => {
+    expect(read('../src/contracts/index.ts')).toContain(
+      "export * from '@eva_solutions/auth-contracts'",
+    )
+  })
+})

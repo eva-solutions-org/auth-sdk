@@ -1,11 +1,11 @@
 import { getAuthUrl } from './config'
 
-export const HEADERS = {
-  AUTHORIZATION: 'authorization',
-  REFRESH_TOKEN: 'x-eva-refresh-token',
-  NEW_ACCESS_TOKEN: 'x-eva-new-access-token',
-  NEW_REFRESH_TOKEN: 'x-eva-new-refresh-token',
-} as const
+/*
+ * `HEADERS` es un re-export del contrato. Este módulo es alcanzable desde `src/react`: de la
+ * barrel del contrato solo se importan VALORES de módulos puros (`constants.ts`, `routes.ts`) o
+ * `import type`. Un schema importado por valor aquí arrastraría su código al bundle de react.
+ */
+export { HEADERS } from '@eva_solutions/auth-contracts'
 
 export const COOKIES = {
   ACCESS_TOKEN: 'eva_access_token',

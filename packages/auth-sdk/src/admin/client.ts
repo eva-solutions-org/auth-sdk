@@ -18,7 +18,7 @@
  */
 
 import { validateHttpsUrl } from '../config'
-import { parseErrorResponse } from '../schemas'
+import { parseErrorResponse } from '../parse-error-response'
 import type { Result } from '../types'
 import type {
   AdminClientConfig,

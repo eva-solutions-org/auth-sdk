@@ -51,6 +51,9 @@ importers:
       '@arethetypeswrong/cli':
         specifier: ^0.18.2
         version: 0.18.2
+      '@eva_solutions/auth-contracts':
+        specifier: workspace:*
+        version: link:../auth-contracts
       '@hono/zod-openapi':
         specifier: ^1.4.0
         version: 1.4.0(hono@4.12.19)(zod@4.4.3)

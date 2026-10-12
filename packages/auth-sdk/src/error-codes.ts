@@ -1,33 +1,28 @@
 /**
  * Catálogo de error codes del Auth Service y reasons internos del SDK.
  *
- * - ERROR_CODES: espejo del as const runtime del API (12 entries). Solo aplica a EvaApiError (kind: 'api').
+ * - ERROR_CODES: re-export del contrato compartido (12 entries, mismo objeto que usa el API). Solo aplica a EvaApiError (kind: 'api').
  * - SDK_ERROR_REASONS: enum cerrado de reasons internos del SDK (6 entries). Solo aplica a EvaSdkError (kind: 'sdk').
  *
  * D-07 LOCKED: el catálogo replica el runtime del API (12 codes, incluyendo account_state_locked).
  * D-08 LOCKED: dual type CoreErrorCode / ErrorCode para catálogo semiabierto con autocomplete.
  */
 
-export const ERROR_CODES = {
-  account_state_locked: 'account_state_locked',
-  unauthorized: 'unauthorized',
-  validation_error: 'validation_error',
-  not_found: 'not_found',
-  conflict: 'conflict',
-  forbidden: 'forbidden',
-  rate_limited: 'rate_limited',
-  gone: 'gone',
-  unprocessable_entity: 'unprocessable_entity',
-  bad_request: 'bad_request',
-  internal_error: 'internal_error',
-  service_unavailable: 'service_unavailable',
-} as const
+import type { CoreErrorCode } from '@eva_solutions/auth-contracts'
+
+/*
+ * `ERROR_CODES` y `CoreErrorCode` vienen del contrato. Este módulo es alcanzable desde
+ * `src/react`: de la barrel del contrato solo se importan VALORES de módulos puros
+ * (`constants.ts`, `routes.ts`) o `import type`. Un schema importado por valor aquí arrastraría
+ * su código al bundle de react.
+ */
+export { ERROR_CODES } from '@eva_solutions/auth-contracts'
 
 /**
  * Unión cerrada de los 12 error codes core del Auth Service.
  * Para autocomplete exhaustivo con los valores del API.
  */
-export type CoreErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES]
+export type { CoreErrorCode }
 
 /**
  * Tipo semiabierto: incluye los 12 cores (con autocomplete) y permite

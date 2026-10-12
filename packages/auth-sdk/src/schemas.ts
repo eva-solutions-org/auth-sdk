@@ -3,10 +3,15 @@
  * Usados por auth-handlers.ts (validación runtime) y hono-openapi/index.ts (OpenAPI doc).
  * Importar desde aquí evita duplicación y garantiza consistencia entre variantes.
  *
- * También contiene parseErrorResponse (sync) — D-14 LOCKED: cohesión con ErrorResponseSchema.
+ * `parseErrorResponse` vive en `parse-error-response.ts` (módulo puro, D-35): este archivo no es
+ * alcanzable desde `src/react/index.ts`.
  */
 import { z } from 'zod'
-import type { EvaError, EvaApiError, EvaSdkError } from './types'
+import {
+  errorResponseSchema,
+  getCodeResponseSchema,
+  loginResponseSchema,
+} from '@eva_solutions/auth-contracts'
 
 // === Request schemas ===
 
@@ -35,105 +40,24 @@ export const UpdateUserSchema = z
 
 // === Response schemas ===
 
-/**
- * Schema del wire de error del Auth Service.
- * D-13 v2 LOCKED: el API emite { error: { code: string, message: string } }.
- * Usado por hono-openapi/index.ts para generar la documentación OpenAPI.
+/*
+ * Los schemas de respuesta son alias del contrato compartido (D-28: el tipo es idéntico al que
+ * este archivo definía antes). Se usan solo para documentar OpenAPI: `http-client` no los parsea en
+ * runtime. Este módulo registra metadatos de zod al cargarse, así que NO debe ser alcanzable desde
+ * `src/react` (regla D-35: ahí solo se importan valores de módulos puros o `import type`).
  */
-export const ErrorResponseSchema = z.object({
-  error: z.object({
-    code: z.string(),
-    message: z.string(),
-  }),
-})
 
-/**
- * Parsea el body de una respuesta HTTP de error a EvaError.
- * Sync — el caller debe haber hecho `await res.json().catch(() => null)` antes de llamar.
- *
- * Algoritmo (D-14 LOCKED):
- * - status === 0 → EvaSdkError reason:'network'
- * - body null/undefined → EvaSdkError reason:'malformed'
- * - body.error.{code,message} presentes → EvaApiError
- * - cualquier otro caso → EvaSdkError reason:'malformed'
- */
-export function parseErrorResponse(status: number, body: unknown): EvaError {
-  if (status === 0) {
-    return {
-      kind: 'sdk',
-      reason: 'network',
-      message: 'Network error',
-      status: 0,
-    } satisfies EvaSdkError
-  }
+/** Wire de error `{ error: { code, message } }` (componente `ErrorBody`). */
+export const ErrorResponseSchema = errorResponseSchema
 
-  if (body === null || body === undefined) {
-    return {
-      kind: 'sdk',
-      reason: 'malformed',
-      message: 'Malformed response',
-      status,
-    } satisfies EvaSdkError
-  }
+/** Wire de POST /login/get-code (200). `challengeId` es opaco; cada get-code nuevo invalida el anterior. */
+export const GetCodeResponseSchema = getCodeResponseSchema
 
-  if (
-    typeof body === 'object' &&
-    body !== null &&
-    'error' in body &&
-    typeof (body as Record<string, unknown>).error === 'object' &&
-    (body as Record<string, unknown>).error !== null &&
-    typeof ((body as Record<string, unknown>).error as Record<string, unknown>)
-      .code === 'string' &&
-    typeof ((body as Record<string, unknown>).error as Record<string, unknown>)
-      .message === 'string'
-  ) {
-    const err = (body as Record<string, unknown>).error as {
-      code: string
-      message: string
-    }
-    return {
-      kind: 'api',
-      code: err.code,
-      message: err.message,
-      status,
-    } satisfies EvaApiError
-  }
+/** Wire de POST /login (200). */
+export const LoginResponseSchema = loginResponseSchema
 
-  return {
-    kind: 'sdk',
-    reason: 'malformed',
-    message: 'Malformed error response',
-    status,
-  } satisfies EvaSdkError
-}
-
-/**
- * Wire de POST /get-code (200). Solo se usa para documentar OpenAPI: no se
- * exporta del paquete y `http-client.getCode` no lo parsea en runtime.
- * `challengeId` es opaco; cada get-code nuevo invalida el anterior.
- */
-export const GetCodeResponseSchema = z.object({
-  data: z.object({
-    message: z.string(),
-    challengeId: z.string(),
-  }),
-})
-
-export const UserIdSchema = z.object({
-  id: z.string(),
-})
-
-export const LoginResponseSchema = z.object({
-  data: z.object({
-    user: UserIdSchema,
-  }),
-})
-
-export const RefreshResponseSchema = z.object({
-  data: z.object({
-    user: UserIdSchema,
-  }),
-})
+/** Wire de POST /login/refresh (200): el contrato reutiliza la respuesta de login. */
+export const RefreshResponseSchema = loginResponseSchema
 
 // === Inferred types ===
 

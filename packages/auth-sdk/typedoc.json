@@ -8,7 +8,8 @@
     "src/hono-openapi/index.ts",
     "src/webhooks/index.ts",
     "src/admin/index.ts",
-    "src/s2s/index.ts"
+    "src/s2s/index.ts",
+    "src/contracts/index.ts"
   ],
   "out": "docs-site",
   "theme": "default-modern",
