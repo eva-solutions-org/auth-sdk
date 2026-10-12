@@ -34,6 +34,45 @@ The repo is a pnpm workspace (`pnpm-workspace.yaml`, packages under `packages/`)
    - To work on a single package, use `pnpm --filter @eva_solutions/auth-sdk run <script>`; run `pnpm run build:contracts` first if the contract changed.
    - `pnpm run build` retries on its own: the tsdown 0.22.0 / rolldown-plugin-dts 0.25.1 build is not deterministic with the `.d.ts.map` files of the index, and today it fails about 60 % of the time without producing them. See [Build y distribución](./docs/configuration.md#build-y-distribución).
 
+## Build gates
+
+CI runs these checks on the built `dist/` after `pnpm run build` (`.github/workflows/ci.yml`). Run them locally from the repo root after a build when you touch `packages/auth-contracts/` or the imports of the SDK.
+
+### Contract is inlined in the SDK
+
+`@eva_solutions/auth-contracts` is private and never published, so no file in `packages/auth-sdk/dist` may reference it, and the SDK manifest must not list it under `dependencies` or `peerDependencies`. `pnpm --filter @eva_solutions/auth-sdk run check:self-contained` (`scripts/check-self-contained.mjs`) scans `dist/**/*.d.ts`, `*.d.cts`, `*.js` and `*.cjs` for `@eva_solutions/auth-contracts` and fails on any match; CI and the `prepack` script of the SDK both run it. A second CI step loads `dist/contracts/index.js` (ESM) and `index.cjs` (CJS) and fails if `AUTH_ROUTES` or `loginRequestSchema` is missing.
+
+If the grep finds a match, the build left the contract as an external import: check first that `deps.alwaysBundle` in `packages/auth-sdk/tsdown.config.ts` still lists the package.
+
+### React entry closure gate
+
+The `react` entry must stay small and free of schema modules, in both formats. `packages/auth-sdk/scripts/react-closure-size.mjs` measures the transitive closure of `dist/react/index.js` (ESM, following `import`/`from`) and of `dist/react/index.cjs` (CJS, following `require("./…")`): the entry plus every shared chunk it pulls through relative specifiers; bare specifiers are external and do not count. Both closures are always measured, separately. CI and `prepack` run it through the package script, which holds the real budgets:
+
+```bash
+pnpm --filter @eva_solutions/auth-sdk run check:react-closure
+# = node scripts/react-closure-size.mjs dist --max 11272 --max-cjs 12380 --forbid "\.meta\("
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--max <bytes>` | Fails if the gzip size of the ESM closure is above this number (and of the CJS one when `--max-cjs` is absent). CI uses `11272`, the budget fixed for this change (10 248 B baseline plus 10 %); the ESM closure measures 9 942 B. |
+| `--max-cjs <bytes>` | Own budget for the CJS closure. CJS is larger by design: it carries the bundler interop helper as its own chunk (`rolldown-runtime-*.cjs`). CI uses `12380`: the measured 10 954 B plus 13 %, the same relative margin as ESM. |
+| `--forbid <regex>` | Fails if the text of any file in either closure matches. CI uses `\.meta\(`: a file that registers `.meta()` metadata is a SCHEMA module of the contract, and it must not be reachable from `react`. |
+
+An unknown flag is an error on purpose: a gate that silently ignored a flag would pass without checking anything. A missing `react/index.js` or `react/index.cjs` is also an error.
+
+The script prints one JSON line, `{ "esm": <closure>, "cjs": <closure> }`, where each closure is `{ "files": <count>, "gzipBytes": <total>, "perFile": { "<file>": <gzip bytes> } }`, and exits `1` on a failure.
+
+The same gate (plus `check:self-contained`) runs in the `prepack` script of `@eva_solutions/auth-sdk`: building the contract and the SDK first, so no tarball is produced without passing it, even when CI does not run on the branch.
+
+**How to read a failure**
+
+- `react closure (esm|cjs) file <name> matches forbidden pattern /\.meta\(/`: the named chunk contains contract schema code, so something reachable from `src/react/index.ts` imports a value from a SCHEMA module of `@eva_solutions/auth-contracts` (or from an SDK module such as `src/schemas.ts` that does). Find the import chain from `src/react/` to that file. Fix it by importing only values from PURE contract modules (`constants.ts`, `routes.ts`) or `import type`, or by moving the logic into a module without schema imports (as `src/parse-error-response.ts` does). The failure appears even when the size is still under the budget, which is the point of `--forbid`. If only the `cjs` line fails and the chunk is an `auth-handlers-*.cjs`, check that `outputOptions.codeSplitting` in `tsdown.config.ts` still isolates the bundler runtime in its own chunk: without it, `react/index.cjs` requires whichever chunk holds the helpers.
+- `react closure (esm|cjs) <N> B gzip exceeds budget <M> B`: compare `perFile` with the previous run to see which file grew. Raising the budget is a maintainer decision, not a fix.
+- `unknown argument: <flag>` or a usage error: the command line is wrong; nothing was measured.
+
+The module kinds and the rule behind this gate are described in [docs/architecture.md](./docs/architecture.md) and in the [contract README](./packages/auth-contracts/README.md).
+
 ## Pull request workflow
 
 1. Create a branch from `main`: `git checkout -b feat/short-description`.

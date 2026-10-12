@@ -69,7 +69,9 @@ packages/auth-sdk/src/
 ├── config.ts          # Config runtime: configureEvaAuth, getAuthUrl (authUrl inmutable), validación y errores de configuración → ADR-017
 ├── types.ts           # Todos los tipos exportados
 ├── errors.ts          # EvaAuthError, createAuthError, isAuthError
-├── constants.ts       # HEADERS, COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
+├── constants.ts       # HEADERS (re-export del contrato), COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
+├── api-path.ts        # apiPath(): construye la ruta de un descriptor del contrato (rellena {param})
+├── parse-error-response.ts  # parseErrorResponse (módulo puro: sin zod, solo `import type`)
 ├── refresh-dedup.ts   # Deduplicación de refresh compartida (Map por refreshToken)
 ├── jwks.ts            # JWKS remoto lazy (jose createRemoteJWKSet): cache 24h, cooldown 30s, timeout 5s
 ├── jwt.ts             # verifyAccessToken con jose
@@ -87,6 +89,9 @@ packages/auth-sdk/src/
 ├── generic/
 │   ├── verify.ts       # verifyRequest (Web API Request, usa refresh-dedup)
 │   └── index.ts        # Barrel file (re-exporta setTokenCookies, clearTokenCookies desde cookies.ts)
+│
+├── contracts/
+│   └── index.ts        # export * from '@eva_solutions/auth-contracts' (se inlinea en el build)
 │
 └── react/
     ├── eva-auth-provider.tsx  # EvaAuthProvider context
@@ -109,6 +114,37 @@ packages/auth-sdk/src/
 | `@eva_solutions/auth-sdk/hono` | Middleware, auth routes, helpers, device-info |
 | `@eva_solutions/auth-sdk/react` | Provider, hooks, authFetch |
 | `@eva_solutions/auth-sdk/generic` | verify, cookies (setTokenCookies, clearTokenCookies) — framework-agnostic |
+| `@eva_solutions/auth-sdk/contracts` | Contrato compartido del wire (schemas, constantes, descriptores de ruta) — ver [Contrato compartido](#contrato-compartido) |
+
+---
+
+## Contrato compartido
+
+El repo es un workspace pnpm con dos paquetes: `packages/auth-sdk` (el SDK publicado) y `packages/auth-contracts` (`@eva_solutions/auth-contracts`, **privado**, nunca se publica). El contrato define una sola vez los schemas, constantes y descriptores de ruta del wire que la API del Auth Service y el SDK deben acordar. Cobertura y exports: [api.md](api.md#eva_solutionsauth-sdkcontracts) y el [README del contrato](../packages/auth-contracts/README.md).
+
+### Cómo llega al consumidor
+
+- El SDK depende del contrato como `devDependency` (`workspace:*`) y lo **inlinea** en el build (`deps.alwaysBundle` en `packages/auth-sdk/tsdown.config.ts`, tanto el JS como los `.d.ts`). Se expone como el subpath `@eva_solutions/auth-sdk/contracts` (ESM y CJS). El tarball del SDK es autocontenido: nada en `dist/` referencia `@eva_solutions/auth-contracts`, y lo vigila CI.
+- El SDK consume el contrato desde su `dist` construido, no desde las fuentes: los scripts raíz `type-check` y `test:run` corren antes `build:contracts`. Un `pnpm -r type-check` pelado en un árbol limpio falla con "cannot find module".
+- El contrato se compila con `unbundle: true` (un archivo `dist` por módulo fuente) y `"sideEffects": false`, para que el bundler del SDK descarte los módulos del contrato que un entry no usa.
+- `zod` es peer del contrato (`^4.4.3`) y dependency del SDK (`^4.4.3`). Los schemas inlineados importan `zod` desde la resolución del consumidor, por lo que el consumidor debe tener **una sola copia** en su lock.
+
+### Módulos PURE y SCHEMA
+
+Cada módulo del contrato es de uno de dos tipos:
+
+| Tipo | Módulos | Qué pueden importar | Qué los distingue |
+|------|---------|---------------------|-------------------|
+| **PURE** | `constants.ts` (códigos de error, nombres de headers, y toda constante futura), `routes.ts` | Nada de `zod` ni de módulos SCHEMA; solo datos `as const` y tipos | Importarlos no tiene efectos al cargar |
+| **SCHEMA** | `errors.ts`, `common.ts`, `auth.ts` | `zod` y módulos PURE | Al cargarse ejecutan `.meta()`, que escribe en el registro global de zod: no es tree-shakeable |
+
+### Regla de imports de `react`
+
+El entry `react` tiene un tope de tamaño. Por eso **todo módulo del SDK alcanzable desde `src/react/index.ts` importa del contrato solo valores de módulos PURE o `import type`**, nunca un valor de un módulo SCHEMA. Ejemplos vigentes: `constants.ts` re-exporta `HEADERS`; `error-codes.ts` re-exporta el valor `ERROR_CODES` y toma `CoreErrorCode` con `import type`; `api-path.ts` solo usa `import type`. Los schemas del contrato los alcanzan `contracts` y los módulos de los handlers Hono (`schemas.ts` re-exporta `errorResponseSchema` y las respuestas de login como alias, y solo lo importan `auth-handlers.ts` y `hono-openapi`), no `react`; `react` no debe importar `schemas.ts`.
+
+Consecuencia: `parseErrorResponse` vive en su propio módulo puro, `src/parse-error-response.ts` (sin `zod`, solo `import type`), y no en `schemas.ts`; `react/auth-fetch.ts`, `http-client.ts`, `admin/client.ts` y `s2s/client.ts` lo importan de ahí.
+
+La regla se hace cumplir en dos puntos: un test del contrato que falla si `constants.ts` o `routes.ts` importan `zod` o un módulo SCHEMA, y el gate `react-closure-size.mjs` (CI y `prepack`; mide el cierre ESM y el CJS por separado) con `--max`, `--max-cjs` y `--forbid '\.meta\('` (cómo leer un fallo: [CONTRIBUTING.md](../CONTRIBUTING.md#react-entry-closure-gate)).
 
 ---
 

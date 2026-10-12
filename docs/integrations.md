@@ -21,7 +21,7 @@
 | App backend (root) | `@eva_solutions/auth-sdk` | `configureEvaAuth`, `createS2SClient`, `getAuthUrl`, `COOKIES`, `isNotFound`, `matchError`, `isNetworkError`, types `S2SClient`, `EvaError`, `EvaTokenPayload` | Boot config, S2S client (for example `getUser`), cookie name constants, error narrowing. |
 | App backend (Hono) | `@eva_solutions/auth-sdk/hono` | `evaAuth`, `evaAuthRoutes`, `s2sAuth`, `requireScope` | JWT cookie middleware on protected routes, auth proxy routes mounted under a prefix of the consumer's choice, S2S verification with scopes. |
 
-All published entry points are listed in `package.json` `exports`: `.`, `./hono`, `./generic`, `./react`, `./hono-openapi`, `./webhooks`, `./admin`, `./s2s`. Their API is documented in [api.md](api.md).
+All published entry points are listed in `package.json` `exports`: `.`, `./hono`, `./generic`, `./react`, `./hono-openapi`, `./webhooks`, `./admin`, `./s2s`, `./contracts`. Their API is documented in [api.md](api.md). `./contracts` is the shared wire contract (schemas, constants and route descriptors) that the Auth Service API imports.
 
 ### Contract points
 

@@ -373,6 +373,8 @@ La variante OpenAPI usa `createRoute` (no `defineOpenAPIRoute` — que es para e
 
 T-00 probe validó que `@hono/zod-openapi@1.3.0` con schemas importados desde módulo distinto funciona correctamente con `createRoute` y type inference. Issue #1412 de honojs/middleware NO afecta este setup. Schemas declarados en `src/schemas.ts` e importados desde `auth-handlers.ts` y `hono-openapi/index.ts`.
 
+> **Nota (cambio `shared-api-contracts`, S1)**: lo anterior es el registro de la decisión original. Hoy `src/schemas.ts` (ahora en `packages/auth-sdk/src/`) sigue siendo el lugar de los schemas de entrada BFF, pero `ErrorResponseSchema`, `GetCodeResponseSchema`, `LoginResponseSchema` y `RefreshResponseSchema` son alias de los schemas del contrato compartido (`@eva_solutions/auth-contracts`). Y `parseErrorResponse` ya no está en `schemas.ts`: vive en `src/parse-error-response.ts`, un módulo puro sin `zod`. Ver [architecture.md](architecture.md#contrato-compartido).
+
 **(j) Parent OpenAPIHono required — CE1**
 
 `evaAuthOpenAPIRoutes()` retorna un `OpenAPIHono` que debe montarse en un parent `OpenAPIHono` (no `Hono` plano). Si el parent es `new Hono()`, los paths NO aparecen en el documento `/doc` generado. Documentado con warning visible en `docs/configuration.md`. Referencia: honojs/middleware#952.
@@ -598,6 +600,8 @@ Hard delete de `src/errors.ts`. Ningún símbolo migrado ni deprecado.
 - `src/http-client.ts`: import de `parseErrorResponse` migrado a `./schemas`.
 - Tests que importaban de `./errors`: actualizados o eliminados.
 - Migration guide (`docs/migration.md`): documenta que `EvaAuthError` no existe en 1.0.0.
+
+> **Nota posterior**: `parseErrorResponse` se movió después de `src/schemas.ts` a `src/parse-error-response.ts` (cambio `shared-api-contracts`). La firma y el comportamiento no cambiaron; los imports citados arriba son los de esta decisión, no los vigentes.
 
 ---
 

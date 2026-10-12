@@ -27,7 +27,7 @@ It ships as tree-shakeable ESM + CJS with TypeScript declarations, sourcemaps, a
 - Webhook event verification (HMAC-SHA256 with timestamp window)
 - Built-in error handling with `Result<T>` pattern — no thrown exceptions for business flows
 - Tree-shakeable ESM + CJS + `.d.ts` with declaration maps and sourcemaps
-- 8 independent entry points — import only what your runtime needs
+- 9 independent entry points — import only what your runtime needs
 - Typed extra JWT claims via optional Zod schema (`extraClaimsSchema`)
 - One npm package for every environment — the Auth Service URL is set at boot with `configureEvaAuth({ authUrl })`
 
@@ -365,7 +365,7 @@ For full configuration details see [docs/configuration.md](../../docs/configurat
 
 ## Entry Points
 
-The SDK exports 8 independent entry points. Import only what your runtime needs.
+The SDK exports 9 independent entry points. Import only what your runtime needs.
 
 | Import | Description | Required peer |
 |--------|-------------|---------------|
@@ -377,6 +377,7 @@ The SDK exports 8 independent entry points. Import only what your runtime needs.
 | `@eva_solutions/auth-sdk/webhooks` | `verifyWebhookSignature()`, `EVENT_CODES`, webhook types | — |
 | `@eva_solutions/auth-sdk/admin` | `createAdminClient()` — service clients and user management | — |
 | `@eva_solutions/auth-sdk/s2s` | `createS2SClient()`, `signS2SHeaders()`, `signS2SRequest()` — HMAC S2S signing | — |
+| `@eva_solutions/auth-sdk/contracts` | Shared wire contract of the Auth API: error and login schemas, `ERROR_CODES`, header names, `AUTH_ROUTES`. Used by the Auth API; the consumer must resolve a single `zod` copy. See [docs/api.md](../../docs/api.md#eva_solutionsauth-sdkcontracts) | — |
 
 ---
 

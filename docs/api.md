@@ -853,6 +853,34 @@ Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.
 
 ---
 
+## `@eva_solutions/auth-sdk/contracts`
+
+Contrato compartido del wire del Auth Service: los schemas Zod, las constantes y los descriptores de ruta que la API del Auth Service y este SDK deben acordar, definidos una sola vez. Lo consume la API del Auth Service (`import { loginRequestSchema } from '@eva_solutions/auth-sdk/contracts'`); el SDK lo usa por dentro para sus clientes y tipos.
+
+El código vive en el paquete privado `@eva_solutions/auth-contracts` (`packages/auth-contracts/`), que **nunca se publica**: el build lo inlinea en este entry, así que el consumidor instala solo `@eva_solutions/auth-sdk`. Ver [architecture.md](architecture.md#contrato-compartido) y el [README del contrato](../packages/auth-contracts/README.md).
+
+> **Una sola copia de `zod`.** Los schemas se construyen con el `zod` que resuelve el consumidor. Si el lock del consumidor tiene dos versiones, los schemas de una de ellas no son asignables a `createRoute` de `@hono/zod-openapi` (`TS2322`, o el body queda tipado como `never`). El lock debe resolver exactamente una versión de `zod`.
+
+Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la API):
+
+| Export | Tipo | Descripción |
+|--------|------|-------------|
+| `ERROR_CODES` | constante | 12 codes core del wire de errores (cada clave es igual a su valor). El catálogo es abierto |
+| `CoreErrorCode` | type | Unión de literales de `ERROR_CODES` |
+| `HEADERS` | constante | Nombres de los headers de sesión: `AUTHORIZATION`, `REFRESH_TOKEN`, `NEW_ACCESS_TOKEN`, `NEW_REFRESH_TOKEN` |
+| `INTERNAL_HEADERS` | constante | Nombres de los headers S2S: `X_EVA_CLIENT_ID`, `X_EVA_TIMESTAMP`, `X_EVA_NONCE`, `X_EVA_SIGNATURE`, `X_EVA_SERVER_TIME` |
+| `API_PREFIX` | constante | `'/api/v1'`. Declarado, pero los clientes del SDK todavía no lo anteponen a sus rutas |
+| `AUTH_ROUTES` | constante | Descriptores `{ method, path }` de `getCode`, `login`, `refresh` y `logout`, con `path` relativo a `API_PREFIX` |
+| `HttpMethod`, `RouteDescriptor` | types | Tipos de los descriptores |
+| `errorResponseSchema`, `ErrorResponse` | schema + type | Cuerpo de error `{ error: { code, message } }` (id OpenAPI `ErrorBody`) |
+| `messageResponseSchema`, `messageWithCountResponseSchema` (+ tipos `MessageResponse`, `MessageWithCountResponse`) | schema + type | Respuestas genéricas con mensaje |
+| `getCodeRequestSchema`, `getCodeResponseSchema`, `loginRequestSchema`, `loginResponseSchema` | schema | Flujo de login. `/login/refresh` responde con `loginResponseSchema` y `/login/logout` con `messageResponseSchema` |
+| `GetCodeRequest`, `GetCodeResponse`, `LoginRequest`, `LoginResponse` | type | `z.input<>` para requests y `z.output<>` para responses |
+
+Los schemas usan metadata `.meta()` (nunca `.openapi()`) y los de request son objetos planos estrictos, sin `.refine`. `ERROR_CODES` y `HEADERS` también se re-exportan desde `@eva_solutions/auth-sdk`. Los schemas BFF del SDK (`GetCodeSchema`, `LoginSchema`, `UpdateUserSchema`) siguen siendo propios y más laxos: la autoridad de validación es el servidor.
+
+---
+
 ## `@eva_solutions/auth-sdk/react`
 
 Componentes y hooks para React.
