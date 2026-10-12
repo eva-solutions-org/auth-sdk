@@ -38,6 +38,60 @@ export const INTERNAL_USER_ROUTES = {
   batch: { method: 'post', path: '/internal/users/batch' },
 } as const satisfies Record<string, RouteDescriptor>
 
+/**
+ * Webhook subscription and delivery routes of the service-to-service surface. Relative to
+ * {@link API_PREFIX}.
+ */
+export const WEBHOOK_ROUTES = {
+  createSubscription: {
+    method: 'post',
+    path: '/internal/webhooks/subscriptions',
+  },
+  listSubscriptions: {
+    method: 'get',
+    path: '/internal/webhooks/subscriptions',
+  },
+  getSubscription: {
+    method: 'get',
+    path: '/internal/webhooks/subscriptions/{id}',
+  },
+  updateSubscription: {
+    method: 'patch',
+    path: '/internal/webhooks/subscriptions/{id}',
+  },
+  deleteSubscription: {
+    method: 'delete',
+    path: '/internal/webhooks/subscriptions/{id}',
+  },
+  rotateSubscriptionSecret: {
+    method: 'post',
+    path: '/internal/webhooks/subscriptions/{id}/rotate-secret',
+  },
+  listDeliveries: { method: 'get', path: '/internal/webhooks/deliveries' },
+} as const satisfies Record<string, RouteDescriptor>
+
+/**
+ * Admin routes: service client provisioning and user restore. Relative to {@link API_PREFIX}.
+ */
+export const ADMIN_ROUTES = {
+  createServiceClient: { method: 'post', path: '/admin/service-clients' },
+  listServiceClients: { method: 'get', path: '/admin/service-clients' },
+  getServiceClient: { method: 'get', path: '/admin/service-clients/{slug}' },
+  updateServiceClient: {
+    method: 'patch',
+    path: '/admin/service-clients/{slug}',
+  },
+  deleteServiceClient: {
+    method: 'delete',
+    path: '/admin/service-clients/{slug}',
+  },
+  rotateServiceClientSecret: {
+    method: 'post',
+    path: '/admin/service-clients/{slug}/rotate-secret',
+  },
+  restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
+} as const satisfies Record<string, RouteDescriptor>
+
 /** Login, refresh and logout routes. Relative to {@link API_PREFIX}. */
 export const AUTH_ROUTES = {
   getCode: { method: 'post', path: '/login/get-code' },

@@ -72,3 +72,59 @@ export const PRIVACY_STATES = ['publico', 'amigos', 'invisible'] as const
  * this constant. It lives here, in a PURE module, so the SDK client can import it by value.
  */
 export const USERS_BATCH_MAX_IDS = 100
+
+/**
+ * Event codes of the webhooks the service emits. Each key is the upper-case form of its value
+ * (`user.created` -> `USER_CREATED`); the catalog is closed and the API owns what triggers each one.
+ */
+export const EVENT_CODES = {
+  USER_CREATED: 'user.created',
+  USER_VERIFIED: 'user.verified',
+  USER_LOGIN_SUCCESS: 'user.login_success',
+  USER_LOGIN_FAILED: 'user.login_failed',
+  SESSION_CREATED: 'session.created',
+  SESSION_DELETED: 'session.deleted',
+  SESSION_DELETED_ALL: 'session.deleted_all',
+  USER_PROFILE_UPDATED: 'user.profile_updated',
+  USER_DELETED: 'user.deleted',
+  USER_RESTORED: 'user.restored',
+  USER_HARD_DELETED: 'user.hard_deleted',
+} as const
+
+export type EventCode = (typeof EVENT_CODES)[keyof typeof EVENT_CODES]
+
+/**
+ * Names of the headers a webhook receiver reads (lower case, as receivers see them): the signature,
+ * the event id and the timestamp. Names only, never values.
+ */
+export const WEBHOOK_HEADERS = {
+  SIGNATURE: 'x-eva-webhook-signature',
+  ID: 'x-eva-webhook-id',
+  TIMESTAMP: 'x-eva-webhook-timestamp',
+} as const
+
+/** Seconds around "now" within which a receiver accepts the timestamp of a webhook. */
+export const WEBHOOK_TIMESTAMP_WINDOW_SECONDS = 300
+
+/**
+ * Scopes a service client may hold, in the order the API lists them. A tuple so schemas can build
+ * an enum straight from it; add one here only together with the route that requires it.
+ */
+export const SERVICE_CLIENT_SCOPES = [
+  'users:read',
+  'webhooks:read',
+  'webhooks:write',
+] as const
+
+export type ServiceClientScope = (typeof SERVICE_CLIENT_SCOPES)[number]
+
+/**
+ * Delivery states of a webhook. A tuple, like the other enums: the API database enum is checked
+ * against it at compile time.
+ */
+export const DELIVERY_STATUSES = [
+  'pending',
+  'delivering',
+  'success',
+  'expired',
+] as const

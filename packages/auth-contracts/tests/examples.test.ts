@@ -100,6 +100,11 @@ describe('contract body schemas', () => {
       contract.loginRequestSchema,
       contract.updateUserRequestSchema,
       contract.usersBatchRequestSchema,
+      contract.createSubscriptionRequestSchema,
+      contract.updateSubscriptionRequestSchema,
+      contract.deliveriesQuerySchema,
+      contract.createServiceClientRequestSchema,
+      contract.updateServiceClientRequestSchema,
     ]) {
       expect(schema).toBeInstanceOf(z.ZodObject)
       expect(schema._zod.def.checks ?? []).toEqual([])
@@ -373,5 +378,318 @@ describe('users, sessions and internal users schemas accept and reject (REQ-CONT
     })
     expect(normalized.email).toBe('ana@example.com')
     expect(normalized.dni).toBe('AB123')
+  })
+})
+
+const SUBSCRIPTION = {
+  id: 'sub-1',
+  clientId: 'client-1',
+  url: 'https://hooks.example.test/in',
+  eventCodes: ['user.created'],
+  enabled: true,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+}
+
+const DELIVERY = {
+  id: 'del-1',
+  subscriptionId: 'sub-1',
+  eventId: 'evt-1',
+  status: 'success',
+  attempts: 1,
+  lastAttemptAt: null,
+  nextRetryAt: null,
+  responseStatus: 200,
+  createdAt: '2026-01-01T00:00:00.000Z',
+}
+
+const UUID = '550e8400-e29b-41d4-a716-446655440000'
+
+const SERVICE_CLIENT = {
+  id: UUID,
+  slug: 'whatsapp-api',
+  name: 'Whatsapp API',
+  enabled: true,
+  scopes: ['users:read'],
+  lastUsedAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+}
+
+describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)', () => {
+  it('webhook_and_service_client_schemas_accept_reject', () => {
+    // webhook subscription bodies: strict, url required to be a URL, at least one event code
+    expect(
+      contract.createSubscriptionRequestSchema.parse({
+        url: 'https://hooks.example.test/in',
+        eventCodes: ['user.created'],
+      }).enabled,
+    ).toBe(true)
+    for (const body of [
+      { url: 'not a url', eventCodes: ['user.created'] },
+      { url: 'https://hooks.example.test/in', eventCodes: [] },
+      { url: 'https://hooks.example.test/in', eventCodes: ['a'], extra: 1 },
+      { eventCodes: ['a'] },
+    ]) {
+      expect(
+        contract.createSubscriptionRequestSchema.safeParse(body).success,
+      ).toBe(false)
+    }
+    expect(contract.updateSubscriptionRequestSchema.safeParse({}).success).toBe(
+      true,
+    )
+    expect(
+      contract.updateSubscriptionRequestSchema.safeParse({ eventCodes: [] })
+        .success,
+    ).toBe(false)
+    expect(
+      contract.updateSubscriptionRequestSchema.safeParse({ extra: 1 }).success,
+    ).toBe(false)
+
+    // deliveries query: coerced numbers, defaults 50/0, status enum, uuid filters
+    expect(contract.deliveriesQuerySchema.parse({})).toEqual({
+      limit: 50,
+      offset: 0,
+    })
+    expect(
+      contract.deliveriesQuerySchema.parse({ limit: '100', offset: '5' }),
+    ).toEqual({ limit: 100, offset: 5 })
+    for (const query of [
+      { limit: '101' },
+      { limit: '0' },
+      { offset: '-1' },
+      { status: 'done' },
+      { event_id: 'nope' },
+      { subscription_id: 'nope' },
+      { extra: '1' },
+    ]) {
+      expect(contract.deliveriesQuerySchema.safeParse(query).success).toBe(
+        false,
+      )
+    }
+    expect(
+      contract.deliveriesQuerySchema.safeParse({
+        status: 'expired',
+        event_id: UUID,
+        subscription_id: UUID.toUpperCase(),
+      }).success,
+    ).toBe(true)
+
+    // webhook responses
+    expect(
+      contract.subscriptionWithSecretResponseSchema.safeParse({
+        data: { subscription: SUBSCRIPTION, signingKey: 'k' },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.subscriptionWithSecretResponseSchema.safeParse({
+        data: { subscription: SUBSCRIPTION },
+      }).success,
+    ).toBe(false)
+    expect(
+      contract.subscriptionResponseSchema.safeParse({ data: SUBSCRIPTION })
+        .success,
+    ).toBe(true)
+    expect(
+      contract.subscriptionListResponseSchema.safeParse({
+        data: { subscriptions: [SUBSCRIPTION] },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.subscriptionListResponseSchema.safeParse({
+        data: { subscriptions: [{ ...SUBSCRIPTION, enabled: 'yes' }] },
+      }).success,
+    ).toBe(false)
+    expect(
+      contract.rotateSubscriptionSecretResponseSchema.safeParse({
+        data: { id: 'sub-1', signingKey: 'k', updatedAt: 'x' },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.deliveryListResponseSchema.safeParse({
+        data: { deliveries: [DELIVERY] },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.deliveryListResponseSchema.safeParse({
+        data: { deliveries: [{ ...DELIVERY, status: 'lost' }] },
+      }).success,
+    ).toBe(false)
+    expect(
+      contract.deliveryListResponseSchema.safeParse({
+        data: { deliveries: [{ ...DELIVERY, attempts: '1' }] },
+      }).success,
+    ).toBe(false)
+
+    // service client slug and bodies
+    for (const slug of ['abc', 'whatsapp-api', 'a'.concat('b'.repeat(63))]) {
+      expect(contract.serviceClientSlugSchema.safeParse(slug).success).toBe(
+        true,
+      )
+    }
+    for (const slug of [
+      'ab',
+      'Abc',
+      '1abc',
+      'a_b',
+      'a'.concat('b'.repeat(64)),
+    ]) {
+      expect(contract.serviceClientSlugSchema.safeParse(slug).success).toBe(
+        false,
+      )
+    }
+    const created = contract.createServiceClientRequestSchema.parse({
+      slug: 'whatsapp-api',
+      scopes: ['webhooks:read', 'users:read', 'webhooks:read'],
+    })
+    // repeated scopes are deduplicated keeping the first order, they are not rejected
+    expect(created.scopes).toEqual(['webhooks:read', 'users:read'])
+    expect(
+      contract.createServiceClientRequestSchema.parse({ slug: 'whatsapp-api' })
+        .scopes,
+    ).toEqual([])
+    for (const body of [
+      { slug: 'whatsapp-api', scopes: ['admin:all'] },
+      { slug: 'whatsapp-api', name: '' },
+      { slug: 'whatsapp-api', extra: 1 },
+      {},
+    ]) {
+      expect(
+        contract.createServiceClientRequestSchema.safeParse(body).success,
+      ).toBe(false)
+    }
+    // the update body is the strict BASE: an empty body parses (the "one field at least" rule is an API refine)
+    expect(
+      contract.updateServiceClientRequestSchema.safeParse({}).success,
+    ).toBe(true)
+    expect(
+      contract.updateServiceClientRequestSchema.safeParse({ enabled: false })
+        .success,
+    ).toBe(true)
+    expect(
+      contract.updateServiceClientRequestSchema.safeParse({ scopes: ['x'] })
+        .success,
+    ).toBe(false)
+    expect(
+      contract.updateServiceClientRequestSchema.safeParse({ extra: 1 }).success,
+    ).toBe(false)
+
+    // service client responses (inline response schemas of the admin routers)
+    expect(
+      contract.serviceClientPublicSchema.safeParse(SERVICE_CLIENT).success,
+    ).toBe(true)
+    expect(
+      contract.serviceClientPublicSchema.safeParse({
+        ...SERVICE_CLIENT,
+        id: 'not-a-uuid',
+      }).success,
+    ).toBe(false)
+    expect(
+      contract.createServiceClientResponseSchema.safeParse({
+        data: {
+          id: UUID,
+          slug: 'whatsapp-api',
+          name: 'n',
+          scopes: [],
+          enabled: true,
+          secret: 's',
+          warning: 'w',
+        },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.createServiceClientResponseSchema.safeParse({
+        data: {
+          id: UUID,
+          slug: 'whatsapp-api',
+          name: 'n',
+          scopes: [],
+          enabled: false,
+          secret: 's',
+          warning: 'w',
+        },
+      }).success,
+    ).toBe(false)
+    expect(
+      contract.listServiceClientsResponseSchema.safeParse({
+        data: { clientes: [SERVICE_CLIENT] },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.getServiceClientResponseSchema.safeParse({
+        data: { cliente: SERVICE_CLIENT },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.updateServiceClientResponseSchema.safeParse({
+        data: { cliente: SERVICE_CLIENT, warning: 'w' },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.updateServiceClientResponseSchema.safeParse({
+        data: { cliente: SERVICE_CLIENT },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.rotateServiceClientSecretResponseSchema.safeParse({
+        data: { slug: 'whatsapp-api', secret: 's', warning: 'w' },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.rotateServiceClientSecretResponseSchema.safeParse({
+        data: { slug: 'whatsapp-api', secret: 's' },
+      }).success,
+    ).toBe(false)
+    expect(
+      contract.restoreUserResponseSchema.safeParse({
+        data: {
+          userId: UUID,
+          stateAccount: 'no_verificado',
+          previouslyDeletedAt: null,
+          restoredAt: '2026-01-01T00:00:00.000Z',
+        },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.restoreUserResponseSchema.safeParse({
+        data: {
+          userId: UUID,
+          stateAccount: 'verificado',
+          previouslyDeletedAt: null,
+          restoredAt: 'x',
+        },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('component_ids_equal_the_published_openapi_ids', () => {
+    const idOf = (schema: z.ZodType) => z.globalRegistry.get(schema)?.id
+
+    expect(idOf(contract.serviceClientPublicSchema)).toBe('ServiceClientPublic')
+    expect(idOf(contract.createServiceClientResponseSchema)).toBe(
+      'AdminCreateResponse',
+    )
+    expect(idOf(contract.listServiceClientsResponseSchema)).toBe(
+      'AdminListResponse',
+    )
+    expect(idOf(contract.getServiceClientResponseSchema)).toBe(
+      'AdminDetailResponse',
+    )
+    expect(idOf(contract.updateServiceClientResponseSchema)).toBe(
+      'AdminUpdateResponse',
+    )
+    expect(idOf(contract.rotateServiceClientSecretResponseSchema)).toBe(
+      'AdminRotateSecretResponse',
+    )
+    expect(idOf(contract.restoreUserResponseSchema)).toBe(
+      'AdminRestaurarUsuarioResponse',
+    )
+  })
+
+  it('s3_schemas_have_no_drizzle_and_the_secret_format_stays_in_the_api', () => {
+    for (const file of ['webhooks.ts', 'service-clients.ts']) {
+      expect(readFileSync(join(SRC_DIR, file), 'utf8')).not.toMatch(/drizzle/i)
+    }
+    expect('secretFormatSchema' in contract).toBe(false)
   })
 })

@@ -13,19 +13,28 @@ import * as contract from '../src/index'
 import {
   ACCOUNT_STATES,
   ACTIVITY_STATES,
+  DELIVERY_STATUSES,
   ERROR_CODES,
+  EVENT_CODES,
   HEADERS,
   INTERNAL_HEADERS,
   PRIVACY_STATES,
+  SERVICE_CLIENT_SCOPES,
   USERS_BATCH_MAX_IDS,
+  WEBHOOK_HEADERS,
+  WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
   type CoreErrorCode,
+  type EventCode,
+  type ServiceClientScope,
 } from '../src/constants'
 import {
+  ADMIN_ROUTES,
   API_PREFIX,
   AUTH_ROUTES,
   INTERNAL_USER_ROUTES,
   SESSION_ROUTES,
   USER_ROUTES,
+  WEBHOOK_ROUTES,
 } from '../src/routes'
 
 const PACKAGE_ROOT = join(import.meta.dirname, '..')
@@ -54,9 +63,43 @@ const FORBIDDEN_DEPENDENCIES = [
   'drizzle-orm',
 ]
 
+// D-IF-3 (S3): the service-client and webhook contracts carry the NAME of a wire field, route and
+// schema that hands out a freshly generated key (`secret`, `rotate-secret`, `AdminRotateSecretResponse`).
+// None of that is secret material, so the `secret-like` pattern ignores exactly these spellings and
+// nothing broader:
+//   1. the route tail `rotate-secret` closed by its quote;
+//   2. the rotate schema/route/type names: `rotate(Subscription|ServiceClient)Secret[Response[Schema]]`,
+//      the creation answer `subscriptionWithSecretResponse[Schema]` and `AdminRotateSecretResponse`
+//      (a component id);
+//   3. the response property declared as a bare `secret: z.string()` (a schema key, never a value):
+//      the lookahead requires the declaration to END on the SAME line with `,` or `}`, so a chained
+//      `.default()`/`.meta()`/`.catch()` (even one on the next line) that could smuggle a value fails.
+// Anything else (`clientSecret`, `secret: 'abc'`, any "secret"/"secreto" in a description, peppers,
+// keys) still fails. Known limit of a denylist by NAME: a tolerated name reused as an identifier for
+// a value (`export const rotateServiceClientSecret = 'x'`) passes; a test below pins it on purpose.
+const SECRET_WIRE_NAMES: ReadonlyArray<RegExp> = [
+  /rotate-secret(?=['"`])/g,
+  /\b[rR]otate(?:Subscription|ServiceClient)Secret(?:Response(?:Schema)?)?\b/g,
+  /\b[sS]ubscriptionWithSecretResponse(?:Schema)?\b/g,
+  /\bAdminRotateSecretResponse\b/g,
+  /\bsecret:\s*z\.string\(\)(?=[ \t]*[,}])/g,
+]
+
+function tolerateSecretWireNames(text: string): string {
+  return SECRET_WIRE_NAMES.reduce(
+    (current, pattern) => current.replace(pattern, ''),
+    text,
+  )
+}
+
 // REQ-CONTRACT-14: hostnames/URLs, env-derived values, secrets/peppers, rate-limit thresholds,
 // DB access. Header NAMES, windows and the batch max are allowed because none matches these.
-const DENYLIST: ReadonlyArray<{ name: string; pattern: RegExp }> = [
+const DENYLIST: ReadonlyArray<{
+  name: string
+  pattern: RegExp
+  // Removes the exact spellings the contract legitimately carries before the pattern runs.
+  tolerate?: (text: string) => string
+}> = [
   { name: 'url', pattern: /https?:\/\//i },
   {
     name: 'hostname',
@@ -72,6 +115,7 @@ const DENYLIST: ReadonlyArray<{ name: string; pattern: RegExp }> = [
   {
     name: 'secret-like',
     pattern: /pepper|secret|rate[-_ ]?limit(?!ed)|rate[-_ ]?limited[-_ ]?max/i,
+    tolerate: tolerateSecretWireNames,
   },
   { name: 'drizzle', pattern: /drizzle/i },
 ]
@@ -84,9 +128,9 @@ const sourceFiles = (dir: string): string[] =>
 const scanForDenylist = (dir: string): string[] =>
   sourceFiles(dir).flatMap((file) => {
     const text = readFileSync(file, 'utf8')
-    return DENYLIST.filter(({ pattern }) => pattern.test(text)).map(
-      ({ name }) => `${file}: ${name}`,
-    )
+    return DENYLIST.filter(({ pattern, tolerate }) =>
+      pattern.test(tolerate ? tolerate(text) : text),
+    ).map(({ name }) => `${file}: ${name}`)
   })
 
 describe('contract package manifest', () => {
@@ -183,6 +227,103 @@ describe('contract source denylist', () => {
       )
 
       expect(scanForDenylist(temp)).toHaveLength(1)
+    } finally {
+      rmSync(temp, { recursive: true, force: true })
+    }
+  })
+
+  it('denylist_tolerates_the_secret_wire_names (D-IF-3)', () => {
+    const temp = mkdtempSync(join(tmpdir(), 'auth-contracts-denylist-'))
+    try {
+      writeFileSync(
+        join(temp, 'allowed.ts'),
+        [
+          "export const route = '/x/{id}/rotate-secret'",
+          'export const rotateServiceClientSecretResponseSchema = z.object({',
+          '  secret: z.string(),',
+          '})',
+          'export type RotateSubscriptionSecretResponse = 1',
+          'export const subscriptionWithSecretResponseSchema = 1',
+          'export type SubscriptionWithSecretResponse = 1',
+          "const a = z.string().meta({ id: 'AdminRotateSecretResponse' })",
+          'const inline = { secret: z.string() }',
+        ].join('\n'),
+      )
+
+      expect(scanForDenylist(temp)).toEqual([])
+    } finally {
+      rmSync(temp, { recursive: true, force: true })
+    }
+  })
+
+  it.each([
+    [
+      'a secret VALUE under the tolerated key',
+      "const o = { secret: 'abc123' }",
+    ],
+    ['a glued identifier', 'export const rotateSecretKey = 1'],
+    ['the Spanish word outside a description', "export const secreto = 'x'"],
+    ['the Spanish word in an identifier', 'export const secretoReal = 1'],
+    [
+      'the Spanish word inside a description',
+      "const d = z.string().meta({ description: 'secreto x' })",
+    ],
+    [
+      'the tolerated key with a default value',
+      "const o = { secret: z.string().default('x') }",
+    ],
+    [
+      'the tolerated key with a meta example',
+      "const o = { secret: z.string().meta({ example: 'x' }) }",
+    ],
+    [
+      'the tolerated key with a catch value',
+      "const o = { secret: z.string().catch('x') }",
+    ],
+    [
+      'the tolerated key with a chained default on the next line',
+      "const o = {\n  secret: z.string()\n    .default('x'),\n}",
+    ],
+    [
+      'the tolerated key with a chained default on the next line (CRLF)',
+      "const o = {\r\n  secret: z.string()\r\n    .default('x'),\r\n}",
+    ],
+    [
+      'the English word inside a description',
+      "const d = z.string().meta({ description: 'the client secret' })",
+    ],
+    [
+      'a pepper in a description',
+      "const d = { description: 'pepper del OTP' }",
+    ],
+    [
+      'env access next to a tolerated name',
+      'export const rotate = process.env.X',
+    ],
+    ['an unclosed rotate route', "export const p = '/x/rotate-secret-key'"],
+  ])(
+    'denylist_still_flags_real_secret_material_%s (negative control, D-IF-3)',
+    (_label, source) => {
+      const temp = mkdtempSync(join(tmpdir(), 'auth-contracts-denylist-'))
+      try {
+        writeFileSync(join(temp, 'planted.ts'), `${source}\n`)
+
+        expect(scanForDenylist(temp)).toHaveLength(1)
+      } finally {
+        rmSync(temp, { recursive: true, force: true })
+      }
+    },
+  )
+
+  it('denylist_known_limit_a_tolerated_name_reused_as_a_value_identifier_passes (documented, D-IF-3)', () => {
+    const temp = mkdtempSync(join(tmpdir(), 'auth-contracts-denylist-'))
+    try {
+      writeFileSync(
+        join(temp, 'known-limit.ts'),
+        "export const rotateServiceClientSecret = 'x'\n",
+      )
+
+      expect(scanForDenylist(temp)).toEqual([])
     } finally {
       rmSync(temp, { recursive: true, force: true })
     }
@@ -342,6 +483,125 @@ describe('contract state constants (REQ-CONTRACT-08, D-03)', () => {
   })
 })
 
+// Copied from API `src/features/webhooks/domain/event-codes.ts` (order included).
+const TODAY_EVENT_CODES = {
+  USER_CREATED: 'user.created',
+  USER_VERIFIED: 'user.verified',
+  USER_LOGIN_SUCCESS: 'user.login_success',
+  USER_LOGIN_FAILED: 'user.login_failed',
+  SESSION_CREATED: 'session.created',
+  SESSION_DELETED: 'session.deleted',
+  SESSION_DELETED_ALL: 'session.deleted_all',
+  USER_PROFILE_UPDATED: 'user.profile_updated',
+  USER_DELETED: 'user.deleted',
+  USER_RESTORED: 'user.restored',
+  USER_HARD_DELETED: 'user.hard_deleted',
+}
+
+describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CONTRACT-12)', () => {
+  it('s3_constants_equal_today', () => {
+    expect({ ...EVENT_CODES }).toEqual(TODAY_EVENT_CODES)
+    expect(Object.keys(EVENT_CODES)).toEqual(Object.keys(TODAY_EVENT_CODES))
+    expect(Object.keys(EVENT_CODES)).toHaveLength(11)
+    // Webhook headers as the SDK receiver reads them (lowercase names; the API sends mixed case).
+    expect({ ...WEBHOOK_HEADERS }).toEqual({
+      SIGNATURE: 'x-eva-webhook-signature',
+      ID: 'x-eva-webhook-id',
+      TIMESTAMP: 'x-eva-webhook-timestamp',
+    })
+    expect(WEBHOOK_TIMESTAMP_WINDOW_SECONDS).toBe(300)
+    // Exact order of API `features/service-clients/domain/scopes.ts`.
+    expect([...SERVICE_CLIENT_SCOPES]).toEqual([
+      'users:read',
+      'webhooks:read',
+      'webhooks:write',
+    ])
+    expect(Array.isArray(DELIVERY_STATUSES)).toBe(true)
+    expect([...DELIVERY_STATUSES]).toEqual([
+      'pending',
+      'delivering',
+      'success',
+      'expired',
+    ])
+
+    const code: EventCode = EVENT_CODES.USER_CREATED
+    const scope: ServiceClientScope = SERVICE_CLIENT_SCOPES[0]
+    expect([code, scope]).toEqual(['user.created', 'users:read'])
+  })
+
+  it('s3_constants_are_re_exported_by_the_barrel', () => {
+    expect(contract.EVENT_CODES).toBe(EVENT_CODES)
+    expect(contract.WEBHOOK_HEADERS).toBe(WEBHOOK_HEADERS)
+    expect(contract.WEBHOOK_TIMESTAMP_WINDOW_SECONDS).toBe(
+      WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
+    )
+    expect(contract.SERVICE_CLIENT_SCOPES).toBe(SERVICE_CLIENT_SCOPES)
+    expect(contract.DELIVERY_STATUSES).toBe(DELIVERY_STATUSES)
+    expect(contract.WEBHOOK_ROUTES).toBe(WEBHOOK_ROUTES)
+    expect(contract.ADMIN_ROUTES).toBe(ADMIN_ROUTES)
+  })
+
+  it('webhook_and_admin_route_descriptors_relative_and_complete', () => {
+    expect({ ...WEBHOOK_ROUTES }).toEqual({
+      createSubscription: {
+        method: 'post',
+        path: '/internal/webhooks/subscriptions',
+      },
+      listSubscriptions: {
+        method: 'get',
+        path: '/internal/webhooks/subscriptions',
+      },
+      getSubscription: {
+        method: 'get',
+        path: '/internal/webhooks/subscriptions/{id}',
+      },
+      updateSubscription: {
+        method: 'patch',
+        path: '/internal/webhooks/subscriptions/{id}',
+      },
+      deleteSubscription: {
+        method: 'delete',
+        path: '/internal/webhooks/subscriptions/{id}',
+      },
+      rotateSubscriptionSecret: {
+        method: 'post',
+        path: '/internal/webhooks/subscriptions/{id}/rotate-secret',
+      },
+      listDeliveries: { method: 'get', path: '/internal/webhooks/deliveries' },
+    })
+    expect({ ...ADMIN_ROUTES }).toEqual({
+      createServiceClient: { method: 'post', path: '/admin/service-clients' },
+      listServiceClients: { method: 'get', path: '/admin/service-clients' },
+      getServiceClient: {
+        method: 'get',
+        path: '/admin/service-clients/{slug}',
+      },
+      updateServiceClient: {
+        method: 'patch',
+        path: '/admin/service-clients/{slug}',
+      },
+      deleteServiceClient: {
+        method: 'delete',
+        path: '/admin/service-clients/{slug}',
+      },
+      rotateServiceClientSecret: {
+        method: 'post',
+        path: '/admin/service-clients/{slug}/rotate-secret',
+      },
+      restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
+    })
+    expect(Object.keys(WEBHOOK_ROUTES)).toHaveLength(7)
+    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(7)
+    for (const { path } of [
+      ...Object.values(WEBHOOK_ROUTES),
+      ...Object.values(ADMIN_ROUTES),
+    ]) {
+      expect(path.startsWith('/')).toBe(true)
+      expect(path.startsWith(API_PREFIX)).toBe(false)
+    }
+  })
+})
+
 describe('contract export surface (REQ-CONTRACT-13)', () => {
   it('api_only_artifacts_not_exported', () => {
     const names = Object.keys(contract)
@@ -360,6 +620,14 @@ describe('contract export surface (REQ-CONTRACT-13)', () => {
       'restaurarUsuarioParamsSchema',
       'sessionIdParamSchema',
       'ESTADO_CUENTA',
+      // S3: the refine of the admin update body, the param schemas, the API-side delivery enum
+      'actualizarAdminClientInputSchema',
+      'crearAdminClientInputSchema',
+      'slugParamSchema',
+      'slugSchema',
+      'webhookIdParamSchema',
+      'DELIVERY_STATUS',
+      'ADMIN_HEADERS',
     ]
 
     expect(names.filter((name) => apiOnly.includes(name))).toEqual([])
