@@ -10,6 +10,8 @@ let _jwks: JwksKeyFn | undefined
 export function getJwksKeyFn(): JwksKeyFn {
   // Lazy init: si _jwks ya fue inicializado, retornar sin re-crear.
   if (!_jwks) {
+    // The JWKS is a well-known URL served at the root, so it is built here and never through
+    // `apiPath` (which prefixes every versioned route with `/api/v1`).
     const url = new URL(`${getAuthServiceUrl()}/.well-known/jwks.json`)
     _jwks = createRemoteJWKSet(url, {
       cacheMaxAge: 86_400_000, // 24h — alineado con TTL normal de ADR-005

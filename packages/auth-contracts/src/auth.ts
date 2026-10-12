@@ -40,9 +40,9 @@ export const getCodeRequestSchema = z
   .strict()
 
 /**
- * The two descriptions that name a route (`challengeId` here and in the login request) stay
- * verbatim so the published OpenAPI document does not change; they are reworded in the prefix
- * slice.
+ * The two `challengeId` descriptions (here and in the login request) name no route and no path:
+ * route names and prefixes live only in the route descriptors, so a path change never leaves a
+ * stale description in the published OpenAPI document.
  */
 export const getCodeResponseSchema = z.object({
   data: z.object({
@@ -52,7 +52,7 @@ export const getCodeResponseSchema = z.object({
       .regex(/^[0-9a-f]{32}$/)
       .meta({
         description:
-          'Identificador opaco del desafío; enviarlo en POST /login junto con el código. Vence con el código y se invalida con cada get-code nuevo.',
+          'Identificador opaco del desafío; enviarlo en el login junto con el código. Vence con el código y se invalida con cada get-code nuevo.',
         example: '9f86d081884c7d659a2feaa0c55ad015',
       }),
   }),
@@ -75,7 +75,8 @@ export const loginRequestSchema = z
       .string()
       .regex(/^[0-9a-f]{32}$/, { error: 'Formato de challenge inválido' })
       .meta({
-        description: 'challengeId devuelto por POST /login/get-code',
+        description:
+          'challengeId devuelto por la solicitud de código (get-code)',
         example: '9f86d081884c7d659a2feaa0c55ad015',
       }),
     deviceType: z

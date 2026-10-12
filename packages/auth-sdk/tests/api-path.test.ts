@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { API_PREFIX } from '@eva_solutions/auth-contracts'
 import type { RouteDescriptor } from '@eva_solutions/auth-contracts'
 import { apiPath } from '../src/api-path'
 
@@ -10,14 +11,14 @@ const TWO_PARAMS: RouteDescriptor = {
 }
 
 describe('apiPath', () => {
-  it('fills_params_and_throws_on_missing: a route without params is returned as is', () => {
-    expect(apiPath(NO_PARAMS)).toBe('/login')
+  it('fills_params_and_throws_on_missing: a route without params gets only the prefix', () => {
+    expect(apiPath(NO_PARAMS)).toBe('/api/v1/login')
   })
 
   it('fills_params_and_throws_on_missing: fills every {param} from the params object', () => {
-    expect(apiPath(ONE_PARAM, { id: 's-1' })).toBe('/sessions/s-1')
+    expect(apiPath(ONE_PARAM, { id: 's-1' })).toBe('/api/v1/sessions/s-1')
     expect(apiPath(TWO_PARAMS, { kind: 'a', id: 'b' })).toBe(
-      '/things/a/items/b',
+      '/api/v1/things/a/items/b',
     )
   })
 
@@ -30,7 +31,9 @@ describe('apiPath', () => {
     )
   })
 
-  it('does not add the API prefix before the prefix slice', () => {
-    expect(apiPath(NO_PARAMS).startsWith('/api/')).toBe(false)
+  it('prefix_added_in_s4: every built path is API_PREFIX + the filled descriptor path', () => {
+    expect(API_PREFIX).toBe('/api/v1')
+    expect(apiPath(NO_PARAMS)).toBe(`${API_PREFIX}/login`)
+    expect(apiPath(ONE_PARAM, { id: 's-1' })).toBe(`${API_PREFIX}/sessions/s-1`)
   })
 })

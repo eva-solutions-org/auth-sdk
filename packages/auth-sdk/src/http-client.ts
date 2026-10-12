@@ -208,6 +208,8 @@ const deleteAllSessions = (params: {
     refreshToken: params.refreshToken,
   })
 
+// Every other route is built with `apiPath` (`API_PREFIX + path`); health is an operational probe
+// that the API serves at the root, outside the versioned prefix.
 const health = (): Promise<Result<{ status: string }>> => authFetch('/health')
 
 export function createHttpClient() {

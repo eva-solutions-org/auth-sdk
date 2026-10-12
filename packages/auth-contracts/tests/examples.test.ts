@@ -51,6 +51,24 @@ const schemasWithExample = (): z.ZodType[] => {
 }
 
 describe('contract examples', () => {
+  it('challenge_id_descriptions_name_no_route', () => {
+    const getCodeChallenge = contract.getCodeResponseSchema.shape.data.shape
+      .challengeId as z.ZodType
+    const loginChallenge = contract.loginRequestSchema.shape
+      .challengeId as z.ZodType
+    const descriptions = [getCodeChallenge, loginChallenge].map(
+      (schema) => z.globalRegistry.get(schema)?.description as string,
+    )
+
+    expect(descriptions).toEqual([
+      'Identificador opaco del desafío; enviarlo en el login junto con el código. Vence con el código y se invalida con cada get-code nuevo.',
+      'challengeId devuelto por la solicitud de código (get-code)',
+    ])
+    for (const description of descriptions) {
+      expect(description).not.toMatch(/\bPOST\b|\/login|\/api\//)
+    }
+  })
+
   it('no_dot_openapi_in_sources', () => {
     const offenders = readdirSync(SRC_DIR, {
       withFileTypes: true,

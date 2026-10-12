@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   ADMIN_ROUTES,
+  API_PREFIX,
   AUTH_ROUTES,
   INTERNAL_USER_ROUTES,
   SESSION_ROUTES,
@@ -46,8 +47,8 @@ function lastCall(): { method: string; pathname: string } {
   }
 }
 
-// Client paths are compared with the contract descriptors BEFORE the prefix slice (no `/api/v1`).
-describe('client_paths_equal_descriptors_pre_prefix', () => {
+// Client paths are the contract descriptor paths behind the `/api/v1` prefix.
+describe('client_paths_equal_prefixed_descriptors', () => {
   const cases = [
     [
       'getCode',
@@ -78,9 +79,48 @@ describe('client_paths_equal_descriptors_pre_prefix', () => {
     async (_n, route, call) => {
       await call()
 
-      expect(lastCall()).toEqual({ method: route.method, pathname: route.path })
+      expect(lastCall()).toEqual({
+        method: route.method,
+        pathname: `${API_PREFIX}${route.path}`,
+      })
     },
   )
+
+  it('client_paths_prefixed_jwks_health_root: auth routes start with the literal /api/v1/', async () => {
+    await client.getCode({ phone: '5491155551234' })
+    await client.login({
+      phone: '5491155551234',
+      code: 'A1B2C3',
+      challengeId: CHALLENGE_ID,
+      ...createDeviceInfo(),
+    })
+
+    const [getCodeUrl, loginUrl] = mockFetch.mock.calls.map(
+      (call) => (call as [string])[0],
+    )
+    expect(getCodeUrl).toBe('https://auth.example/api/v1/login/get-code')
+    expect(loginUrl).toBe('https://auth.example/api/v1/login')
+  })
+
+  it('client_paths_prefixed_jwks_health_root: internal users and admin list are prefixed', async () => {
+    const s2s = createS2SClient({
+      clientId: 'svc',
+      secretHex: 'a'.repeat(64),
+      baseUrl: 'https://auth.example',
+    })
+    const admin = createAdminClient({
+      adminPassword: 'pw',
+      baseUrl: 'https://auth.example',
+    })
+    await s2s.batchUsers({ ids: ['user-1'] })
+    await admin.listServiceClients()
+
+    const urls = mockFetch.mock.calls.map((call) => (call as [string])[0])
+    expect(urls).toEqual([
+      'https://auth.example/api/v1/internal/users/batch',
+      'https://auth.example/api/v1/admin/service-clients',
+    ])
+  })
 
   it('health stays a root path', async () => {
     await client.health()
@@ -101,7 +141,7 @@ describe('client_paths_equal_descriptors_pre_prefix', () => {
 
 const SESSION_ID = '550e8400-e29b-41d4-a716-446655440000'
 
-describe('client_paths_equal_descriptors_pre_prefix: users and sessions', () => {
+describe('client_paths_equal_prefixed_descriptors: users and sessions', () => {
   const cases = [
     [
       'getUser',
@@ -154,16 +194,18 @@ describe('client_paths_equal_descriptors_pre_prefix: users and sessions', () => 
 
       expect(lastCall()).toEqual({
         method: route.method,
-        pathname: route.path.replace(
-          /\{(\w+)\}/g,
-          (_m, key: string) => (params as Record<string, string>)[key] ?? '',
-        ),
+        pathname:
+          API_PREFIX +
+          route.path.replace(
+            /\{(\w+)\}/g,
+            (_m, key: string) => (params as Record<string, string>)[key] ?? '',
+          ),
       })
     },
   )
 })
 
-describe('client_paths_equal_descriptors_pre_prefix: internal users', () => {
+describe('client_paths_equal_prefixed_descriptors: internal users', () => {
   const s2s = createS2SClient({
     clientId: 'svc',
     secretHex: 'a'.repeat(64),
@@ -175,7 +217,7 @@ describe('client_paths_equal_descriptors_pre_prefix: internal users', () => {
 
     expect(lastCall()).toEqual({
       method: INTERNAL_USER_ROUTES.get.method,
-      pathname: '/internal/users/user-1',
+      pathname: '/api/v1/internal/users/user-1',
     })
   })
 
@@ -184,12 +226,12 @@ describe('client_paths_equal_descriptors_pre_prefix: internal users', () => {
 
     expect(lastCall()).toEqual({
       method: INTERNAL_USER_ROUTES.batch.method,
-      pathname: INTERNAL_USER_ROUTES.batch.path,
+      pathname: `${API_PREFIX}${INTERNAL_USER_ROUTES.batch.path}`,
     })
   })
 })
 
-describe('client_paths_equal_descriptors_pre_prefix: webhooks', () => {
+describe('client_paths_equal_prefixed_descriptors: webhooks', () => {
   const s2s = createS2SClient({
     clientId: 'svc',
     secretHex: 'a'.repeat(64),
@@ -247,13 +289,13 @@ describe('client_paths_equal_descriptors_pre_prefix: webhooks', () => {
 
       expect(lastCall()).toEqual({
         method: route.method,
-        pathname: fill(route.path),
+        pathname: fill(`${API_PREFIX}${route.path}`),
       })
     },
   )
 })
 
-describe('client_paths_equal_descriptors_pre_prefix: admin', () => {
+describe('client_paths_equal_prefixed_descriptors: admin', () => {
   const admin = createAdminClient({
     adminPassword: 'pw',
     baseUrl: 'https://auth.example',
@@ -304,7 +346,7 @@ describe('client_paths_equal_descriptors_pre_prefix: admin', () => {
 
       expect(lastCall()).toEqual({
         method: route.method,
-        pathname: fill(route.path),
+        pathname: fill(`${API_PREFIX}${route.path}`),
       })
     },
   )

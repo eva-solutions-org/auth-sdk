@@ -158,11 +158,15 @@ describe('createS2SClient firma el pathname final (con prefijo de baseUrl)', () 
   }
 
   const cases = [
-    ['sin prefijo', 'https://auth.test', 'https://auth.test/internal/users/u1'],
+    [
+      'sin prefijo',
+      'https://auth.test',
+      'https://auth.test/api/v1/internal/users/u1',
+    ],
     [
       'con prefijo',
       'https://auth.test/auth',
-      'https://auth.test/auth/internal/users/u1',
+      'https://auth.test/auth/api/v1/internal/users/u1',
     ],
   ] as const
 
@@ -203,7 +207,7 @@ describe('createS2SClient firma el pathname final (con prefijo de baseUrl)', () 
     await s2s.listWebhookDeliveries({ limit: 5, offset: 10 })
 
     const { url, result } = await verifyCaptured()
-    expect(url).toContain('/auth/internal/webhooks/deliveries?')
+    expect(url).toContain('/auth/api/v1/internal/webhooks/deliveries?')
     expect(result.ok).toBe(true)
   })
 })
@@ -342,29 +346,29 @@ describe('createS2SClient valida y codifica los ids en el path', () => {
   const routes: Array<
     [string, (id: string) => Promise<unknown>, string, string]
   > = [
-    ['getUser', (id) => s2s.getUser(id), '/internal/users/', ''],
+    ['getUser', (id) => s2s.getUser(id), '/api/v1/internal/users/', ''],
     [
       'getWebhookSubscription',
       (id) => s2s.getWebhookSubscription(id),
-      '/internal/webhooks/subscriptions/',
+      '/api/v1/internal/webhooks/subscriptions/',
       '',
     ],
     [
       'updateWebhookSubscription',
       (id) => s2s.updateWebhookSubscription(id, {}),
-      '/internal/webhooks/subscriptions/',
+      '/api/v1/internal/webhooks/subscriptions/',
       '',
     ],
     [
       'deleteWebhookSubscription',
       (id) => s2s.deleteWebhookSubscription(id),
-      '/internal/webhooks/subscriptions/',
+      '/api/v1/internal/webhooks/subscriptions/',
       '',
     ],
     [
       'rotateWebhookSubscriptionSecret',
       (id) => s2s.rotateWebhookSubscriptionSecret(id),
-      '/internal/webhooks/subscriptions/',
+      '/api/v1/internal/webhooks/subscriptions/',
       '/rotate-secret',
     ],
   ]

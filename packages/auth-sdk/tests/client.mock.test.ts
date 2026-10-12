@@ -62,7 +62,7 @@ describe('getCode', () => {
     await client.getCode({ phone: '+51999999999' })
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://auth.test/login/get-code',
+      'http://auth.test/api/v1/login/get-code',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({ phone: '+51999999999' }),
@@ -136,7 +136,7 @@ describe('login', () => {
     })
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'http://auth.test/login',
+      'http://auth.test/api/v1/login',
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
@@ -240,7 +240,7 @@ describe('logout', () => {
     await client.logout({ refreshToken: 'my-refresh-token' })
 
     const [url, options] = mockFetch.mock.calls[0]
-    expect(url).toBe('http://auth.test/login/logout')
+    expect(url).toBe('http://auth.test/api/v1/login/logout')
     expect(options.method).toBe('POST')
     expect(options.headers[HEADERS.REFRESH_TOKEN]).toBe('my-refresh-token')
   })
@@ -254,7 +254,7 @@ describe('getUser', () => {
     await client.getUser({ accessToken: 'my-access-token' })
 
     const [url, options] = mockFetch.mock.calls[0]
-    expect(url).toBe('http://auth.test/user')
+    expect(url).toBe('http://auth.test/api/v1/user')
     expect(options.method).toBe('GET')
     expect(options.headers[HEADERS.AUTHORIZATION]).toBe(
       'Bearer my-access-token',

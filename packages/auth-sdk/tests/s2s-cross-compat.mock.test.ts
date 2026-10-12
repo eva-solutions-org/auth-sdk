@@ -149,4 +149,32 @@ describe('Cross-compat: signS2SRequest → verifyS2SRequest', () => {
     expect(canonical1.split('\n')[0]).toBe('POST')
     expect(canonical1.split('\n')[1]).toBe('/internal/users/batch')
   })
+
+  it('signs the final /api/v1 pathname: verifies on that path and on no other', async () => {
+    const body = new TextEncoder().encode('{"ids":["u1"]}')
+    const { request, secretHex } = await makeSignedRequest({
+      method: 'POST',
+      path: '/api/v1/internal/users/batch',
+      body,
+    })
+    const unprefixed = new Request('http://localhost/internal/users/batch', {
+      method: 'POST',
+      headers: request.headers,
+      body,
+      duplex: 'half' as never,
+    })
+
+    const onFinalPath = await verifyS2SRequest(request, {
+      secretStore: async () => secretHex,
+    })
+    const onOtherPath = await verifyS2SRequest(unprefixed, {
+      secretStore: async () => secretHex,
+    })
+
+    expect(onFinalPath.ok).toBe(true)
+    expect(onOtherPath.ok).toBe(false)
+    if (!onOtherPath.ok) {
+      expect(onOtherPath.error.reason).toBe('signature_invalid')
+    }
+  })
 })

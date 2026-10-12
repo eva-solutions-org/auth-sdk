@@ -96,7 +96,7 @@ describe('AdminClient', () => {
     expect(result.data.secret).toBe('hex-secret-value')
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/admin/service-clients`)
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/service-clients`)
     expect(options.method).toBe('POST')
     expect(JSON.parse(options.body as string)).toEqual({
       slug: 'mi-servicio',
@@ -144,7 +144,7 @@ describe('AdminClient', () => {
     expect(result.data.clientes[0]!.slug).toBe('mi-servicio')
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/admin/service-clients`)
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/service-clients`)
     expect(options.method).toBe('GET')
   })
 
@@ -165,7 +165,7 @@ describe('AdminClient', () => {
     expect(result.data.cliente.id).toBe('sc-id-1')
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/admin/service-clients/mi-servicio`)
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/service-clients/mi-servicio`)
   })
 
   it('getServiceClient: 404 not_found → Result ok:false EvaApiError', async () => {
@@ -209,7 +209,7 @@ describe('AdminClient', () => {
     expect(result.data.cliente.enabled).toBe(false)
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/admin/service-clients/mi-servicio`)
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/service-clients/mi-servicio`)
     expect(options.method).toBe('PATCH')
     expect(JSON.parse(options.body as string)).toEqual({ enabled: false })
   })
@@ -233,7 +233,7 @@ describe('AdminClient', () => {
     expect(result.data).toBeUndefined()
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/admin/service-clients/mi-servicio`)
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/service-clients/mi-servicio`)
     expect(options.method).toBe('DELETE')
   })
 
@@ -261,7 +261,7 @@ describe('AdminClient', () => {
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe(
-      `${BASE_URL}/admin/service-clients/mi-servicio/rotate-secret`,
+      `${BASE_URL}/api/v1/admin/service-clients/mi-servicio/rotate-secret`,
     )
     expect(options.method).toBe('POST')
   })
@@ -292,7 +292,7 @@ describe('AdminClient', () => {
     expect(result.data.previouslyDeletedAt).toBe('2025-01-01T00:00:00.000Z')
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/admin/users/user-to-restore/restore`)
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/users/user-to-restore/restore`)
     expect(options.method).toBe('POST')
   })
 

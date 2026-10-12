@@ -298,7 +298,7 @@ describe('S2SClient', () => {
     expect(fetchMock).toHaveBeenCalledOnce()
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
 
-    expect(url).toContain('/internal/users/user-1')
+    expect(url).toContain('/api/v1/internal/users/user-1')
     expect(options.method).toBe('GET')
     expect((options.headers as Record<string, string>)['x-eva-client-id']).toBe(
       CLIENT_ID,
