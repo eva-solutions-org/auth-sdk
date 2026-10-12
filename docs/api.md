@@ -871,6 +871,13 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `INTERNAL_HEADERS` | constante | Nombres de los headers S2S: `X_EVA_CLIENT_ID`, `X_EVA_TIMESTAMP`, `X_EVA_NONCE`, `X_EVA_SIGNATURE`, `X_EVA_SERVER_TIME` |
 | `API_PREFIX` | constante | `'/api/v1'`. Declarado, pero los clientes del SDK todavía no lo anteponen a sus rutas |
 | `AUTH_ROUTES` | constante | Descriptores `{ method, path }` de `getCode`, `login`, `refresh` y `logout`, con `path` relativo a `API_PREFIX` |
+| `USER_ROUTES`, `SESSION_ROUTES`, `INTERNAL_USER_ROUTES` | constante | Descriptores `{ method, path }` de usuario (`get`, `update`, `deactivate`, `listCompanies`), sesiones (`list`, `deleteOne`, `deleteAll`) y `/internal/users` (`get`, `batch`) |
+| `ACCOUNT_STATES` | constante | Objeto con los 6 estados de cuenta (clave igual a valor); también se re-exporta desde `@eva_solutions/auth-sdk` |
+| `ACTIVITY_STATES`, `PRIVACY_STATES` | constante | Tuplas `as const` de los estados de actividad y de privacidad |
+| `USERS_BATCH_MAX_IDS` | constante | `100`: tope de ids de `POST /internal/users/batch`. El schema del batch no lleva `.max`; el tope lo aplican el SDK y la API |
+| `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema`, `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /user` (objeto estricto base, sin `.refine`) |
+| `sessionListResponseSchema` (+ `SessionListResponse`, `Session`) | schema + type | Listado de sesiones |
+| `usersBatchRequestSchema`, `usersBatchResponseSchema` (+ `UsersBatchRequest`, `UsersBatchResponse`) | schema + type | `POST /internal/users/batch` |
 | `HttpMethod`, `RouteDescriptor` | types | Tipos de los descriptores |
 | `errorResponseSchema`, `ErrorResponse` | schema + type | Cuerpo de error `{ error: { code, message } }` (id OpenAPI `ErrorBody`) |
 | `messageResponseSchema`, `messageWithCountResponseSchema` (+ tipos `MessageResponse`, `MessageWithCountResponse`) | schema + type | Respuestas genéricas con mensaje |

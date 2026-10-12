@@ -135,12 +135,14 @@ Cada módulo del contrato es de uno de dos tipos:
 
 | Tipo | Módulos | Qué pueden importar | Qué los distingue |
 |------|---------|---------------------|-------------------|
-| **PURE** | `constants.ts` (códigos de error, nombres de headers, y toda constante futura), `routes.ts` | Nada de `zod` ni de módulos SCHEMA; solo datos `as const` y tipos | Importarlos no tiene efectos al cargar |
-| **SCHEMA** | `errors.ts`, `common.ts`, `auth.ts` | `zod` y módulos PURE | Al cargarse ejecutan `.meta()`, que escribe en el registro global de zod: no es tree-shakeable |
+| **PURE** | `constants.ts` (códigos de error, nombres de headers, estados de cuenta/actividad/privacidad, `USERS_BATCH_MAX_IDS` y toda constante futura), `routes.ts` | Nada de `zod` ni de módulos SCHEMA; solo datos `as const` y tipos | Importarlos no tiene efectos al cargar |
+| **SCHEMA** | `errors.ts`, `common.ts`, `auth.ts`, `users.ts`, `sessions.ts`, `internal-users.ts` | `zod` y módulos PURE | Al cargarse ejecutan `.meta()`, que escribe en el registro global de zod: no es tree-shakeable |
 
 ### Regla de imports de `react`
 
 El entry `react` tiene un tope de tamaño. Por eso **todo módulo del SDK alcanzable desde `src/react/index.ts` importa del contrato solo valores de módulos PURE o `import type`**, nunca un valor de un módulo SCHEMA. Ejemplos vigentes: `constants.ts` re-exporta `HEADERS`; `error-codes.ts` re-exporta el valor `ERROR_CODES` y toma `CoreErrorCode` con `import type`; `api-path.ts` solo usa `import type`. Los schemas del contrato los alcanzan `contracts` y los módulos de los handlers Hono (`schemas.ts` re-exporta `errorResponseSchema` y las respuestas de login como alias, y solo lo importan `auth-handlers.ts` y `hono-openapi`), no `react`; `react` no debe importar `schemas.ts`.
+
+Los tipos de usuarios y sesiones del SDK son alias `import type` del contrato, sin definición local: `EvaUser` = `PublicProfile`, `EvaSession` = `Session`, `EvaEmpresa` = `Company`, `ActivityState`/`PrivacyState` derivados de `ACTIVITY_STATES`/`PRIVACY_STATES`, y en `s2s/types.ts` `S2SBatchUsersInput` = `UsersBatchRequest`, `S2SBatchUsersResult` = `UsersBatchResponse['data']` y `S2SGetUserResult` = `{ user: ProfileResponse['data'] }` (envoltorio sobre el perfil del contrato). Los valores son reexports del barrel, solo de módulos PURE: `ACCOUNT_STATES` sale de `account-states.ts` y `USERS_BATCH_MAX_IDS` de `s2s/constants.ts`; las rutas de `http-client.ts` y `s2s/client.ts` se arman con `apiPath(USER_ROUTES.*)`, `SESSION_ROUTES.*` e `INTERNAL_USER_ROUTES.*`. El chunk `constants` del bundle `react` crece con cada constante PURA nueva (el módulo se conserva entero): al agregar más, vigila el margen del gate de cierre.
 
 Consecuencia: `parseErrorResponse` vive en su propio módulo puro, `src/parse-error-response.ts` (sin `zod`, solo `import type`), y no en `schemas.ts`; `react/auth-fetch.ts`, `http-client.ts`, `admin/client.ts` y `s2s/client.ts` lo importan de ahí.
 
