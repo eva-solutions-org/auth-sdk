@@ -19,6 +19,7 @@
  *        S2S_TIMESTAMP_WINDOW_SECONDS, S2S_SCOPES, S2S_RESPONSE_HEADERS, USERS_BATCH_MAX_IDS
  * - Root: ACCOUNT_STATES
  */
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
   // Runtime values — nuevos
@@ -529,4 +530,21 @@ describe('exports eliminados / internos', () => {
       expect(names).not.toContain('createEvaAuthConfigError')
     },
   )
+})
+
+describe('package manifest (workspace S0: REQ-WS-09, REQ-SDK-11)', () => {
+  const manifest = JSON.parse(
+    readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+  ) as {
+    repository: { directory?: string }
+    dependencies: Record<string, string>
+  }
+
+  it('repository_directory', () => {
+    expect(manifest.repository.directory).toBe('packages/auth-sdk')
+  })
+
+  it('zod_is_dependency', () => {
+    expect(manifest.dependencies.zod).toBe('^4.4.3')
+  })
 })
