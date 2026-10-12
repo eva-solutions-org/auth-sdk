@@ -67,8 +67,11 @@ export type S2SCanonicalParts = {
 
 /**
  * Resultado de `getUser` — perfil público del usuario.
- * El perfil es el del contrato compartido; `{ user }` es solo el envoltorio que arma el cliente
- * al desenvolver `data`.
+ *
+ * ADVERTENCIA (bug conocido, fix pendiente en un cambio separado): el tipo declara `{ user }`,
+ * pero el runtime NO construye ese envoltorio. `s2sFetch` devuelve `json.data` y el wire de Auth
+ * es `{ data: perfil }`, así que el perfil llega directamente en `result.data`. No confíes en
+ * `result.data.user`: en runtime es `undefined`.
  */
 export type S2SGetUserResult = {
   user: ProfileResponse['data']

@@ -645,7 +645,9 @@ describe('S2 SDK mirrors equal the contract (D-28)', () => {
     >()
   })
 
-  it('S2S get user result wraps the contract profile', () => {
+  // Pins the CURRENT (erroneous) declared type until the separate fix lands. It is NOT the wire
+  // shape: the runtime returns the profile directly in `result.data` (wire `{ data: profile }`).
+  it('S2S get user result pins the current erroneous { user } type (known bug, not the wire)', () => {
     expectTypeOf<S2SGetUserResult>().toEqualTypeOf<{
       user: ContractProfileResponse['data']
     }>()
