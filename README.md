@@ -96,6 +96,7 @@ app.use('/api/*', auth);
 ### Client — React
 
 ```tsx
+import { useState } from 'react';
 import { EvaAuthProvider, useAuth, useUser } from '@eva_solutions/auth-sdk/react';
 
 function App() {
@@ -109,10 +110,27 @@ function App() {
 function Profile() {
   const { isAuthenticated, isLoading, login, logout } = useAuth();
   const { data: user } = useUser();
+  // Two-step OTP login: keep the challengeId in memory between the steps.
+  const [challengeId, setChallengeId] = useState<string>();
 
   if (isLoading) return <p>Loading...</p>;
-  if (!isAuthenticated)
-    return <button onClick={() => login.getCode('+1555000000')}>Sign in</button>;
+  if (!isAuthenticated) {
+    const phone = '+1555000000';
+    return challengeId ? (
+      <button onClick={() => login.verify({ phone, code: '123456', challengeId })}>
+        Verify code
+      </button>
+    ) : (
+      <button
+        onClick={async () => {
+          const res = await login.getCode({ phone });
+          if (res.ok) setChallengeId(res.data.challengeId);
+        }}
+      >
+        Sign in
+      </button>
+    );
+  }
 
   return (
     <div>
@@ -122,6 +140,8 @@ function Profile() {
   );
 }
 ```
+
+> **OTP login needs a `challengeId`.** `get-code` returns `{ data: { message, challengeId } }` and `/login` (and `login.verify`) requires that `challengeId` together with the code. Keep it in memory between the two calls; a new `get-code` invalidates the previous one. A login without it fails with `400`. Coming from 2.x? See the [migration guide](docs/migration.md#8-login-otp-requiere-challengeid).
 
 ### Generic Runtime (non-Hono backends)
 

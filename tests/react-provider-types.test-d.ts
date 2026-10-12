@@ -5,7 +5,10 @@
  */
 import { describe, it } from 'vitest'
 import { expectTypeOf } from 'expect-type'
-import type { AuthState, AuthContextValue } from '../src/react/eva-auth-provider'
+import type {
+  AuthState,
+  AuthContextValue,
+} from '../src/react/eva-auth-provider'
 import type { EvaError, Result } from '../src/types'
 
 // ───── AuthState expone EvaError ─────
@@ -26,12 +29,32 @@ describe('AuthContextValue.error — heredado de AuthState', () => {
 
 // ───── login.getCode y login.verify retornan Result con EvaError ─────
 
-describe('AuthContextValue.login.getCode — Result<{ message }>', () => {
-  it('retorna Promise<Result<{ message: string }>>', () => {
+describe('AuthContextValue.login.getCode — Result<{ message; challengeId }>', () => {
+  it('retorna Promise<Result<{ message: string; challengeId: string }>>', () => {
     expectTypeOf<AuthContextValue['login']['getCode']>().toBeFunction()
-    expectTypeOf<ReturnType<AuthContextValue['login']['getCode']>>().toEqualTypeOf<
-      Promise<Result<{ message: string }>>
+    expectTypeOf<
+      ReturnType<AuthContextValue['login']['getCode']>
+    >().toEqualTypeOf<
+      Promise<Result<{ message: string; challengeId: string }>>
     >()
+  })
+})
+
+describe('AuthContextValue.login.verify — challengeId obligatorio', () => {
+  it('los parámetros son { phone, code, challengeId }', () => {
+    expectTypeOf<
+      Parameters<AuthContextValue['login']['verify']>[0]
+    >().toEqualTypeOf<{
+      phone: string
+      code: string
+      challengeId: string
+    }>()
+  })
+
+  it('verify sin challengeId es rechazado', () => {
+    const verify = null as unknown as AuthContextValue['login']['verify']
+    // @ts-expect-error challengeId es obligatorio
+    void verify({ phone: '+51999999999', code: '123456' })
   })
 })
 

@@ -21,10 +21,19 @@ export type AuthState = {
 
 export type AuthContextValue = AuthState & {
   login: {
-    getCode: (params: { phone: string }) => Promise<Result<{ message: string }>>
+    /**
+     * Solicita el código. El `challengeId` devuelto es opaco: consérvalo en
+     * memoria (el provider no lo guarda) y pásalo a `verify`. Cada `getCode`
+     * nuevo invalida el `challengeId` anterior.
+     */
+    getCode: (params: {
+      phone: string
+    }) => Promise<Result<{ message: string; challengeId: string }>>
+    /** Verifica el código con el `challengeId` que devolvió `getCode`. */
     verify: (params: {
       phone: string
       code: string
+      challengeId: string
     }) => Promise<Result<{ user: { id: string } }>>
   }
   logout: () => Promise<Result<{ message: string }>>
@@ -147,11 +156,18 @@ export const EvaAuthProvider = ({
   const login = useMemo(
     () => ({
       getCode: (params: { phone: string }) =>
-        authFetch<{ message: string }>(`${urlBase}/get-code`, {
-          method: 'POST',
-          body: JSON.stringify(params),
-        }),
-      verify: async (params: { phone: string; code: string }) => {
+        authFetch<{ message: string; challengeId: string }>(
+          `${urlBase}/get-code`,
+          {
+            method: 'POST',
+            body: JSON.stringify(params),
+          },
+        ),
+      verify: async (params: {
+        phone: string
+        code: string
+        challengeId: string
+      }) => {
         const result = await authFetch<{ user: { id: string } }>(
           `${urlBase}/login`,
           {

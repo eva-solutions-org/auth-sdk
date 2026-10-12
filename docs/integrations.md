@@ -38,6 +38,7 @@ These are the values the SDK and the Auth Service must agree on. Changing any of
 | S2S replay protection | `replayCache.setIfAbsent(key, ttl)` with key `${clientId}:${nonce}` and ttl `2 * timestampWindowSeconds + 1` (241 s by default). Verification failures use the reasons `header_missing`, `timestamp_invalid`, `timestamp_expired`, `nonce_malformed`, `signature_malformed`, `client_unknown`, `signature_invalid`, `replay_detected`. | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
 | S2S parity vector (KAT) | Literal canonical string and signature, computed independently with `node:crypto`, for other repos (verifiers or own signers) to check parity with the contract. Copy it from the test `KAT: canonical y firma literales` in `tests/s2s-nonce.mock.test.ts`. | `tests/s2s-nonce.mock.test.ts` |
 | Auth proxy routes (`evaAuthRoutes()`) | `POST /get-code`, `/login`, `/refresh`, `/logout`; `GET /me`, `/empresas`, `/sessions` (plus the `PATCH`/`DELETE` variants in `src/auth-handlers.ts`) | `src/hono/auth-routes.ts` |
+| OTP login challenge | `POST /get-code` responds `{ data: { message, challengeId } }` (opaque, 32 lowercase hex; passed through unchanged). `POST /login` **requires** `challengeId` in the body: `LoginSchema` rejects a body without it with 400 `malformed`, and `http-client.login` sends it to the Auth Service. A new `get-code` invalidates the previous `challengeId`. The SDK never stores it (browser memory only); the React provider is stateless. | `src/schemas.ts`, `src/http-client.ts`, `src/react/eva-auth-provider.tsx` |
 | Wire error shape | `{ error: { code, message } }` by default (`errorWire: 'api'`) | [configuration.md](configuration.md), [migration.md](migration.md) |
 
 The SDK sets the access and refresh cookies in the **consumer's own domain**. Runtime configuration (`cookieDomain`, `errorMessages`, `errorWire`) is documented in [configuration.md](configuration.md); do not repeat it here.
@@ -106,7 +107,7 @@ A change to an exposed contract above is not done until the consumers run it. Ch
 
 ## What the SDK consumes from the Auth Service
 
-The SDK calls the Auth Service at the configured `authUrl`: the JWKS (`/.well-known/jwks.json`) to verify access tokens, the user-facing auth endpoints behind `evaAuthRoutes()` (`login`, `login/get-code`, `login/refresh`, `login/logout`, `user`, `user/empresas`, `sessions`, `health`; `src/http-client.ts`), and the S2S client's `/internal/users/*` and `/internal/webhooks/*` endpoints (`src/s2s/client.ts`, table in [api.md](api.md#eva_solutionsauth-sdks2s)). The Auth Service owns these endpoints, their scopes and their behavior.
+The SDK calls the Auth Service at the configured `authUrl`: the JWKS (`/.well-known/jwks.json`) to verify access tokens, the user-facing auth endpoints behind `evaAuthRoutes()` (`login`, `login/get-code`, `login/refresh`, `login/logout`, `user`, `user/empresas`, `sessions`, `health`; `src/http-client.ts`; `login` needs the `challengeId` returned by `login/get-code`, so the SDK 3.0.0 only works against an Auth Service that issues and checks it), and the S2S client's `/internal/users/*` and `/internal/webhooks/*` endpoints (`src/s2s/client.ts`, table in [api.md](api.md#eva_solutionsauth-sdks2s)). The Auth Service owns these endpoints, their scopes and their behavior.
 
 ## Verification sources
 

@@ -9,7 +9,8 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 3. Borra todo uso de `getEvaEnv` y del tipo `EvaEnv`.
 4. Si desarrollas en local, sirve tu app por https (las cookies ahora son siempre `Secure`).
 5. Si firmas requests S2S a mano (sin `createS2SClient`), cambia a `signS2SHeaders` (sección 7). Si verificas S2S, cada request entrante debe traer `x-eva-nonce`.
-6. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
+6. Si tu frontend hace el login OTP (`login.getCode` / `login.verify` o `POST /get-code` + `POST /login`), conserva el `challengeId` que devuelve `get-code` y envíalo con el código (sección 8).
+7. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
 
 ## Resumen de breaking changes
 
@@ -23,6 +24,7 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 | 6 | Build | Una sola variante: ya no existen `build:local`, `build:dev`, `build:prod` ni `pack:local` |
 | 7 | `authUrl` | Inmutable: un segundo valor distinto lanza |
 | 8 | S2S | Nuevo header obligatorio `x-eva-nonce`; canonical de 7 líneas; razón `nonce_malformed`; clave y TTL del `replayCache` cambian |
+| 9 | Login OTP | `get-code` devuelve `challengeId` y `/login` (`LoginSchema`, `http-client.login`, `login.verify`) lo exige |
 
 ---
 
@@ -169,6 +171,46 @@ const headers = await signS2SHeaders({ method, path, rawQuery, bodyBytes, client
 - Durante un despliegue por etapas, un verificador 3.0.0 rechaza a los firmantes 2.x y un firmante 3.0.0 es rechazado por un verificador 2.x (firma inválida). Actualiza ambos lados juntos.
 
 Razonamiento: [ADR-018](decisions.md#adr-018-nonce-obligatorio-en-las-firmas-s2s-x-eva-nonce).
+
+---
+
+## 8. Login OTP requiere `challengeId`
+
+`POST /get-code` ahora responde `{ data: { message, challengeId } }` y `POST /login` **exige** ese `challengeId` en el body. Sin él, el SDK responde 400 `malformed` sin llegar al Auth Service. El `challengeId` es opaco y vive lo mismo que el código: cada `get-code` nuevo invalida el anterior. No hay modo de compatibilidad: un cliente 2.x (que solo envía `{ phone, code }`) no puede iniciar sesión contra un Auth Service que exige el desafío.
+
+**Si usas `evaAuthRoutes()` / `evaAuthOpenAPIRoutes()` con tu propio frontend** (fetch directo):
+
+```ts
+// Antes (2.x)
+await fetch('/auth/get-code', { method: 'POST', body: JSON.stringify({ phone }) })
+await fetch('/auth/login', { method: 'POST', body: JSON.stringify({ phone, code }) })
+
+// Después (3.0.0)
+const res = await fetch('/auth/get-code', { method: 'POST', body: JSON.stringify({ phone }) })
+const { data: { challengeId } } = await res.json()   // guárdalo en memoria
+await fetch('/auth/login', { method: 'POST', body: JSON.stringify({ phone, code, challengeId }) })
+```
+
+**Si usas el provider de React:**
+
+```tsx
+// Antes (2.x)
+await login.getCode({ phone })
+await login.verify({ phone, code })
+
+// Después (3.0.0)
+const res = await login.getCode({ phone })
+if (res.ok) await login.verify({ phone, code, challengeId: res.data.challengeId })
+```
+
+**Si usas `createHttpClient` (cliente HTTP exportado):** `getCode` devuelve `Result<{ message: string; challengeId: string }>` y `login` recibe `{ phone, code, challengeId, ...DeviceInfo }`.
+
+Reglas:
+
+- Guarda el `challengeId` **solo en memoria** (estado del componente o variable): no uses cookie ni `localStorage`. El provider de React no lo guarda; es tu responsabilidad conservarlo entre los dos pasos.
+- Si el usuario pide un código nuevo, reemplaza el `challengeId` guardado: el anterior deja de servir (con varias pestañas gana el último `get-code`).
+- Un `challengeId` ausente da 400; uno distinto al vigente, o ya consumido, da 401 `Credenciales inválidas`, igual que un código incorrecto pero sin gastar intentos.
+- Actualiza el SDK y el Auth Service juntos: un Auth Service anterior no emite `challengeId` (el login del frontend no tendría qué enviar) y uno nuevo rechaza el login sin él.
 
 ---
 

@@ -203,6 +203,8 @@ app.route('/auth', evaAuthRoutes({
 
 Retorna `Hono`.
 
+**Login con `challengeId`.** `POST /get-code` devuelve el `challengeId` tal como lo emite el Auth Service (el handler lo pasa sin tocarlo). `POST /login` lo **exige** en el body: `LoginSchema` agrega `challengeId: z.string().min(1)`, y un body sin él responde 400 `malformed` (mensaje `loginFailed`) sin llegar al Auth Service. El `challengeId` es opaco: el navegador lo conserva **en memoria** (sin cookie ni storage) y lo reenvía con el código; cada `get-code` nuevo invalida el anterior. Los handlers `POST /get-code` y `POST /login` responden `Cache-Control: no-store` en **toda** respuesta (éxito y error), porque llevan el `challengeId` y las cookies de sesión; en `evaAuthRoutes` el header se fija al inicio del handler; en `evaAuthOpenAPIRoutes` lo fija un middleware de ruta que corre antes del validador (y el hook de validación en el 400 de body inválido), porque el validador responde antes de que el handler se ejecute. En ambas variantes cubre el 400 de validación y los errores del Auth Service, y esos 400 salen con el mismo wire `{ error: { code, message } }` (sin exponer el `ZodError`). En `evaAuthOpenAPIRoutes` ese manejo (el 400 con el wire del SDK, los mensajes y el `no-store` del middleware) aplica **solo** a las rutas `POST /get-code` y `POST /login` del propio SDK, identificadas por coincidencia exacta de la ruta relativa a la sub-app, sin importar el prefijo de montaje. Las rutas propias que el consumidor agregue a esa misma sub-app (por ejemplo `/admin/login` o `/sms/get-code`) **no** lo heredan: conservan su validación y su respuesta 400 por defecto, sin los mensajes del SDK. Si el `challengeId` no coincide con el vigente, el Auth Service responde 401 sin consumir intentos.
+
 **`EvaAuthRoutesOptions`:**
 
 | Opción | Tipo | Descripción |
@@ -213,8 +215,8 @@ Retorna `Hono`.
 
 | Método | Ruta | Body / Entrada | Respuesta |
 |--------|------|----------------|-----------|
-| `POST` | `/get-code` | `{ phone }` | `{ data: { message } }` |
-| `POST` | `/login` | `{ phone, code }` | `{ data: { user: { id } } }` + Set-Cookie |
+| `POST` | `/get-code` | `{ phone }` | `{ data: { message, challengeId } }` |
+| `POST` | `/login` | `{ phone, code, challengeId }` | `{ data: { user: { id } } }` + Set-Cookie |
 | `POST` | `/refresh` | cookies | `{ data: { user: { id } } }` + Set-Cookie |
 | `POST` | `/logout` | cookies | `{ data: { message } }` + Clear-Cookie |
 | `GET` | `/me` | cookies | `{ data: EvaUser }` |
@@ -319,6 +321,8 @@ app.get('/doc', (c) => c.json(app.getOpenAPI31Document({
 Retorna `OpenAPIHono`.
 
 **`EvaAuthOpenAPIRoutesOptions`:** Idéntico a `EvaAuthRoutesOptions`.
+
+La respuesta 200 de `/get-code` documenta `{ data: { message, challengeId } }` y el body de `/login` documenta `challengeId` como obligatorio (mismo `LoginSchema`).
 
 | Opción | Tipo | Descripción |
 |--------|------|-------------|
@@ -881,9 +885,12 @@ Hook principal de autenticación.
 ```ts
 const { isAuthenticated, isLoading, error, login, logout } = useAuth()
 
-// Login en dos pasos
-await login.getCode(phone)
-await login.verify(phone, code)
+// Login en dos pasos: el challengeId de getCode viaja a verify
+const res = await login.getCode({ phone })
+if (res.ok) {
+  const { challengeId } = res.data
+  await login.verify({ phone, code, challengeId })
+}
 
 // Logout
 await logout()
@@ -896,8 +903,8 @@ Retorna:
 | `isAuthenticated` | `boolean` | Si hay sesión activa |
 | `isLoading` | `boolean` | Si hay operación en curso |
 | `error` | `string \| null` | Último error |
-| `login.getCode` | `(phone) => Promise` | Solicita código OTP |
-| `login.verify` | `(phone, code) => Promise` | Verifica código y autentica |
+| `login.getCode` | `({ phone }) => Promise<Result<{ message: string; challengeId: string }>>` | Solicita código OTP; devuelve el `challengeId` que `verify` exige |
+| `login.verify` | `({ phone, code, challengeId }) => Promise<Result<{ user: { id: string } }>>` | Verifica código y autentica. El provider no guarda el `challengeId`: conservarlo es responsabilidad del llamador |
 | `logout` | `() => Promise` | Cierra sesión |
 
 ---

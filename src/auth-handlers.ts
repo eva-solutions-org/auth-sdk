@@ -3,7 +3,7 @@
  * Compartido entre evaAuthRoutes() (Hono plano) y evaAuthOpenAPIRoutes() (OpenAPIHono).
  * Decisión M2: resolución de messages() por-request (closure evalúa global cada vez).
  */
-import type { Context } from 'hono'
+import type { Context, MiddlewareHandler } from 'hono'
 import { createHttpClient } from './http-client'
 import {
   readTokensFromCookies,
@@ -26,7 +26,19 @@ export interface AuthHandlerOptions {
   errorMessages?: Partial<EvaErrorMessages>
 }
 
+/**
+ * Guardas para la variante OpenAPI de get-code/login: el validador de
+ * @hono/zod-openapi responde el 400 antes que el handler, así que
+ * no-store y el wire de error se replican aquí. middleware corre antes del validador
+ * (JSON malformado); onInvalid es el hook del validador (body que no cumple el schema).
+ */
+export interface OpenAPIBodyGuard {
+  middleware: MiddlewareHandler
+  onInvalid: (result: { success: boolean }, c: Context) => Response | undefined
+}
+
 export interface AuthHandlers {
+  openApiGuards: { getCode: OpenAPIBodyGuard; login: OpenAPIBodyGuard }
   getCode: (c: Context) => Promise<Response>
   login: (c: Context) => Promise<Response>
   refresh: (c: Context) => Promise<Response>
@@ -105,9 +117,36 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
   const messages = () =>
     resolveErrorMessages(opts.errorMessages, getErrorMessages())
 
+  const bodyGuard = (invalidMessage: () => string): OpenAPIBodyGuard => ({
+    middleware: async (c, next) => {
+      c.header('Cache-Control', 'no-store')
+      try {
+        await c.req.json()
+      } catch {
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().invalidJsonBody, 400),
+          400,
+        )
+      }
+      await next()
+    },
+    onInvalid: (result, c) => {
+      if (result.success) return undefined
+      c.header('Cache-Control', 'no-store')
+      return errorResponse(c, sdkError('malformed', invalidMessage(), 400), 400)
+    },
+  })
+
   return {
+    openApiGuards: {
+      getCode: bodyGuard(() => messages().invalidPhone),
+      login: bodyGuard(() => messages().loginFailed),
+    },
     // POST /get-code
     getCode: async (c: Context): Promise<Response> => {
+      // Respuestas con challengeId/cookies: nunca cacheables (paridad con el API).
+      c.header('Cache-Control', 'no-store')
       let raw: unknown
       try {
         raw = await c.req.json()
@@ -133,6 +172,8 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
 
     // POST /login
     login: async (c: Context): Promise<Response> => {
+      // Respuestas con challengeId/cookies: nunca cacheables (paridad con el API).
+      c.header('Cache-Control', 'no-store')
       let raw: unknown
       try {
         raw = await c.req.json()

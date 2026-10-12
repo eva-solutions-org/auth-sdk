@@ -1,6 +1,21 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { authFetch } from '../src/react/auth-fetch'
+import {
+  EvaAuthProvider,
+  type AuthContextValue,
+} from '../src/react/eva-auth-provider'
 import type { EvaError } from '../src/types'
+
+// El paquete no trae react-dom: se sustituyen los hooks por equivalentes síncronos
+// para invocar EvaAuthProvider como función y leer el value que publica el Provider.
+vi.mock('react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react')>()),
+  useMemo: <T>(factory: () => T) => factory(),
+  useCallback: <T>(fn: T) => fn,
+  useState: <T>(initial: T) => [initial, vi.fn()],
+  useRef: <T>(initial: T) => ({ current: initial }),
+  useEffect: () => undefined,
+}))
 
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch
@@ -26,7 +41,9 @@ describe('authFetch — Result<T> con EvaError', () => {
   it('retorna { ok: false, error: EvaApiError } cuando el servidor responde con wire nuevo { error: { code, message } }', async () => {
     mockFetch.mockResolvedValueOnce(
       new Response(
-        JSON.stringify({ error: { code: 'unauthorized', message: 'Credenciales inválidas' } }),
+        JSON.stringify({
+          error: { code: 'unauthorized', message: 'Credenciales inválidas' },
+        }),
         { status: 401 },
       ),
     )
@@ -127,5 +144,87 @@ describe('authFetch — shape de EvaError en narrowing', () => {
       // status existe en ambas variantes de EvaError
       expect(result.error.status).toBe(403)
     }
+  })
+})
+
+describe('EvaAuthProvider — login con challengeId', () => {
+  const CHALLENGE_ID = '9f86d081884c7d659a2feaa0c55ad015'
+  const storageSpy = { setItem: vi.fn(), getItem: vi.fn() }
+  const cookieSetter = vi.fn()
+
+  beforeEach(() => {
+    storageSpy.setItem.mockClear()
+    storageSpy.getItem.mockClear()
+    cookieSetter.mockClear()
+    vi.stubGlobal('localStorage', storageSpy)
+    vi.stubGlobal('sessionStorage', storageSpy)
+    vi.stubGlobal('document', {
+      get cookie() {
+        return ''
+      },
+      set cookie(value: string) {
+        cookieSetter(value)
+      },
+    })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    globalThis.fetch = mockFetch
+  })
+
+  const renderLogin = () => {
+    const element = EvaAuthProvider({
+      children: null,
+      basePath: '/auth',
+    }) as unknown as {
+      props: { value: AuthContextValue }
+    }
+    return element.props.value.login
+  }
+
+  it('verify_sends_challenge_id_stateless: el body incluye challengeId y no se escribe en storage ni cookies', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ data: { user: { id: 'u1' } } }), {
+        status: 200,
+      }),
+    )
+
+    const result = await renderLogin().verify({
+      phone: '+51999999999',
+      code: '123456',
+      challengeId: CHALLENGE_ID,
+    })
+
+    expect(result).toEqual({ ok: true, data: { user: { id: 'u1' } } })
+    const [url, options] = mockFetch.mock.calls[0]
+    expect(url).toBe('/auth/login')
+    expect(JSON.parse(options.body as string)).toEqual({
+      phone: '+51999999999',
+      code: '123456',
+      challengeId: CHALLENGE_ID,
+    })
+    expect(storageSpy.setItem).not.toHaveBeenCalled()
+    expect(cookieSetter).not.toHaveBeenCalled()
+  })
+
+  it('getCode devuelve el challengeId del servidor sin persistirlo', async () => {
+    mockFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          data: { message: 'Código enviado', challengeId: CHALLENGE_ID },
+        }),
+        { status: 200 },
+      ),
+    )
+
+    const result = await renderLogin().getCode({ phone: '+51999999999' })
+
+    expect(result).toEqual({
+      ok: true,
+      data: { message: 'Código enviado', challengeId: CHALLENGE_ID },
+    })
+    expect(storageSpy.setItem).not.toHaveBeenCalled()
+    expect(cookieSetter).not.toHaveBeenCalled()
   })
 })

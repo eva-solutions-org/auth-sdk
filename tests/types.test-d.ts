@@ -9,17 +9,19 @@ import { describe, it } from 'vitest'
 import { expectTypeOf } from 'expect-type'
 import { z } from 'zod'
 import type { EvaTokenPayload } from '../src/types'
+import type { EvaHttpClient } from '../src/http-client'
 import { evaAuth, getEvaPayload } from '../src/hono'
 import { verifyAccessToken } from '../src/jwt'
 import { verifyRequest } from '../src/generic/verify'
-import type { Context } from 'hono'
-import type { EvaAuthVariables } from '../src/hono/middleware'
 
 // ───── REQ-TE-002: Sin generic ≡ legacy shape ─────
 
 describe('EvaTokenPayload sin generic', () => {
   it('es estructuralmente idéntico al tipo previo { id: string; sessionId: string }', () => {
-    expectTypeOf<EvaTokenPayload>().toEqualTypeOf<{ id: string; sessionId: string }>()
+    expectTypeOf<EvaTokenPayload>().toEqualTypeOf<{
+      id: string
+      sessionId: string
+    }>()
   })
 })
 
@@ -27,7 +29,7 @@ describe('EvaTokenPayload sin generic', () => {
 
 describe('EvaTokenPayload con generic', () => {
   it('EvaTokenPayload<{ phone: string }> es { id, sessionId, phone }', () => {
-    expectTypeOf<EvaTokenPayload<{ phone: string }>>().toEqualTypeOf<{
+    expectTypeOf<EvaTokenPayload<{ phone: string }>>().branded.toEqualTypeOf<{
       id: string
       sessionId: string
       phone: string
@@ -35,7 +37,9 @@ describe('EvaTokenPayload con generic', () => {
   })
 
   it('EvaTokenPayload<{ role: "admin" | "user" }> preserva literales', () => {
-    expectTypeOf<EvaTokenPayload<{ role: 'admin' | 'user' }>>().toEqualTypeOf<{
+    expectTypeOf<
+      EvaTokenPayload<{ role: 'admin' | 'user' }>
+    >().branded.toEqualTypeOf<{
       id: string
       sessionId: string
       role: 'admin' | 'user'
@@ -47,7 +51,7 @@ describe('EvaTokenPayload con generic', () => {
 
 describe('verifyAccessToken return type', () => {
   it('sin schema: retorna Result<EvaTokenPayload<{}>>', () => {
-    type R = Awaited<ReturnType<typeof verifyAccessToken>>
+    type R = Awaited<ReturnType<typeof verifyAccessToken<{}>>>
     // ok=true → data es EvaTokenPayload<{}>
     type DataOk = Extract<R, { ok: true }>['data']
     expectTypeOf<DataOk>().toEqualTypeOf<EvaTokenPayload<{}>>()
@@ -72,9 +76,6 @@ describe('evaAuth con schema', () => {
 
 describe('getEvaPayload', () => {
   it('con Context<Variables<{ phone }>> retorna EvaTokenPayload<{ phone: string }>', () => {
-    type MyVars = EvaAuthVariables<{ phone: string }>
-    // oxlint-disable-next-line no-unused-vars -- type-level declaration required for type inference test (never used at runtime)
-    declare const c: Context<{ Variables: MyVars }>
     type Result = ReturnType<typeof getEvaPayload<{ phone: string }>>
     expectTypeOf<Result>().toEqualTypeOf<EvaTokenPayload<{ phone: string }>>()
   })
@@ -84,7 +85,7 @@ describe('getEvaPayload', () => {
 
 describe('verifyRequest return type', () => {
   it('sin generic: payload es EvaTokenPayload<{}>', () => {
-    type R = Awaited<ReturnType<typeof verifyRequest>>
+    type R = Awaited<ReturnType<typeof verifyRequest<{}>>>
     type DataOk = Extract<R, { ok: true }>['data']
     expectTypeOf<DataOk['payload']>().toEqualTypeOf<EvaTokenPayload<{}>>()
   })
@@ -104,7 +105,11 @@ describe('TExtra constraint', () => {
 // ───── T-007: EvaError discriminated union — foundation types (REQ-ERR-03..REQ-ERR-05, REQ-RESULT-01..REQ-RESULT-03) ─────
 
 import type { EvaError, EvaApiError, EvaSdkError, Result } from '../src/types'
-import type { CoreErrorCode, ErrorCode, SdkErrorReason } from '../src/error-codes'
+import type {
+  CoreErrorCode,
+  ErrorCode,
+  SdkErrorReason,
+} from '../src/error-codes'
 import type { ConfigureEvaAuthOptions } from '../src/config'
 import { getMessage } from '../src/get-message'
 
@@ -148,7 +153,7 @@ describe('EvaError discriminated union (REQ-ERR-05)', () => {
   })
 
   it('narrowing por kind — rama api tiene code', () => {
-    declare const err: EvaError
+    const err = undefined as unknown as EvaError
     if (err.kind === 'api') {
       // En la rama 'api', code está disponible
       expectTypeOf(err).toHaveProperty('code')
@@ -156,7 +161,7 @@ describe('EvaError discriminated union (REQ-ERR-05)', () => {
   })
 
   it('narrowing por kind — rama sdk tiene reason', () => {
-    declare const err: EvaError
+    const err = undefined as unknown as EvaError
     if (err.kind === 'sdk') {
       // En la rama 'sdk', reason está disponible
       expectTypeOf(err).toHaveProperty('reason')
@@ -231,7 +236,10 @@ describe('ConfigureEvaAuthOptions.errorWire (REQ-DOC-05)', () => {
 
 import type { WebhookPayload, EventCode } from '../src/webhooks/types'
 import { EVENT_CODES } from '../src/webhooks/constants'
-import type { ServiceClientPublic, CreateServiceClientResult } from '../src/admin/types'
+import type {
+  ServiceClientPublic,
+  CreateServiceClientResult,
+} from '../src/admin/types'
 import type { S2SClientConfig } from '../src/s2s/types'
 import { assertType } from 'vitest'
 
@@ -337,26 +345,46 @@ describe('S2S types (REQ-S2S-06)', () => {
 // REQ-ERR-03 — assertType directo EvaApiError
 describe('EvaApiError assertType (REQ-ERR-03)', () => {
   it('objeto literal con kind/code/message/status es assignable a EvaApiError', () => {
-    assertType<EvaApiError>({ kind: 'api', code: 'unauthorized', message: 'x', status: 401 })
+    assertType<EvaApiError>({
+      kind: 'api',
+      code: 'unauthorized',
+      message: 'x',
+      status: 401,
+    })
   })
 })
 
 // REQ-ERR-04 — assertType directo EvaSdkError
 describe('EvaSdkError assertType (REQ-ERR-04)', () => {
   it('objeto literal con kind/reason/message/status es assignable a EvaSdkError', () => {
-    assertType<EvaSdkError>({ kind: 'sdk', reason: 'token_invalid', message: 'x', status: 401 })
+    assertType<EvaSdkError>({
+      kind: 'sdk',
+      reason: 'token_invalid',
+      message: 'x',
+      status: 401,
+    })
   })
 })
 
 // REQ-ERR-05 — assertType EvaError con valor api o sdk
 describe('EvaError assertType (REQ-ERR-05)', () => {
   it('un EvaApiError es assignable a EvaError', () => {
-    const apiOrSdkError: EvaApiError = { kind: 'api', code: 'unauthorized', message: 'x', status: 401 }
+    const apiOrSdkError: EvaApiError = {
+      kind: 'api',
+      code: 'unauthorized',
+      message: 'x',
+      status: 401,
+    }
     assertType<EvaError>(apiOrSdkError)
   })
 
   it('un EvaSdkError es assignable a EvaError', () => {
-    const sdkErr: EvaSdkError = { kind: 'sdk', reason: 'token_invalid', message: 'x', status: 401 }
+    const sdkErr: EvaSdkError = {
+      kind: 'sdk',
+      reason: 'token_invalid',
+      message: 'x',
+      status: 401,
+    }
     assertType<EvaError>(sdkErr)
   })
 })
@@ -385,8 +413,12 @@ describe('CoreErrorCode cerrado vs ErrorCode abierto (REQ-ERR-07)', () => {
 // REQ-RESULT-01 — legacy shape { ok: false, error: string, status: number } DEBE FALLAR
 describe('Result legacy shape FALLA (REQ-RESULT-01)', () => {
   it('{ ok: false, error: string, status: 401 } NO es assignable a Result<string>', () => {
-    // @ts-expect-error — error debe ser EvaError, no string; status no existe top-level
-    const _r: Result<string> = { ok: false, error: 'some error string', status: 401 }
+    const _r: Result<string> = {
+      ok: false,
+      // @ts-expect-error — error debe ser EvaError, no string
+      error: 'some error string',
+      status: 401,
+    }
     void _r
   })
 })
@@ -394,7 +426,7 @@ describe('Result legacy shape FALLA (REQ-RESULT-01)', () => {
 // REQ-RESULT-02 — narrowing exhaustivo con never en else
 describe('Result narrowing exhaustivo por kind (REQ-RESULT-02)', () => {
   it('rama else tras api+sdk es never', () => {
-    declare const err: EvaError
+    const err = undefined as unknown as EvaError
     if (err.kind === 'api') {
       expectTypeOf(err).toEqualTypeOf<EvaApiError>()
     } else if (err.kind === 'sdk') {
@@ -455,17 +487,27 @@ describe('EvaErrorMessages type', () => {
     expectTypeOf<EvaErrorMessages['authRequired']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['tokenInvalid']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['tokenExpired']>().toEqualTypeOf<string>()
-    expectTypeOf<EvaErrorMessages['tokenClaimsInvalid']>().toEqualTypeOf<string>()
+    expectTypeOf<
+      EvaErrorMessages['tokenClaimsInvalid']
+    >().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['tokenNotFound']>().toEqualTypeOf<string>()
-    expectTypeOf<EvaErrorMessages['verifyFailedAfterRefresh']>().toEqualTypeOf<string>()
-    expectTypeOf<EvaErrorMessages['refreshNoNewTokens']>().toEqualTypeOf<string>()
+    expectTypeOf<
+      EvaErrorMessages['verifyFailedAfterRefresh']
+    >().toEqualTypeOf<string>()
+    expectTypeOf<
+      EvaErrorMessages['refreshNoNewTokens']
+    >().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['refreshFailed']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['loginFailed']>().toEqualTypeOf<string>()
-    expectTypeOf<EvaErrorMessages['registrationFailed']>().toEqualTypeOf<string>()
+    expectTypeOf<
+      EvaErrorMessages['registrationFailed']
+    >().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['logoutFailed']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['invalidJsonBody']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['invalidPhone']>().toEqualTypeOf<string>()
-    expectTypeOf<EvaErrorMessages['invalidUpdateBody']>().toEqualTypeOf<string>()
+    expectTypeOf<
+      EvaErrorMessages['invalidUpdateBody']
+    >().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['sessionInvalid']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['internalError']>().toEqualTypeOf<string>()
   })
@@ -482,5 +524,15 @@ describe('evaAuthOpenAPIRoutes return type', () => {
   it('retorna OpenAPIHono', () => {
     const result = evaAuthOpenAPIRoutes()
     expectTypeOf(result).toMatchTypeOf<OpenAPIHono>()
+  })
+})
+
+// ───── REQ-SDK-04: http-client.getCode expone challengeId ─────
+
+describe('http-client.getCode return type', () => {
+  it('getCode retorna Result<{ message: string; challengeId: string }>', () => {
+    expectTypeOf<Awaited<ReturnType<EvaHttpClient['getCode']>>>().toEqualTypeOf<
+      Result<{ message: string; challengeId: string }>
+    >()
   })
 })

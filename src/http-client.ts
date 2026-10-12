@@ -85,18 +85,30 @@ const authFetch = async <T>(
   }
 }
 
+/**
+ * Solicita un código OTP. En éxito devuelve `{ message, challengeId }`:
+ * `challengeId` es opaco, el caller debe conservarlo (en memoria) y enviarlo a
+ * `login`; cada `getCode` nuevo invalida el `challengeId` anterior.
+ * El tipo es un cast: la respuesta del Auth Service no se parsea en runtime.
+ */
 const getCode = (params: {
   phone: string
-}): Promise<Result<{ message: string }>> =>
+}): Promise<Result<{ message: string; challengeId: string }>> =>
   authFetch('login/get-code', { method: 'POST', body: { phone: params.phone } })
 
+/**
+ * Verifica el código OTP. `challengeId` es obligatorio: debe ser el que
+ * devolvió el `getCode` que originó el código; sin el desafío vigente el Auth
+ * Service responde 401 sin consumir intentos.
+ */
 const login = (
-  params: { phone: string; code: string } & DeviceInfo,
+  params: { phone: string; code: string; challengeId: string } & DeviceInfo,
 ): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> => {
-  const { phone, code, deviceType, os, browser, userAgent } = params
+  const { phone, code, challengeId, deviceType, os, browser, userAgent } =
+    params
   return authFetch('login', {
     method: 'POST',
-    body: { phone, code, deviceType, os, browser, userAgent },
+    body: { phone, code, challengeId, deviceType, os, browser, userAgent },
   })
 }
 

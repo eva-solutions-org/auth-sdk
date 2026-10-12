@@ -14,9 +14,15 @@ export const GetCodeSchema = z.object({
   phone: z.string().min(1),
 })
 
+/**
+ * Cuerpo de POST /login. `challengeId` es el identificador opaco que devolvió
+ * POST /get-code para este código: el navegador lo conserva en memoria y lo
+ * reenvía junto con el código. Sin él, /login responde 400 (`malformed`).
+ */
 export const LoginSchema = z.object({
   phone: z.string().min(1),
   code: z.string().min(1),
+  challengeId: z.string().min(1),
 })
 
 /**
@@ -100,6 +106,18 @@ export function parseErrorResponse(status: number, body: unknown): EvaError {
     status,
   } satisfies EvaSdkError
 }
+
+/**
+ * Wire de POST /get-code (200). Solo se usa para documentar OpenAPI: no se
+ * exporta del paquete y `http-client.getCode` no lo parsea en runtime.
+ * `challengeId` es opaco; cada get-code nuevo invalida el anterior.
+ */
+export const GetCodeResponseSchema = z.object({
+  data: z.object({
+    message: z.string(),
+    challengeId: z.string(),
+  }),
+})
 
 export const UserIdSchema = z.object({
   id: z.string(),

@@ -31,6 +31,8 @@ beforeEach(() => {
 
 const client = createHttpClient()
 
+const CHALLENGE_ID = '9f86d081884c7d659a2feaa0c55ad015'
+
 describe('createHttpClient', () => {
   it('genera un objeto con todos los métodos', () => {
     const methods = Object.keys(client)
@@ -81,6 +83,25 @@ describe('getCode', () => {
     })
   })
 
+  it('get_code_passthrough_challenge: expone challengeId del Auth Service en el resultado tipado', async () => {
+    mockFetch.mockResolvedValueOnce(
+      createAuthServiceResponse({
+        message: 'code sent',
+        challengeId: '9f86d081884c7d659a2feaa0c55ad015',
+      }),
+    )
+
+    const result = await client.getCode({ phone: '+51999999999' })
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        message: 'code sent',
+        challengeId: '9f86d081884c7d659a2feaa0c55ad015',
+      },
+    })
+  })
+
   it('retorna error cuando Auth Service responde 429', async () => {
     mockFetch.mockResolvedValueOnce(
       createErrorResponse('Too many requests', 429, 'rate_limited'),
@@ -93,7 +114,9 @@ describe('getCode', () => {
     expect(result.error.kind).toBe('api')
     expect(result.error.message).toBe('Too many requests')
     expect(result.error.status).toBe(429)
-    expect((result.error as { kind: 'api'; code: string }).code).toBe('rate_limited')
+    expect((result.error as { kind: 'api'; code: string }).code).toBe(
+      'rate_limited',
+    )
   })
 })
 
@@ -105,7 +128,12 @@ describe('login', () => {
       createAuthServiceResponse({}, createTokenPair()),
     )
 
-    await client.login({ phone: '+51999999999', code: '123456', ...deviceInfo })
+    await client.login({
+      phone: '+51999999999',
+      code: '123456',
+      challengeId: CHALLENGE_ID,
+      ...deviceInfo,
+    })
 
     expect(mockFetch).toHaveBeenCalledWith(
       'http://auth.test/login',
@@ -114,6 +142,7 @@ describe('login', () => {
         body: JSON.stringify({
           phone: '+51999999999',
           code: '123456',
+          challengeId: CHALLENGE_ID,
           deviceType: deviceInfo.deviceType,
           os: deviceInfo.os,
           browser: deviceInfo.browser,
@@ -123,13 +152,34 @@ describe('login', () => {
     )
   })
 
-  it('extrae tokens de headers de respuesta', async () => {
-    const tokens = createTokenPair()
+  it('login_sends_challenge_id: el body enviado al Auth Service contiene challengeId', async () => {
     mockFetch.mockResolvedValueOnce(
-      createAuthServiceResponse({}, tokens),
+      createAuthServiceResponse({}, createTokenPair()),
     )
 
-    const result = await client.login({ phone: '+51999999999', code: '123456', ...deviceInfo })
+    await client.login({
+      phone: '+51999999999',
+      code: '123456',
+      challengeId: CHALLENGE_ID,
+      ...deviceInfo,
+    })
+
+    const [, options] = mockFetch.mock.calls[0]
+    expect(JSON.parse(options.body as string)).toMatchObject({
+      challengeId: CHALLENGE_ID,
+    })
+  })
+
+  it('extrae tokens de headers de respuesta', async () => {
+    const tokens = createTokenPair()
+    mockFetch.mockResolvedValueOnce(createAuthServiceResponse({}, tokens))
+
+    const result = await client.login({
+      phone: '+51999999999',
+      code: '123456',
+      challengeId: CHALLENGE_ID,
+      ...deviceInfo,
+    })
 
     expect(result).toEqual({
       ok: true,
@@ -141,9 +191,7 @@ describe('login', () => {
 describe('refresh', () => {
   it('envía POST a login/refresh con X-Eva-Refresh-Token header', async () => {
     const tokens = createTokenPair()
-    mockFetch.mockResolvedValueOnce(
-      createAuthServiceResponse({}, tokens),
-    )
+    mockFetch.mockResolvedValueOnce(createAuthServiceResponse({}, tokens))
 
     await client.refresh({ refreshToken: 'my-refresh-token' })
 
@@ -157,9 +205,7 @@ describe('refresh', () => {
       accessToken: 'rotated-access',
       refreshToken: 'rotated-refresh',
     })
-    mockFetch.mockResolvedValueOnce(
-      createAuthServiceResponse({}, newTokens),
-    )
+    mockFetch.mockResolvedValueOnce(createAuthServiceResponse({}, newTokens))
 
     const result = await client.refresh({ refreshToken: 'old-refresh' })
 
@@ -181,7 +227,9 @@ describe('refresh', () => {
     expect(result.error.kind).toBe('api')
     expect(result.error.message).toBe('Invalid refresh token')
     expect(result.error.status).toBe(401)
-    expect((result.error as { kind: 'api'; code: string }).code).toBe('unauthorized')
+    expect((result.error as { kind: 'api'; code: string }).code).toBe(
+      'unauthorized',
+    )
   })
 })
 
@@ -208,7 +256,9 @@ describe('getUser', () => {
     const [url, options] = mockFetch.mock.calls[0]
     expect(url).toBe('http://auth.test/user')
     expect(options.method).toBe('GET')
-    expect(options.headers[HEADERS.AUTHORIZATION]).toBe('Bearer my-access-token')
+    expect(options.headers[HEADERS.AUTHORIZATION]).toBe(
+      'Bearer my-access-token',
+    )
   })
 
   it('retorna EvaUser data', async () => {
@@ -235,14 +285,18 @@ describe('network errors', () => {
     expect(result.error.kind).toBe('sdk')
     expect(result.error.message).toBe('Failed to fetch')
     expect(result.error.status).toBe(0)
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('network')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'network',
+    )
   })
 })
 
 describe('config errors', () => {
   it('authFetch_rethrows_config_error: sin authUrl rechaza con el error de config, no lo mapea a network', async () => {
     getAuthUrlMock.mockImplementation(() => {
-      throw Object.assign(new Error('authUrl no configurada'), { name: 'EvaAuthConfigError' })
+      throw Object.assign(new Error('authUrl no configurada'), {
+        name: 'EvaAuthConfigError',
+      })
     })
 
     await expect(client.health()).rejects.toMatchObject({
@@ -259,7 +313,12 @@ describe('config errors', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: { kind: 'sdk', reason: 'network', message: 'fetch failed', status: 0 },
+      error: {
+        kind: 'sdk',
+        reason: 'network',
+        message: 'fetch failed',
+        status: 0,
+      },
     })
   })
 })

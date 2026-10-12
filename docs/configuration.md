@@ -319,8 +319,20 @@ El SDK se compila **una sola vez** (`pnpm run build`, tsdown; formatos ESM y CJS
 
 | Script | Uso |
 |--------|-----|
-| `pnpm run build` | Compila `dist/` |
-| `pnpm run dev` | Compila en modo watch |
+| `pnpm run build` | Compila `dist/` con la guarda de mapas (`scripts/build-with-maps.mjs`) |
+| `pnpm run dev` | Compila en modo watch (`tsdown --watch`), sin pasar por la guarda |
+
+### Guarda de mapas de declaraciones
+
+El build de tsdown 0.22.0 / rolldown-plugin-dts 0.25.1 no es determinista: a veces fusiona un chunk `.d.ts` en el index y omite los mapas de declaraciones. Por eso `pnpm run build` no invoca tsdown directamente, sino `scripts/build-with-maps.mjs`:
+
+- Corre tsdown y verifica que existan `dist/index.d.ts.map` y `dist/index.d.cts.map`.
+- Si falta alguno, limpia `dist/` y reintenta, hasta 10 intentos en total.
+- Si tras los 10 intentos no obtiene los mapas, falla (exit 1) con un mensaje claro; basta con volver a correr el build.
+- Si tsdown mismo falla, el script termina de inmediato con su código de salida, sin reintentar.
+- `pnpm run dev` (`tsdown --watch`) no pasa por la guarda, así que en watch esos mapas pueden faltar.
+
+Con la guarda, el `dist/` que sale de `pnpm run build` siempre trae los mapas, y por tanto el `pnpm pack` posterior es reproducible. Ejecuta `pnpm run build` antes de `pnpm pack`.
 
 ---
 
@@ -592,8 +604,8 @@ npm install @hono/zod-openapi
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| `POST` | `/get-code` | Solicitar código de verificación |
-| `POST` | `/login` | Login con teléfono y código |
+| `POST` | `/get-code` | Solicitar código de verificación; responde `{ data: { message, challengeId } }` |
+| `POST` | `/login` | Login con teléfono, código y el `challengeId` de `/get-code` (obligatorio; sin él, 400) |
 | `POST` | `/refresh` | Rotar tokens via refresh cookie |
 | `POST` | `/logout` | Cerrar sesión actual |
 | `GET` | `/me` | Obtener datos del usuario autenticado |

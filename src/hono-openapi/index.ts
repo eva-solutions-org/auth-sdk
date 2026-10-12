@@ -28,9 +28,15 @@
 import { OpenAPIHono, createRoute } from '@hono/zod-openapi'
 import { z } from 'zod'
 import type { RouteHandler } from '@hono/zod-openapi'
-import { buildAuthHandlers, type AuthHandlerOptions } from '../auth-handlers'
+import type { Context } from 'hono'
+import {
+  buildAuthHandlers,
+  type AuthHandlerOptions,
+  type OpenAPIBodyGuard,
+} from '../auth-handlers'
 import {
   GetCodeSchema,
+  GetCodeResponseSchema,
   LoginSchema,
   UpdateUserSchema,
   ErrorResponseSchema,
@@ -57,10 +63,9 @@ const getCodeRoute = createRoute({
   },
   responses: {
     200: {
-      description: 'Código enviado al teléfono',
-      content: {
-        'application/json': { schema: z.object({ data: z.unknown() }) },
-      },
+      description:
+        'Código enviado al teléfono; incluye el challengeId del desafío',
+      content: { 'application/json': { schema: GetCodeResponseSchema } },
     },
     400: {
       description: 'Teléfono inválido o JSON malformado',
@@ -292,8 +297,30 @@ const deleteAllSessionsRoute = createRoute({
 export function evaAuthOpenAPIRoutes(
   opts: EvaAuthOpenAPIRoutesOptions = {},
 ): OpenAPIHono {
-  const app = new OpenAPIHono()
   const h = buildAuthHandlers(opts)
+  const { getCode: getCodeGuard, login: loginGuard } = h.openApiGuards
+  // Hook del validador solo para get-code/login del SDK: sus 400 salen en el wire de la
+  // variante plana en vez del ZodError. El resto de las rutas conserva el default.
+  // Las rutas del SDK se identifican por haber pasado por su guarda (registrada con el
+  // path exacto relativo a esta sub-app), no por el sufijo del path completo: así una
+  // ruta propia del consumidor (/admin/login, /sms/get-code) no hereda los mensajes
+  // y el prefijo de montaje (/auth, basePath, raíz, strict:false) es irrelevante.
+  const sdkGuards = new WeakMap<Context, OpenAPIBodyGuard>()
+  const app = new OpenAPIHono({
+    defaultHook: (result, c) => sdkGuards.get(c)?.onInvalid(result, c),
+  })
+
+  // get-code/login: el validador del body responde el 400 antes que el handler;
+  // la guarda aporta no-store y el JSON malformado en el wire de la variante plana.
+  for (const [path, guard] of [
+    ['/get-code', getCodeGuard],
+    ['/login', loginGuard],
+  ] as const) {
+    app.on('POST', path, (c, next) => {
+      sdkGuards.set(c, guard)
+      return guard.middleware(c, next)
+    })
+  }
 
   // Los handlers del factory retornan Promise<Response> — compatible en runtime con
   // RouteHandler<R>, pero TS no puede reconciliar el union type RouteConfigToTypedResponse.

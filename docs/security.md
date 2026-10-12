@@ -96,6 +96,13 @@ Implementados con `AbortSignal.timeout()`.
 ### Response
 - Estructura `{ data: T }` del Auth Service validada en runtime
 
+### Cache
+- `POST /get-code` y `POST /login` (`evaAuthRoutes` y `evaAuthOpenAPIRoutes`) responden `Cache-Control: no-store` en éxito y en error: llevan el `challengeId` y las cookies de sesión, y no deben quedar en cachés intermedias ni del navegador → [api.md](api.md#evaauthroutesopts-evaauthroutesoptions)
+- El header se fija por **dos mecanismos**, uno por variante:
+  - **`evaAuthRoutes` (variante plana)**: el propio handler, como primera sentencia. Cubre el 200, el 400 por JSON o schema inválido y los errores del Auth Service.
+  - **`evaAuthOpenAPIRoutes`**: el validador responde el 400 *antes* de que corra el handler, así que el header del handler no llega a aplicarse. Lo fija un **middleware de ruta** registrado antes del validador (que además pre-valida que el body sea JSON y, si no lo es, responde el 400 de la variante plana con el header ya puesto) y, para el 400 de schema, el **`defaultHook`** del `OpenAPIHono`, que devuelve el mismo cuerpo `{ error: { code: 'bad_request', message } }` de la variante plana, sin filtrar el `ZodError`.
+- **Coincidencia exacta**: ambos mecanismos de la variante OpenAPI actúan solo sobre los `POST /get-code` y `POST /login` que registra el propio SDK, no por sufijo del path. Una ruta propia del consumidor (por ejemplo `/admin/login` o `/sms/get-code`) no hereda el header ni los mensajes del SDK: conserva su validación y su respuesta. El prefijo donde se monte la sub-app es irrelevante.
+
 ### Safe status cast
 Auth-routes usa `Set` de status codes HTTP conocidos. Status inesperado → fallback `500`.
 

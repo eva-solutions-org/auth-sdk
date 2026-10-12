@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
+import {
+  readTokensFromCookies,
+  setTokenCookies,
+  clearTokenCookies,
+} from '../src/cookies'
 import { createTokenPair, createUser } from './helpers/fixtures'
 
 vi.mock('../src/config', () => ({
@@ -11,7 +15,19 @@ vi.mock('../src/config', () => ({
   getErrorWire: vi.fn().mockReturnValue('api'),
 }))
 
-const { mockGetCode, mockLogin, mockRefresh, mockLogout, mockGetUser, mockUpdateUser, mockDeleteUser, mockGetUserEmpresas, mockGetSessions, mockDeleteSession, mockDeleteAllSessions } = vi.hoisted(() => ({
+const {
+  mockGetCode,
+  mockLogin,
+  mockRefresh,
+  mockLogout,
+  mockGetUser,
+  mockUpdateUser,
+  mockDeleteUser,
+  mockGetUserEmpresas,
+  mockGetSessions,
+  mockDeleteSession,
+  mockDeleteAllSessions,
+} = vi.hoisted(() => ({
   mockGetCode: vi.fn(),
   mockLogin: vi.fn(),
   mockRefresh: vi.fn(),
@@ -67,7 +83,10 @@ beforeEach(() => {
 
 describe('POST /get-code', () => {
   it('retorna data cuando Auth Service responde ok', async () => {
-    mockGetCode.mockResolvedValue({ ok: true, data: { message: 'Código enviado' } })
+    mockGetCode.mockResolvedValue({
+      ok: true,
+      data: { message: 'Código enviado' },
+    })
 
     const res = await app.request('/get-code', {
       method: 'POST',
@@ -80,10 +99,65 @@ describe('POST /get-code', () => {
     expect(mockGetCode).toHaveBeenCalledWith({ phone: '+51999999999' })
   })
 
+  it('get_code_passthrough_challenge: el body al navegador es igual al del upstream, con challengeId', async () => {
+    const upstream = {
+      message: 'Código enviado',
+      challengeId: '9f86d081884c7d659a2feaa0c55ad015',
+    }
+    mockGetCode.mockResolvedValue({ ok: true, data: upstream })
+
+    const res = await app.request('/get-code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '+51999999999' }),
+    })
+
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ data: upstream })
+  })
+
+  it('get_code_cache_control_no_store: ok y error responden con Cache-Control: no-store', async () => {
+    const send = (phone: string) =>
+      app.request('/get-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone }),
+      })
+
+    mockGetCode.mockResolvedValue({
+      ok: true,
+      data: {
+        message: 'Código enviado',
+        challengeId: '9f86d081884c7d659a2feaa0c55ad015',
+      },
+    })
+    const ok = await send('+51999999999')
+    expect(ok.status).toBe(200)
+    expect(ok.headers.get('Cache-Control')).toBe('no-store')
+
+    mockGetCode.mockResolvedValue({
+      ok: false,
+      error: {
+        kind: 'api',
+        code: 'validation_error',
+        message: 'x',
+        status: 400,
+      },
+    })
+    const failed = await send('+51999999999')
+    expect(failed.status).toBe(400)
+    expect(failed.headers.get('Cache-Control')).toBe('no-store')
+  })
+
   it('retorna error cuando Auth Service responde error', async () => {
     mockGetCode.mockResolvedValue({
       ok: false,
-      error: { kind: 'api', code: 'validation_error', message: 'Teléfono inválido', status: 400 },
+      error: {
+        kind: 'api',
+        code: 'validation_error',
+        message: 'Teléfono inválido',
+        status: 400,
+      },
     })
 
     const res = await app.request('/get-code', {
@@ -93,12 +167,18 @@ describe('POST /get-code', () => {
     })
 
     expect(res.status).toBe(400)
-    expect(await res.json()).toEqual({ error: { code: 'validation_error', message: 'Teléfono inválido' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'validation_error', message: 'Teléfono inválido' },
+    })
   })
 })
 
 describe('POST /login', () => {
-  const loginBody = { phone: '+51999999999', code: '123456' }
+  const loginBody = {
+    phone: '+51999999999',
+    code: '123456',
+    challengeId: '9f86d081884c7d659a2feaa0c55ad015',
+  }
   const tokens = createTokenPair()
   const user = createUser()
 
@@ -121,6 +201,38 @@ describe('POST /login', () => {
       browser: 'Chrome',
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
     })
+  })
+
+  it('login_requires_challenge_id: sin challengeId responde 400 y no llama al upstream', async () => {
+    const res = await app.request('/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: '+51999999999', code: '123456' }),
+    })
+
+    expect(res.status).toBe(400)
+    expect(await res.json()).toEqual({
+      error: { code: 'bad_request', message: 'Teléfono o código inválido' },
+    })
+    expect(mockLogin).not.toHaveBeenCalled()
+  })
+
+  it('login_cache_control_no_store: ok y error responden con Cache-Control: no-store', async () => {
+    const send = (body: unknown) =>
+      app.request('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+    mockLogin.mockResolvedValue({ ok: true, data: { user, tokens } })
+    const ok = await send(loginBody)
+    expect(ok.status).toBe(200)
+    expect(ok.headers.get('Cache-Control')).toBe('no-store')
+
+    const invalid = await send({ phone: '+51999999999', code: '123456' })
+    expect(invalid.status).toBe(400)
+    expect(invalid.headers.get('Cache-Control')).toBe('no-store')
   })
 
   it('setea cookies con tokens exitosos', async () => {
@@ -146,7 +258,12 @@ describe('POST /login', () => {
   it('retorna error si login falla', async () => {
     mockLogin.mockResolvedValue({
       ok: false,
-      error: { kind: 'api', code: 'unauthorized', message: 'Código incorrecto', status: 401 },
+      error: {
+        kind: 'api',
+        code: 'unauthorized',
+        message: 'Código incorrecto',
+        status: 401,
+      },
     })
 
     const res = await app.request('/login', {
@@ -156,7 +273,9 @@ describe('POST /login', () => {
     })
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Código incorrecto' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Código incorrecto' },
+    })
   })
 })
 
@@ -168,14 +287,21 @@ describe('POST /refresh', () => {
 
     expect(res.status).toBe(401)
     // ADR-012: tokenNotFound es la key unificada para acceso/refresh ausente
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token de acceso no encontrado' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Token de acceso no encontrado' },
+    })
   })
 
   it('rota cookies cuando refresh es exitoso', async () => {
-    const newTokens = createTokenPair({ accessToken: 'new-access', refreshToken: 'new-refresh' })
+    const newTokens = createTokenPair({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+    })
     const user = createUser()
 
-    vi.mocked(readTokensFromCookies).mockReturnValue({ refreshToken: 'old-refresh' } as any)
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      refreshToken: 'old-refresh',
+    } as any)
     mockRefresh.mockResolvedValue({
       ok: true,
       data: { user, tokens: newTokens },
@@ -198,8 +324,13 @@ describe('POST /refresh', () => {
 
 describe('POST /logout', () => {
   it('limpia cookies en logout exitoso', async () => {
-    vi.mocked(readTokensFromCookies).mockReturnValue({ refreshToken: 'refresh-tok' } as any)
-    mockLogout.mockResolvedValue({ ok: true, data: { message: 'Sesión cerrada' } })
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      refreshToken: 'refresh-tok',
+    } as any)
+    mockLogout.mockResolvedValue({
+      ok: true,
+      data: { message: 'Sesión cerrada' },
+    })
 
     const res = await app.request('/logout', {
       method: 'POST',
@@ -219,7 +350,9 @@ describe('POST /logout', () => {
 describe('GET /me', () => {
   it('retorna user data con access token válido', async () => {
     const user = createUser()
-    vi.mocked(readTokensFromCookies).mockReturnValue({ accessToken: 'valid-token' } as any)
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      accessToken: 'valid-token',
+    } as any)
     mockGetUser.mockResolvedValue({ ok: true, data: user })
 
     const res = await app.request('/me', {
@@ -237,14 +370,21 @@ describe('GET /me', () => {
     const res = await app.request('/me')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token de acceso no encontrado' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Token de acceso no encontrado' },
+    })
   })
 })
 
 describe('DELETE /sessions', () => {
   it('usa refresh token y limpia cookies', async () => {
-    vi.mocked(readTokensFromCookies).mockReturnValue({ refreshToken: 'refresh-tok' } as any)
-    mockDeleteAllSessions.mockResolvedValue({ ok: true, data: { message: 'Todas las sesiones cerradas' } })
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      refreshToken: 'refresh-tok',
+    } as any)
+    mockDeleteAllSessions.mockResolvedValue({
+      ok: true,
+      data: { message: 'Todas las sesiones cerradas' },
+    })
 
     const res = await app.request('/sessions', {
       method: 'DELETE',
@@ -252,12 +392,16 @@ describe('DELETE /sessions', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(mockDeleteAllSessions).toHaveBeenCalledWith({ refreshToken: 'refresh-tok' })
+    expect(mockDeleteAllSessions).toHaveBeenCalledWith({
+      refreshToken: 'refresh-tok',
+    })
     expect(clearTokenCookies).toHaveBeenCalled()
     const setCookies = res.headers.getSetCookie()
     expect(setCookies).toContain('clear-access')
     expect(setCookies).toContain('clear-refresh')
-    expect(await res.json()).toEqual({ data: { message: 'Todas las sesiones cerradas' } })
+    expect(await res.json()).toEqual({
+      data: { message: 'Todas las sesiones cerradas' },
+    })
   })
 })
 
@@ -266,12 +410,16 @@ describe('DELETE /sessions', () => {
 describe('evaAuthRoutes — errorMessages override (T-44)', () => {
   it('override local tokenNotFound aplicado en GET /me', async () => {
     vi.mocked(readTokensFromCookies).mockReturnValue({} as any)
-    const customApp = evaAuthRoutes({ errorMessages: { tokenNotFound: 'Token missing' } })
+    const customApp = evaAuthRoutes({
+      errorMessages: { tokenNotFound: 'Token missing' },
+    })
 
     const res = await customApp.request('/me')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token missing' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Token missing' },
+    })
   })
 
   it('sin override — default tokenNotFound en español (regression-lock)', async () => {
@@ -281,14 +429,20 @@ describe('evaAuthRoutes — errorMessages override (T-44)', () => {
     const res = await defaultApp.request('/me')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Token de acceso no encontrado' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Token de acceso no encontrado' },
+    })
   })
 })
 
 describe('evaAuthRoutes sin authUrl configurada (REQ-SDK-29)', () => {
   it('evaAuthRoutes_without_authUrl_returns_500', async () => {
     // El cliente HTTP real relanza el error de configuración; aquí se simula con su mismo name.
-    mockLogin.mockRejectedValue(Object.assign(new Error('authUrl no configurada'), { name: 'EvaAuthConfigError' }))
+    mockLogin.mockRejectedValue(
+      Object.assign(new Error('authUrl no configurada'), {
+        name: 'EvaAuthConfigError',
+      }),
+    )
     // Captura lo que llega a Hono: el error de configuración debe propagarse sin ser traducido a otro status.
     let reached: Error | undefined
     app.onError((err, c) => {
@@ -299,7 +453,11 @@ describe('evaAuthRoutes sin authUrl configurada (REQ-SDK-29)', () => {
     const res = await app.request('/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: '+51999999999', code: '123456' }),
+      body: JSON.stringify({
+        phone: '+51999999999',
+        code: '123456',
+        challengeId: '9f86d081884c7d659a2feaa0c55ad015',
+      }),
     })
 
     expect(res.status).toBe(500)
