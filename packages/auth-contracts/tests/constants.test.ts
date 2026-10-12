@@ -11,12 +11,22 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import * as contract from '../src/index'
 import {
+  ACCOUNT_STATES,
+  ACTIVITY_STATES,
   ERROR_CODES,
   HEADERS,
   INTERNAL_HEADERS,
+  PRIVACY_STATES,
+  USERS_BATCH_MAX_IDS,
   type CoreErrorCode,
 } from '../src/constants'
-import { API_PREFIX, AUTH_ROUTES } from '../src/routes'
+import {
+  API_PREFIX,
+  AUTH_ROUTES,
+  INTERNAL_USER_ROUTES,
+  SESSION_ROUTES,
+  USER_ROUTES,
+} from '../src/routes'
 
 const PACKAGE_ROOT = join(import.meta.dirname, '..')
 const SRC_DIR = join(PACKAGE_ROOT, 'src')
@@ -262,6 +272,74 @@ describe('contract route descriptors (REQ-CONTRACT-09)', () => {
       expect(path.startsWith(API_PREFIX)).toBe(false)
     }
   })
+
+  it('user_session_internal_user_descriptors_relative_and_complete', () => {
+    expect({ ...USER_ROUTES }).toEqual({
+      get: { method: 'get', path: '/user' },
+      update: { method: 'patch', path: '/user' },
+      deactivate: { method: 'delete', path: '/user' },
+      listCompanies: { method: 'get', path: '/user/empresas' },
+    })
+    expect({ ...SESSION_ROUTES }).toEqual({
+      list: { method: 'get', path: '/sessions' },
+      deleteOne: { method: 'delete', path: '/sessions/{id}' },
+      deleteAll: { method: 'delete', path: '/sessions' },
+    })
+    expect({ ...INTERNAL_USER_ROUTES }).toEqual({
+      get: { method: 'get', path: '/internal/users/{id}' },
+      batch: { method: 'post', path: '/internal/users/batch' },
+    })
+    for (const { path } of [
+      ...Object.values(USER_ROUTES),
+      ...Object.values(SESSION_ROUTES),
+      ...Object.values(INTERNAL_USER_ROUTES),
+    ]) {
+      expect(path.startsWith('/')).toBe(true)
+      expect(path.startsWith(API_PREFIX)).toBe(false)
+    }
+  })
+
+  it('barrel_re_exports_the_s2_routes', () => {
+    expect(contract.USER_ROUTES).toBe(USER_ROUTES)
+    expect(contract.SESSION_ROUTES).toBe(SESSION_ROUTES)
+    expect(contract.INTERNAL_USER_ROUTES).toBe(INTERNAL_USER_ROUTES)
+  })
+})
+
+describe('contract state constants (REQ-CONTRACT-08, D-03)', () => {
+  it('account_states_is_object_and_activity_privacy_are_tuples', () => {
+    expect({ ...ACCOUNT_STATES }).toEqual({
+      no_verificado: 'no_verificado',
+      verificado: 'verificado',
+      pendiente_de_verificacion: 'pendiente_de_verificacion',
+      suspendido: 'suspendido',
+      baneado: 'baneado',
+      eliminado: 'eliminado',
+    })
+    expect(Object.keys(ACCOUNT_STATES)).toHaveLength(6)
+    for (const [key, value] of Object.entries(ACCOUNT_STATES)) {
+      expect(value).toBe(key)
+    }
+
+    expect(Array.isArray(ACCOUNT_STATES)).toBe(false)
+    expect(Array.isArray(ACTIVITY_STATES)).toBe(true)
+    expect(Array.isArray(PRIVACY_STATES)).toBe(true)
+    expect([...ACTIVITY_STATES]).toEqual([
+      'activo',
+      'ausente',
+      'ocupado',
+      'desconectado',
+    ])
+    expect([...PRIVACY_STATES]).toEqual(['publico', 'amigos', 'invisible'])
+  })
+
+  it('users_batch_max_ids_is_100_and_re_exported', () => {
+    expect(USERS_BATCH_MAX_IDS).toBe(100)
+    expect(contract.USERS_BATCH_MAX_IDS).toBe(USERS_BATCH_MAX_IDS)
+    expect(contract.ACCOUNT_STATES).toBe(ACCOUNT_STATES)
+    expect(contract.ACTIVITY_STATES).toBe(ACTIVITY_STATES)
+    expect(contract.PRIVACY_STATES).toBe(PRIVACY_STATES)
+  })
 })
 
 describe('contract export surface (REQ-CONTRACT-13)', () => {
@@ -275,6 +353,13 @@ describe('contract export surface (REQ-CONTRACT-13)', () => {
       'obtenerCodigoSchema',
       'loginSchema',
       'CF_CONNECTING_IP',
+      // S2: the refine of the update body, the param schemas and the API-side state constants
+      'actualizarUsuarioSchema',
+      'actualizarUsuarioBaseSchema',
+      'usuarioIdParamSchema',
+      'restaurarUsuarioParamsSchema',
+      'sessionIdParamSchema',
+      'ESTADO_CUENTA',
     ]
 
     expect(names.filter((name) => apiOnly.includes(name))).toEqual([])

@@ -41,3 +41,34 @@ export const INTERNAL_HEADERS = {
   X_EVA_SIGNATURE: 'x-eva-signature',
   X_EVA_SERVER_TIME: 'x-eva-server-time',
 } as const
+
+/**
+ * Account states, as an OBJECT with each key equal to its value: it is the public shape of the SDK
+ * (`ACCOUNT_STATES.suspendido`), unlike the two tuples below.
+ */
+export const ACCOUNT_STATES = {
+  no_verificado: 'no_verificado',
+  verificado: 'verificado',
+  pendiente_de_verificacion: 'pendiente_de_verificacion',
+  suspendido: 'suspendido',
+  baneado: 'baneado',
+  eliminado: 'eliminado',
+} as const
+
+/** Presence states of a user. A tuple so that schemas can build an enum straight from it. */
+export const ACTIVITY_STATES = [
+  'activo',
+  'ausente',
+  'ocupado',
+  'desconectado',
+] as const
+
+/** Privacy states of a user profile. A tuple, like {@link ACTIVITY_STATES}. */
+export const PRIVACY_STATES = ['publico', 'amigos', 'invisible'] as const
+
+/**
+ * Most ids accepted by one users batch call. The batch request schema does NOT carry this limit
+ * (a schema maximum would change the published OpenAPI document): whoever applies the limit reads
+ * this constant. It lives here, in a PURE module, so the SDK client can import it by value.
+ */
+export const USERS_BATCH_MAX_IDS = 100
