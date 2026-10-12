@@ -53,6 +53,17 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      - name: SDK dist self-contained (no auth-contracts import)
+        run: pnpm --filter @eva_solutions/auth-sdk run check:self-contained
+
+      - name: Contracts subpath loads as ESM and CJS
+        run: |
+          node --input-type=module -e "const m=await import('./packages/auth-sdk/dist/contracts/index.js');if(!m.AUTH_ROUTES||!m.loginRequestSchema)process.exit(1)"
+          node -e "const m=require('./packages/auth-sdk/dist/contracts/index.cjs');if(!m.AUTH_ROUTES||!m.loginRequestSchema)process.exit(1)"
+
+      - name: React entry closure, ESM and CJS (size cap + no schema modules)
+        run: pnpm --filter @eva_solutions/auth-sdk run check:react-closure
+
       - name: No console.log/debug in runtime (AST-aware)
         run: pnpm exec oxlint -D no-console --ignore-pattern '**/*.test.ts' --ignore-pattern '**/*.test-d.ts' --ignore-pattern '**/__tests__/**' packages/auth-sdk/src/ packages/auth-contracts/src/
 
