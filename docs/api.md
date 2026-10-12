@@ -878,6 +878,12 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema`, `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /user` (objeto estricto base, sin `.refine`) |
 | `sessionListResponseSchema` (+ `SessionListResponse`, `Session`) | schema + type | Listado de sesiones |
 | `usersBatchRequestSchema`, `usersBatchResponseSchema` (+ `UsersBatchRequest`, `UsersBatchResponse`) | schema + type | `POST /internal/users/batch` |
+| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/internal/webhooks/*` y de las 7 de `/admin/*` (6 de service-clients más `restoreUser`) |
+| `EVENT_CODES` (+ type `EventCode`) | constante | Los 11 event codes de los webhooks (clave en mayúsculas, valor `user.created`, ...) |
+| `WEBHOOK_HEADERS`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` | constante | Nombres en minúsculas de los headers del webhook (`SIGNATURE`, `ID`, `TIMESTAMP`) y ventana de la marca de tiempo (`300` s) |
+| `SERVICE_CLIENT_SCOPES` (+ type `ServiceClientScope`), `DELIVERY_STATUSES` | constante | Tupla de scopes (`users:read`, `webhooks:read`, `webhooks:write`) y de estados de entrega |
+| `createSubscriptionRequestSchema`, `updateSubscriptionRequestSchema`, `deliveriesQuerySchema`, `subscriptionSchema`, `subscriptionWithSecretResponseSchema`, `subscriptionResponseSchema`, `subscriptionListResponseSchema`, `rotateSubscriptionSecretResponseSchema`, `deliverySchema`, `deliveryListResponseSchema` (+ tipos) | schema + type | Webhooks: subscriptions y deliveries |
+| `serviceClientSlugSchema`, `createServiceClientRequestSchema`, `updateServiceClientRequestSchema` (base estricto, sin `.refine`), `serviceClientPublicSchema`, `createServiceClientResponseSchema`, `listServiceClientsResponseSchema`, `getServiceClientResponseSchema`, `updateServiceClientResponseSchema`, `rotateServiceClientSecretResponseSchema`, `restoreUserResponseSchema` (+ tipos) | schema + type | Service clients (`/admin/service-clients`) y restaurar usuario |
 | `HttpMethod`, `RouteDescriptor` | types | Tipos de los descriptores |
 | `errorResponseSchema`, `ErrorResponse` | schema + type | Cuerpo de error `{ error: { code, message } }` (id OpenAPI `ErrorBody`) |
 | `messageResponseSchema`, `messageWithCountResponseSchema` (+ tipos `MessageResponse`, `MessageWithCountResponse`) | schema + type | Respuestas genéricas con mensaje |
