@@ -66,7 +66,11 @@ describe('configureEvaAuth — authUrl rechazada', () => {
     ['rejects_remote_http', 'http://auth.example.com', /https/],
     ['rejects_malformed', 'not a url', /malformada/],
     ['rejects_ftp_scheme', 'ftp://host', /protocolo no soportado/],
-    ['rejects_javascript_scheme', 'javascript:alert(1)', /protocolo no soportado/],
+    [
+      'rejects_javascript_scheme',
+      'javascript:alert(1)',
+      /protocolo no soportado/,
+    ],
     ['rejects_userinfo', 'https://user:pass@host.com', /credenciales/],
     ['rejects_query', 'https://host.com/?a=1', /query/],
     ['rejects_bare_question_mark', 'https://host.com/auth?', /query/],
@@ -74,7 +78,9 @@ describe('configureEvaAuth — authUrl rechazada', () => {
     ['rejects_bare_hash', 'https://host.com/auth#', /fragmento/],
   ])('%s', async (_name, input, messagePattern) => {
     const { configureEvaAuth, getAuthUrl } = await importConfig()
-    expect(() => configureEvaAuth({ authUrl: input })).toThrow(/^\[eva-auth-sdk\]/)
+    expect(() => configureEvaAuth({ authUrl: input })).toThrow(
+      /^\[eva-auth-sdk\]/,
+    )
     expect(() => configureEvaAuth({ authUrl: input })).toThrow(messagePattern)
     // El rechazo no deja nada configurado.
     expect(() => getAuthUrl()).toThrow(CONFIG_ERROR_MESSAGE)
@@ -108,14 +114,20 @@ describe('configureEvaAuth — authUrl rechazada', () => {
 
   it('rejects_opaque_path_schemes_without_echo: mailto/redis/data no se ecoan en el mensaje', async () => {
     const { configureEvaAuth, getAuthUrl } = await importConfig()
-    for (const input of ['mailto:admin:s3cret@x', 'redis:s3cret@host', 'data:text/plain,s3cret']) {
+    for (const input of [
+      'mailto:admin:s3cret@x',
+      'redis:s3cret@host',
+      'data:text/plain,s3cret',
+    ]) {
       let message = ''
       try {
         configureEvaAuth({ authUrl: input })
       } catch (err) {
         message = (err as Error).message
       }
-      expect(message, input).toMatch(/^\[eva-auth-sdk\] authUrl inválida: protocolo no soportado/)
+      expect(message, input).toMatch(
+        /^\[eva-auth-sdk\] authUrl inválida: protocolo no soportado/,
+      )
       expect(message, input).not.toContain('admin')
       expect(message, input).not.toContain('s3cret')
       expect(() => getAuthUrl()).toThrow(CONFIG_ERROR_MESSAGE)
@@ -126,9 +138,10 @@ describe('configureEvaAuth — authUrl rechazada', () => {
     const { configureEvaAuth, getAuthUrl } = await importConfig()
     const inputs: unknown[] = [null, 42, new URL('https://host.com')]
     for (const input of inputs) {
-      expect(() => configureEvaAuth({ authUrl: input as string }), String(input)).toThrow(
-        '[eva-auth-sdk] authUrl inválida: debe ser string',
-      )
+      expect(
+        () => configureEvaAuth({ authUrl: input as string }),
+        String(input),
+      ).toThrow('[eva-auth-sdk] authUrl inválida: debe ser string')
     }
     expect(() => getAuthUrl()).toThrow(CONFIG_ERROR_MESSAGE)
   })
@@ -138,7 +151,8 @@ describe('configureEvaAuth — authUrl rechazada', () => {
 
 describe('configureEvaAuth — authUrl omitida', () => {
   it('ignores_undefined_authUrl: ausente o undefined explícito no valida ni muta', async () => {
-    const { configureEvaAuth, getAuthUrl, getCookieDomain } = await importConfig()
+    const { configureEvaAuth, getAuthUrl, getCookieDomain } =
+      await importConfig()
     configureEvaAuth({ cookieDomain: '.a.com' })
     configureEvaAuth({ authUrl: undefined, cookieDomain: '.b.com' })
     expect(getCookieDomain()).toBe('.b.com')
@@ -206,7 +220,9 @@ describe('configureEvaAuth — inmutabilidad de authUrl', () => {
   it('equal_normalized_is_noop: mismo valor normalizado no lanza y no cambia', async () => {
     const { configureEvaAuth, getAuthUrl } = await importConfig()
     configureEvaAuth({ authUrl: 'https://Host.com/auth' })
-    expect(() => configureEvaAuth({ authUrl: 'https://host.com/auth/' })).not.toThrow()
+    expect(() =>
+      configureEvaAuth({ authUrl: 'https://host.com/auth/' }),
+    ).not.toThrow()
     expect(getAuthUrl()).toBe('https://host.com/auth')
   })
 
@@ -222,9 +238,9 @@ describe('configureEvaAuth — inmutabilidad de authUrl', () => {
   it('immutability_failure_commits_no_other_field: el rechazo no confirma cookieDomain', async () => {
     const { configureEvaAuth, getCookieDomain } = await importConfig()
     configureEvaAuth({ authUrl: 'https://a.com', cookieDomain: '.old.com' })
-    expect(() => configureEvaAuth({ authUrl: 'https://b.com', cookieDomain: '.new.com' })).toThrow(
-      /no puede cambiar/,
-    )
+    expect(() =>
+      configureEvaAuth({ authUrl: 'https://b.com', cookieDomain: '.new.com' }),
+    ).toThrow(/no puede cambiar/)
     expect(getCookieDomain()).toBe('.old.com')
   })
 })
@@ -247,7 +263,11 @@ describe('configureEvaAuth — atomicidad entre campos', () => {
   it('cookieDomain inválido impide confirmar authUrl y errorWire', async () => {
     const { configureEvaAuth, getAuthUrl, getErrorWire } = await importConfig()
     expect(() =>
-      configureEvaAuth({ authUrl: 'https://a.com', errorWire: 'string', cookieDomain: '.x.com; evil' }),
+      configureEvaAuth({
+        authUrl: 'https://a.com',
+        errorWire: 'string',
+        cookieDomain: '.x.com; evil',
+      }),
     ).toThrow(/caracteres prohibidos/)
     expect(() => getAuthUrl()).toThrow(CONFIG_ERROR_MESSAGE)
     expect(getErrorWire()).toBe('api')
@@ -260,7 +280,11 @@ describe('configureEvaAuth — sin console.warn', () => {
   it('does_not_warn_on_valid_config', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { configureEvaAuth } = await importConfig()
-    configureEvaAuth({ authUrl: 'https://a.com', cookieDomain: '.x.com', errorWire: 'string' })
+    configureEvaAuth({
+      authUrl: 'https://a.com',
+      cookieDomain: '.x.com',
+      errorWire: 'string',
+    })
     expect(warnSpy).not.toHaveBeenCalled()
   })
 })
@@ -276,7 +300,8 @@ describe('configureEvaAuth — cookieDomain', () => {
   })
 
   it('4: solo cookieDomain — no configura authUrl', async () => {
-    const { configureEvaAuth, getAuthUrl, getCookieDomain } = await importConfig()
+    const { configureEvaAuth, getAuthUrl, getCookieDomain } =
+      await importConfig()
     configureEvaAuth({ cookieDomain: '.x.com' })
     expect(getCookieDomain()).toBe('.x.com')
     expect(() => getAuthUrl()).toThrow(CONFIG_ERROR_MESSAGE)
@@ -288,20 +313,23 @@ describe('configureEvaAuth — cookieDomain', () => {
 describe('configureEvaAuth — validación cookieDomain (M-2, header injection)', () => {
   it('8a: throw si cookieDomain contiene semicolon', async () => {
     const { configureEvaAuth } = await importConfig()
-    expect(() => configureEvaAuth({ cookieDomain: '.x.com; HttpOnly' }))
-      .toThrow(/caracteres prohibidos/)
+    expect(() =>
+      configureEvaAuth({ cookieDomain: '.x.com; HttpOnly' }),
+    ).toThrow(/caracteres prohibidos/)
   })
 
   it('8b: throw si cookieDomain contiene CRLF', async () => {
     const { configureEvaAuth } = await importConfig()
-    expect(() => configureEvaAuth({ cookieDomain: '.x.com\r\nSet-Cookie: evil=1' }))
-      .toThrow(/caracteres prohibidos/)
+    expect(() =>
+      configureEvaAuth({ cookieDomain: '.x.com\r\nSet-Cookie: evil=1' }),
+    ).toThrow(/caracteres prohibidos/)
   })
 
   it('8c: throw si cookieDomain contiene LF solo', async () => {
     const { configureEvaAuth } = await importConfig()
-    expect(() => configureEvaAuth({ cookieDomain: '.x.com\nfoo' }))
-      .toThrow(/caracteres prohibidos/)
+    expect(() => configureEvaAuth({ cookieDomain: '.x.com\nfoo' })).toThrow(
+      /caracteres prohibidos/,
+    )
   })
 
   it('9: cookieDomain inválido NO actualiza _runtimeConfig', async () => {
@@ -329,7 +357,9 @@ describe('configureEvaAuth — regression errorWire (REQ-CFG-05)', () => {
   it('errorWire inválido lanza error', async () => {
     const { configureEvaAuth } = await importConfig()
     expect(() =>
-      (configureEvaAuth as (opts: Record<string, unknown>) => void)({ errorWire: 'invalid' }),
+      (configureEvaAuth as (opts: Record<string, unknown>) => void)({
+        errorWire: 'invalid',
+      }),
     ).toThrow(/errorWire/)
   })
 })

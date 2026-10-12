@@ -3,7 +3,11 @@ import { z } from 'zod'
 import { Hono } from 'hono'
 import { evaAuth } from '../src/hono/middleware'
 import { verifyAccessToken } from '../src/jwt'
-import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
+import {
+  readTokensFromCookies,
+  setTokenCookies,
+  clearTokenCookies,
+} from '../src/cookies'
 
 vi.mock('../src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
@@ -55,7 +59,9 @@ describe('evaAuth middleware', () => {
     const res = await app.request('/test')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Autenticación requerida' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Autenticación requerida' },
+    })
   })
 
   it('permite acceso con access token válido', async () => {
@@ -81,7 +87,11 @@ describe('evaAuth middleware', () => {
     } as any)
 
     vi.mocked(verifyAccessToken)
-      .mockResolvedValueOnce({ ok: false, error: 'expired', status: 401 } as any)
+      .mockResolvedValueOnce({
+        ok: false,
+        error: 'expired',
+        status: 401,
+      } as any)
       .mockResolvedValueOnce({
         ok: true,
         data: { id: 'user-1', sessionId: 'sess-1' },
@@ -99,7 +109,10 @@ describe('evaAuth middleware', () => {
     const res = await app.request('/test')
 
     expect(res.status).toBe(200)
-    expect(verifyAccessToken).toHaveBeenCalledWith('new-access', expect.objectContaining({}))
+    expect(verifyAccessToken).toHaveBeenCalledWith(
+      'new-access',
+      expect.objectContaining({}),
+    )
     expect(setTokenCookies).toHaveBeenCalledWith({
       accessToken: 'new-access',
       refreshToken: 'new-refresh',
@@ -117,7 +130,12 @@ describe('evaAuth middleware', () => {
 
     mockRefresh.mockResolvedValue({
       ok: false,
-      error: { kind: 'api', code: 'unauthorized', message: 'invalid', status: 401 },
+      error: {
+        kind: 'api',
+        code: 'unauthorized',
+        message: 'invalid',
+        status: 401,
+      },
     })
 
     const app = createTestApp()
@@ -143,7 +161,9 @@ describe('evaAuth middleware', () => {
     const res = await app.request('/test')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Autenticación requerida' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Autenticación requerida' },
+    })
   })
 
   // ───── Con extraClaimsSchema válido (REQ-TE-013) ─────
@@ -159,7 +179,7 @@ describe('evaAuth middleware', () => {
       data: { id: 'u1', sessionId: 's1', phone: '+543412345' },
     } as any)
 
-    const app = new Hono()
+    const app = new Hono<{ Variables: { evaPayload: unknown } }>()
     app.use('/*', evaAuth({ extraClaimsSchema: phoneSchema }))
     app.get('/test', (c) => {
       const payload = c.get('evaPayload')
@@ -193,7 +213,9 @@ describe('evaAuth middleware', () => {
     const res = await app.request('/test')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Autenticación requerida' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Autenticación requerida' },
+    })
   })
 
   // ───── Multi-tenant: 2 instancias independientes (REQ-TE-013) ─────
@@ -202,7 +224,7 @@ describe('evaAuth middleware', () => {
     const adminSchema = z.object({ role: z.literal('admin') })
     const userSchema = z.object({ phone: z.string() })
 
-    const app = new Hono()
+    const app = new Hono<{ Variables: { evaPayload: unknown } }>()
     app.use('/admin/*', evaAuth({ extraClaimsSchema: adminSchema }))
     app.use('/user/*', evaAuth({ extraClaimsSchema: userSchema }))
     app.get('/admin/dashboard', (c) => {
@@ -215,7 +237,9 @@ describe('evaAuth middleware', () => {
     })
 
     // Admin request
-    vi.mocked(readTokensFromCookies).mockReturnValue({ accessToken: 'admin-tok' } as any)
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      accessToken: 'admin-tok',
+    } as any)
     vi.mocked(verifyAccessToken).mockResolvedValueOnce({
       ok: true,
       data: { id: 'a1', sessionId: 's1', role: 'admin' },
@@ -225,7 +249,9 @@ describe('evaAuth middleware', () => {
     expect(await adminRes.json()).toEqual({ role: 'admin' })
 
     // User request
-    vi.mocked(readTokensFromCookies).mockReturnValue({ accessToken: 'user-tok' } as any)
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      accessToken: 'user-tok',
+    } as any)
     vi.mocked(verifyAccessToken).mockResolvedValueOnce({
       ok: true,
       data: { id: 'u1', sessionId: 's2', phone: '+543412345' },
@@ -246,7 +272,11 @@ describe('evaAuth middleware', () => {
     } as any)
 
     vi.mocked(verifyAccessToken)
-      .mockResolvedValueOnce({ ok: false, error: 'expired', status: 401 } as any)
+      .mockResolvedValueOnce({
+        ok: false,
+        error: 'expired',
+        status: 401,
+      } as any)
       .mockResolvedValueOnce({
         ok: true,
         data: { id: 'u1', sessionId: 's1', phone: '+543412345' },
@@ -259,7 +289,7 @@ describe('evaAuth middleware', () => {
       },
     })
 
-    const app = new Hono()
+    const app = new Hono<{ Variables: { evaPayload: unknown } }>()
     app.use('/*', evaAuth({ extraClaimsSchema: phoneSchema }))
     app.get('/test', (c) => {
       const payload = c.get('evaPayload')
@@ -281,7 +311,11 @@ describe('evaAuth middleware', () => {
     } as any)
 
     vi.mocked(verifyAccessToken)
-      .mockResolvedValueOnce({ ok: false, error: 'expired', status: 401 } as any)
+      .mockResolvedValueOnce({
+        ok: false,
+        error: 'expired',
+        status: 401,
+      } as any)
       .mockResolvedValueOnce({
         ok: false,
         error: 'Payload del token inválido (claims extra)',
@@ -316,13 +350,18 @@ describe('evaAuth — errorMessages override (T-44)', () => {
     vi.mocked(getErrorMessages).mockReturnValue(undefined)
 
     const app = new Hono()
-    app.use('/*', evaAuth({ errorMessages: { authRequired: 'Authentication required' } }))
+    app.use(
+      '/*',
+      evaAuth({ errorMessages: { authRequired: 'Authentication required' } }),
+    )
     app.get('/test', (c) => c.json({ ok: true }))
 
     const res = await app.request('/test')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Authentication required' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Authentication required' },
+    })
   })
 
   it('sin override — sigue usando el default en español (regression-lock)', async () => {
@@ -336,12 +375,16 @@ describe('evaAuth — errorMessages override (T-44)', () => {
     const res = await app.request('/test')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Autenticación requerida' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Autenticación requerida' },
+    })
   })
 
   it('override global (getErrorMessages) es tomado en cuenta', async () => {
     vi.mocked(readTokensFromCookies).mockReturnValue({} as any)
-    vi.mocked(getErrorMessages).mockReturnValue({ authRequired: 'Global override' })
+    vi.mocked(getErrorMessages).mockReturnValue({
+      authRequired: 'Global override',
+    })
 
     const app = new Hono()
     app.use('/*', evaAuth())
@@ -350,7 +393,9 @@ describe('evaAuth — errorMessages override (T-44)', () => {
     const res = await app.request('/test')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Global override' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Global override' },
+    })
   })
 
   it('local override pisa global', async () => {
@@ -364,16 +409,23 @@ describe('evaAuth — errorMessages override (T-44)', () => {
     const res = await app.request('/test')
 
     expect(res.status).toBe(401)
-    expect(await res.json()).toEqual({ error: { code: 'unauthorized', message: 'Local' } })
+    expect(await res.json()).toEqual({
+      error: { code: 'unauthorized', message: 'Local' },
+    })
   })
 })
 
 describe('evaAuth middleware — authUrl sin configurar (REQ-SDK-27, REQ-SDK-28)', () => {
-  const configError = () => Object.assign(new Error('authUrl no configurada'), { name: 'EvaAuthConfigError' })
+  const configError = () =>
+    Object.assign(new Error('authUrl no configurada'), {
+      name: 'EvaAuthConfigError',
+    })
 
   it('access_path_without_authUrl_returns_500_no_set_cookie', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    vi.mocked(readTokensFromCookies).mockReturnValue({ accessToken: 'tok' } as any)
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      accessToken: 'tok',
+    } as any)
     vi.mocked(verifyAccessToken).mockRejectedValue(configError())
 
     const res = await createTestApp().request('/test')
@@ -385,7 +437,9 @@ describe('evaAuth middleware — authUrl sin configurar (REQ-SDK-27, REQ-SDK-28)
 
   it('refresh_only_path_without_authUrl_returns_500_no_set_cookie', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    vi.mocked(readTokensFromCookies).mockReturnValue({ refreshToken: 'refresh-only' } as any)
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      refreshToken: 'refresh-only',
+    } as any)
     mockRefresh.mockRejectedValue(configError())
 
     const res = await createTestApp().request('/test')

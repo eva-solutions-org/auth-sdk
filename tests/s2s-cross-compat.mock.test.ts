@@ -33,7 +33,7 @@ async function makeSignedRequest(opts: {
   method: string
   path?: string
   query?: string
-  body?: Uint8Array
+  body?: Uint8Array<ArrayBuffer>
   secretHex?: string
   clientId?: string
   timestamp?: number
@@ -91,8 +91,13 @@ describe('Cross-compat: signS2SRequest → verifyS2SRequest', () => {
   })
 
   it('POST con body JSON — round-trip happy path → ok:true', async () => {
-    const body = new TextEncoder().encode(JSON.stringify({ hello: 'world', ids: ['u1', 'u2'] }))
-    const { request, secretHex } = await makeSignedRequest({ method: 'POST', body })
+    const body = new TextEncoder().encode(
+      JSON.stringify({ hello: 'world', ids: ['u1', 'u2'] }),
+    )
+    const { request, secretHex } = await makeSignedRequest({
+      method: 'POST',
+      body,
+    })
     const result = await verifyS2SRequest(request, {
       secretStore: async () => secretHex,
     })
@@ -102,7 +107,10 @@ describe('Cross-compat: signS2SRequest → verifyS2SRequest', () => {
 
   it('secretHex distinto → reason:signature_invalid (REQ-CROSS-COMPAT-03)', async () => {
     // Firma con SECRET_HEX, verifica con ALT_SECRET_HEX
-    const { request } = await makeSignedRequest({ method: 'POST', secretHex: SECRET_HEX })
+    const { request } = await makeSignedRequest({
+      method: 'POST',
+      secretHex: SECRET_HEX,
+    })
     const result = await verifyS2SRequest(request, {
       secretStore: async () => ALT_SECRET_HEX,
     })

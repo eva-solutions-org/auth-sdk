@@ -35,26 +35,121 @@ import type { EvaApiError, EvaSdkError, EvaError } from '../src/types'
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const apiNotFound: EvaApiError = { kind: 'api', code: 'not_found', message: 'Not found', status: 404 }
-const apiUnauthorized: EvaApiError = { kind: 'api', code: 'unauthorized', message: 'Unauthorized', status: 401 }
-const apiForbidden: EvaApiError = { kind: 'api', code: 'forbidden', message: 'Forbidden', status: 403 }
-const apiConflict: EvaApiError = { kind: 'api', code: 'conflict', message: 'Conflict', status: 409 }
-const apiValidationError: EvaApiError = { kind: 'api', code: 'validation_error', message: 'Invalid', status: 422 }
-const apiRateLimited: EvaApiError = { kind: 'api', code: 'rate_limited', message: 'Rate limited', status: 429 }
-const apiGone: EvaApiError = { kind: 'api', code: 'gone', message: 'Gone', status: 410 }
-const apiUnprocessableEntity: EvaApiError = { kind: 'api', code: 'unprocessable_entity', message: 'Unprocessable', status: 422 }
-const apiBadRequest: EvaApiError = { kind: 'api', code: 'bad_request', message: 'Bad request', status: 400 }
-const apiInternalError: EvaApiError = { kind: 'api', code: 'internal_error', message: 'Internal error', status: 500 }
-const apiServiceUnavailable: EvaApiError = { kind: 'api', code: 'service_unavailable', message: 'Service unavailable', status: 503 }
-const apiAccountStateLocked: EvaApiError = { kind: 'api', code: 'account_state_locked', message: 'Account locked', status: 403 }
-const apiFeatureSpecific: EvaApiError = { kind: 'api', code: 'service_client_already_exists', message: 'Already exists', status: 409 }
+const apiNotFound: EvaApiError = {
+  kind: 'api',
+  code: 'not_found',
+  message: 'Not found',
+  status: 404,
+}
+const apiUnauthorized: EvaApiError = {
+  kind: 'api',
+  code: 'unauthorized',
+  message: 'Unauthorized',
+  status: 401,
+}
+const apiForbidden: EvaApiError = {
+  kind: 'api',
+  code: 'forbidden',
+  message: 'Forbidden',
+  status: 403,
+}
+const apiConflict: EvaApiError = {
+  kind: 'api',
+  code: 'conflict',
+  message: 'Conflict',
+  status: 409,
+}
+const apiValidationError: EvaApiError = {
+  kind: 'api',
+  code: 'validation_error',
+  message: 'Invalid',
+  status: 422,
+}
+const apiRateLimited: EvaApiError = {
+  kind: 'api',
+  code: 'rate_limited',
+  message: 'Rate limited',
+  status: 429,
+}
+const apiGone: EvaApiError = {
+  kind: 'api',
+  code: 'gone',
+  message: 'Gone',
+  status: 410,
+}
+const apiUnprocessableEntity: EvaApiError = {
+  kind: 'api',
+  code: 'unprocessable_entity',
+  message: 'Unprocessable',
+  status: 422,
+}
+const apiBadRequest: EvaApiError = {
+  kind: 'api',
+  code: 'bad_request',
+  message: 'Bad request',
+  status: 400,
+}
+const apiInternalError: EvaApiError = {
+  kind: 'api',
+  code: 'internal_error',
+  message: 'Internal error',
+  status: 500,
+}
+const apiServiceUnavailable: EvaApiError = {
+  kind: 'api',
+  code: 'service_unavailable',
+  message: 'Service unavailable',
+  status: 503,
+}
+const apiAccountStateLocked: EvaApiError = {
+  kind: 'api',
+  code: 'account_state_locked',
+  message: 'Account locked',
+  status: 403,
+}
+const apiFeatureSpecific: EvaApiError = {
+  kind: 'api',
+  code: 'service_client_already_exists',
+  message: 'Already exists',
+  status: 409,
+}
 
-const sdkNetwork: EvaSdkError = { kind: 'sdk', reason: 'network', message: 'Network error', status: 0 }
-const sdkTokenInvalid: EvaSdkError = { kind: 'sdk', reason: 'token_invalid', message: 'Token invalid', status: 401 }
-const sdkAuthRequired: EvaSdkError = { kind: 'sdk', reason: 'auth_required', message: 'Auth required', status: 401 }
-const sdkRefreshNoTokens: EvaSdkError = { kind: 'sdk', reason: 'refresh_no_tokens', message: 'No tokens', status: 500 }
-const sdkVerifyFailed: EvaSdkError = { kind: 'sdk', reason: 'verify_failed', message: 'Verify failed', status: 500 }
-const sdkMalformed: EvaSdkError = { kind: 'sdk', reason: 'malformed', message: 'Malformed', status: 0 }
+const sdkNetwork: EvaSdkError = {
+  kind: 'sdk',
+  reason: 'network',
+  message: 'Network error',
+  status: 0,
+}
+const sdkTokenInvalid: EvaSdkError = {
+  kind: 'sdk',
+  reason: 'token_invalid',
+  message: 'Token invalid',
+  status: 401,
+}
+const sdkAuthRequired: EvaSdkError = {
+  kind: 'sdk',
+  reason: 'auth_required',
+  message: 'Auth required',
+  status: 401,
+}
+const sdkRefreshNoTokens: EvaSdkError = {
+  kind: 'sdk',
+  reason: 'refresh_no_tokens',
+  message: 'No tokens',
+  status: 500,
+}
+const sdkVerifyFailed: EvaSdkError = {
+  kind: 'sdk',
+  reason: 'verify_failed',
+  message: 'Verify failed',
+  status: 500,
+}
+const sdkMalformed: EvaSdkError = {
+  kind: 'sdk',
+  reason: 'malformed',
+  message: 'Malformed',
+  status: 0,
+}
 
 // ---------------------------------------------------------------------------
 // Branch guards
@@ -115,7 +210,9 @@ describe('matchError', () => {
   })
 
   it('funciona con feature-specific codes (semiabierto)', () => {
-    expect(matchError(apiFeatureSpecific, 'service_client_already_exists')).toBe(true)
+    expect(
+      matchError(apiFeatureSpecific, 'service_client_already_exists'),
+    ).toBe(true)
   })
 
   it('narrows code literal dentro del if', () => {
@@ -409,6 +506,8 @@ describe('casos cruzados — cross-branch false negatives', () => {
   })
 
   it('matchError captura feature-specific code', () => {
-    expect(matchError(apiFeatureSpecific, 'service_client_already_exists')).toBe(true)
+    expect(
+      matchError(apiFeatureSpecific, 'service_client_already_exists'),
+    ).toBe(true)
   })
 })

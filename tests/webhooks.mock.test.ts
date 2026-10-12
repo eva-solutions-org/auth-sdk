@@ -19,7 +19,8 @@ import { verifyWebhookSignature } from '../src/webhooks/verify-signature'
 const MOCK_SIGNING_KEY = 'a'.repeat(64) // 64 hex chars = 32 bytes
 const MOCK_EVENT_ID = '00000000-0000-4000-8000-000000000001'
 const MOCK_TIMESTAMP = 1700000000
-const MOCK_RAW_BODY = '{"id":"evt1","eventCode":"user.created","timestamp":1700000000,"data":{}}'
+const MOCK_RAW_BODY =
+  '{"id":"evt1","eventCode":"user.created","timestamp":1700000000,"data":{}}'
 const NOW_INSIDE_WINDOW = MOCK_TIMESTAMP + 10 // 10s después — dentro de los 300s
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,8 @@
 import type { EvaUser, TokenPair, DeviceInfo } from '../../src/types'
 
-export const createTokenPair = (overrides: Partial<TokenPair> = {}): TokenPair => ({
+export const createTokenPair = (
+  overrides: Partial<TokenPair> = {},
+): TokenPair => ({
   accessToken: 'fake-access-token',
   refreshToken: 'session-uuid:fake-refresh-token',
   ...overrides,
@@ -19,11 +21,14 @@ export const createUser = (overrides: Partial<EvaUser> = {}): EvaUser => ({
   ...overrides,
 })
 
-export const createDeviceInfo = (overrides: Partial<DeviceInfo> = {}): DeviceInfo => ({
+export const createDeviceInfo = (
+  overrides: Partial<DeviceInfo> = {},
+): DeviceInfo => ({
   deviceType: 'desktop',
   os: 'Windows',
   browser: 'Chrome',
-  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0',
+  userAgent:
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0',
   ...overrides,
 })
 
@@ -41,7 +46,11 @@ export const createAuthServiceResponse = (
   return new Response(JSON.stringify({ data }), { status: 200, headers })
 }
 
-export const createErrorResponse = (message: string, status: number, code = 'error') =>
+export const createErrorResponse = (
+  message: string,
+  status: number,
+  code = 'error',
+) =>
   new Response(JSON.stringify({ error: { code, message } }), {
     status,
     headers: { 'content-type': 'application/json' },

@@ -3,10 +3,7 @@
  * REQs cubiertos: REQ-ERR-01, REQ-ERR-02, REQ-ERR-08, REQ-ERR-09, REQ-ERR-10, REQ-SCHEMA-01, REQ-SCHEMA-02.
  */
 import { describe, it, expect } from 'vitest'
-import {
-  ERROR_CODES,
-  SDK_ERROR_REASONS,
-} from '../src/error-codes'
+import { ERROR_CODES, SDK_ERROR_REASONS } from '../src/error-codes'
 import { parseErrorResponse } from '../src/schemas'
 
 // ─── ERROR_CODES ───────────────────────────────────────────────────────────────
@@ -85,7 +82,9 @@ describe('parseErrorResponse (REQ-ERR-08, REQ-ERR-09, REQ-ERR-10, REQ-SCHEMA-01,
     })
 
     it('ignora el body cuando status es 0', () => {
-      const result = parseErrorResponse(0, { error: { code: 'x', message: 'y' } })
+      const result = parseErrorResponse(0, {
+        error: { code: 'x', message: 'y' },
+      })
       expect(result.kind).toBe('sdk')
       if (result.kind === 'sdk') {
         expect(result.reason).toBe('network')
@@ -126,7 +125,12 @@ describe('parseErrorResponse (REQ-ERR-08, REQ-ERR-09, REQ-ERR-10, REQ-SCHEMA-01,
     })
 
     it('preserva feature-specific codes (ErrorCode abierto)', () => {
-      const body = { error: { code: 'service_client_already_exists', message: 'Already exists' } }
+      const body = {
+        error: {
+          code: 'service_client_already_exists',
+          message: 'Already exists',
+        },
+      }
       const result = parseErrorResponse(409, body)
       expect(result.kind).toBe('api')
       if (result.kind === 'api') {
@@ -168,7 +172,9 @@ describe('parseErrorResponse (REQ-ERR-08, REQ-ERR-09, REQ-ERR-10, REQ-SCHEMA-01,
     })
 
     it('body con error.code faltante → malformed', () => {
-      const result = parseErrorResponse(400, { error: { message: 'Only message' } })
+      const result = parseErrorResponse(400, {
+        error: { message: 'Only message' },
+      })
       expect(result.kind).toBe('sdk')
       if (result.kind === 'sdk') {
         expect(result.reason).toBe('malformed')

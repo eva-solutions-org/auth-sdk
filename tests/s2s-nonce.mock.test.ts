@@ -36,7 +36,10 @@ async function signedRequest(overrides?: {
     secretHex: SECRET_HEX,
   })
   overrides?.mutateHeaders?.(headers)
-  return { request: new Request('http://localhost/internal/test', { headers }), headers }
+  return {
+    request: new Request('http://localhost/internal/test', { headers }),
+    headers,
+  }
 }
 
 afterEach(() => {
@@ -75,7 +78,9 @@ describe('canonical de 7 líneas', () => {
     const expected = createHmac('sha256', Buffer.from(SECRET_HEX, 'hex'))
       .update(canonical)
       .digest('hex')
-    expect(await signS2SRequest({ parts, secretHex: SECRET_HEX })).toBe(`sha256=${expected}`)
+    expect(await signS2SRequest({ parts, secretHex: SECRET_HEX })).toBe(
+      `sha256=${expected}`,
+    )
   })
 
   // Known-answer test (KAT): vector literal calculado de forma independiente con `node:crypto`
@@ -104,7 +109,9 @@ describe('canonical de 7 líneas', () => {
         '1c02e2fe8a2d25de65a75bfefd44105939e2daf8d94fb7f70598c95b927505ff',
       ].join('\n'),
     )
-    expect(await signS2SRequest({ parts: katParts, secretHex: SECRET_HEX })).toBe(
+    expect(
+      await signS2SRequest({ parts: katParts, secretHex: SECRET_HEX }),
+    ).toBe(
       'sha256=7062a79ffe2220292576a17e15c2d94c9f06ed0e27a394bb8adc3a16a8c69c9b',
     )
   })
@@ -191,7 +198,9 @@ describe('signS2SHeaders', () => {
       headers,
       body,
     })
-    const result = await verifyS2SRequest(request, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(request, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result).toEqual({ ok: true, data: { clientId: CLIENT_ID } })
   })
 
@@ -214,7 +223,9 @@ describe('verifyS2SRequest: nonce', () => {
     const { request } = await signedRequest({
       mutateHeaders: (h) => delete h['x-eva-nonce'],
     })
-    const result = await verifyS2SRequest(request, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(request, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('header_missing')
   })
@@ -232,7 +243,9 @@ describe('verifyS2SRequest: nonce', () => {
         h['x-eva-nonce'] = mutate(h['x-eva-nonce'] as string)
       },
     })
-    const result = await verifyS2SRequest(request, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(request, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('nonce_malformed')
   })
@@ -244,7 +257,9 @@ describe('verifyS2SRequest: nonce', () => {
         h['x-eva-signature'] = 'basura'
       },
     })
-    const result = await verifyS2SRequest(request, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(request, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('nonce_malformed')
   })
@@ -280,7 +295,9 @@ describe('verifyS2SRequest: nonce', () => {
         h['x-eva-nonce'] = NONCE
       },
     })
-    const result = await verifyS2SRequest(request, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(request, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('signature_invalid')
   })
@@ -314,7 +331,8 @@ describe('replayCache: misma ventana de un segundo', () => {
     const cache = memoryCache()
     const { headers } = await signedRequest()
     const opts = { secretStore: async () => SECRET_HEX, replayCache: cache }
-    const make = () => new Request('http://localhost/internal/test', { headers })
+    const make = () =>
+      new Request('http://localhost/internal/test', { headers })
     expect((await verifyS2SRequest(make(), opts)).ok).toBe(true)
     const replay = await verifyS2SRequest(make(), opts)
     expect(replay.ok).toBe(false)
@@ -324,9 +342,15 @@ describe('replayCache: misma ventana de un segundo', () => {
   it('la clave es `${clientId}:${nonce}` y el TTL por defecto es 2*120+1 = 241', async () => {
     const cache = memoryCache()
     const { request, headers } = await signedRequest()
-    await verifyS2SRequest(request, { secretStore: async () => SECRET_HEX, replayCache: cache })
+    await verifyS2SRequest(request, {
+      secretStore: async () => SECRET_HEX,
+      replayCache: cache,
+    })
     expect(cache.setIfAbsent).toHaveBeenCalledTimes(1)
-    expect(cache.setIfAbsent).toHaveBeenCalledWith(`${CLIENT_ID}:${headers['x-eva-nonce']}`, 241)
+    expect(cache.setIfAbsent).toHaveBeenCalledWith(
+      `${CLIENT_ID}:${headers['x-eva-nonce']}`,
+      241,
+    )
   })
 
   it('el TTL sigue timestampWindowSeconds personalizado (2*W+1)', async () => {
@@ -343,7 +367,10 @@ describe('replayCache: misma ventana de un segundo', () => {
   it('el replayCache no se consulta si la firma es inválida (check posterior al HMAC)', async () => {
     const cache = memoryCache()
     const { request } = await signedRequest()
-    await verifyS2SRequest(request, { secretStore: async () => 'ab'.repeat(32), replayCache: cache })
+    await verifyS2SRequest(request, {
+      secretStore: async () => 'ab'.repeat(32),
+      replayCache: cache,
+    })
     expect(cache.setIfAbsent).not.toHaveBeenCalled()
   })
 })
@@ -357,10 +384,14 @@ describe('s2sAuth (Hono): razones nuevas', () => {
   }
 
   it('sin nonce → 401 header_missing', async () => {
-    const { request } = await signedRequest({ mutateHeaders: (h) => delete h['x-eva-nonce'] })
+    const { request } = await signedRequest({
+      mutateHeaders: (h) => delete h['x-eva-nonce'],
+    })
     const res = await app().fetch(request)
     expect(res.status).toBe(401)
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('header_missing')
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'header_missing',
+    )
   })
 
   it('nonce en mayúsculas → 401 nonce_malformed', async () => {
@@ -371,7 +402,9 @@ describe('s2sAuth (Hono): razones nuevas', () => {
     })
     const res = await app().fetch(request)
     expect(res.status).toBe(401)
-    expect(((await res.json()) as { error: { code: string } }).error.code).toBe('nonce_malformed')
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+      'nonce_malformed',
+    )
   })
 
   it('request válido → 200', async () => {

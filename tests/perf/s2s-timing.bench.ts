@@ -65,7 +65,10 @@ beforeAll(async () => {
   }
 
   // --- Fixture 1: happy path — firma válida ---
-  const validSignature = await signS2SRequest({ parts, secretHex: VALID_SECRET })
+  const validSignature = await signS2SRequest({
+    parts,
+    secretHex: VALID_SECRET,
+  })
   validRequestTemplate = new Request(BASE_URL, {
     method: 'POST',
     headers: {

@@ -103,10 +103,14 @@ describe('getJwksKeyFn — URL derivada de la authUrl configurada (config real)'
   }
 
   it('jwks_url_from_authUrl', async () => {
-    expect(await requestedJwksUrl('https://a.com')).toBe('https://a.com/.well-known/jwks.json')
+    expect(await requestedJwksUrl('https://a.com')).toBe(
+      'https://a.com/.well-known/jwks.json',
+    )
   })
 
   it('jwks_url_keeps_authUrl_path', async () => {
-    expect(await requestedJwksUrl('https://a.com/auth')).toBe('https://a.com/auth/.well-known/jwks.json')
+    expect(await requestedJwksUrl('https://a.com/auth')).toBe(
+      'https://a.com/auth/.well-known/jwks.json',
+    )
   })
 })

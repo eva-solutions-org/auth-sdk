@@ -19,10 +19,22 @@ describe('DEFAULT_ERROR_MESSAGES', () => {
 
   it('contiene todas las keys requeridas', () => {
     const requiredKeys: (keyof EvaErrorMessages)[] = [
-      'authRequired', 'tokenInvalid', 'tokenExpired', 'tokenClaimsInvalid',
-      'tokenNotFound', 'verifyFailedAfterRefresh', 'refreshNoNewTokens', 'refreshFailed',
-      'loginFailed', 'registrationFailed', 'logoutFailed', 'invalidJsonBody',
-      'invalidPhone', 'invalidUpdateBody', 'sessionInvalid', 'internalError',
+      'authRequired',
+      'tokenInvalid',
+      'tokenExpired',
+      'tokenClaimsInvalid',
+      'tokenNotFound',
+      'verifyFailedAfterRefresh',
+      'refreshNoNewTokens',
+      'refreshFailed',
+      'loginFailed',
+      'registrationFailed',
+      'logoutFailed',
+      'invalidJsonBody',
+      'invalidPhone',
+      'invalidUpdateBody',
+      'sessionInvalid',
+      'internalError',
     ]
     for (const key of requiredKeys) {
       expect(DEFAULT_ERROR_MESSAGES).toHaveProperty(key)
@@ -51,14 +63,26 @@ describe('DEFAULT_ERROR_MESSAGES', () => {
     expect(DEFAULT_ERROR_MESSAGES.authRequired).toBe('Autenticación requerida')
     expect(DEFAULT_ERROR_MESSAGES.tokenInvalid).toBe('Tokens no válidos')
     expect(DEFAULT_ERROR_MESSAGES.tokenExpired).toBe('Token expirado')
-    expect(DEFAULT_ERROR_MESSAGES.tokenNotFound).toBe('Token de acceso no encontrado')
-    expect(DEFAULT_ERROR_MESSAGES.refreshNoNewTokens).toBe('El refresco no retornó nuevos tokens')
-    expect(DEFAULT_ERROR_MESSAGES.refreshFailed).toBe('Falló el refresco de tokens')
-    expect(DEFAULT_ERROR_MESSAGES.loginFailed).toBe('Teléfono o código inválido')
+    expect(DEFAULT_ERROR_MESSAGES.tokenNotFound).toBe(
+      'Token de acceso no encontrado',
+    )
+    expect(DEFAULT_ERROR_MESSAGES.refreshNoNewTokens).toBe(
+      'El refresco no retornó nuevos tokens',
+    )
+    expect(DEFAULT_ERROR_MESSAGES.refreshFailed).toBe(
+      'Falló el refresco de tokens',
+    )
+    expect(DEFAULT_ERROR_MESSAGES.loginFailed).toBe(
+      'Teléfono o código inválido',
+    )
     expect(DEFAULT_ERROR_MESSAGES.logoutFailed).toBe('Logout fallido')
-    expect(DEFAULT_ERROR_MESSAGES.invalidJsonBody).toBe('JSON inválido en el body')
+    expect(DEFAULT_ERROR_MESSAGES.invalidJsonBody).toBe(
+      'JSON inválido en el body',
+    )
     expect(DEFAULT_ERROR_MESSAGES.invalidPhone).toBe('Teléfono inválido')
-    expect(DEFAULT_ERROR_MESSAGES.invalidUpdateBody).toBe('Cuerpo de actualización vacío')
+    expect(DEFAULT_ERROR_MESSAGES.invalidUpdateBody).toBe(
+      'Cuerpo de actualización vacío',
+    )
     expect(DEFAULT_ERROR_MESSAGES.sessionInvalid).toBe('ID de sesión inválido')
   })
 })
@@ -70,7 +94,9 @@ describe('resolveErrorMessages', () => {
   })
 
   it('global override pisa defaults', () => {
-    const result = resolveErrorMessages(undefined, { authRequired: 'Auth required' })
+    const result = resolveErrorMessages(undefined, {
+      authRequired: 'Auth required',
+    })
     expect(result.authRequired).toBe('Auth required')
     // el resto sigue siendo default
     expect(result.tokenInvalid).toBe(DEFAULT_ERROR_MESSAGES.tokenInvalid)

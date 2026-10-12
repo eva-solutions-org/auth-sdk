@@ -38,7 +38,7 @@ describe('RESERVED_JWT_CLAIMS — sin schema', () => {
       // Para cualquier otro reserved claim, el valor del claim no aparece en payload.
       const jwtPayload: Record<string, unknown> =
         claim === 'sub'
-          ? { sub: 'u1', sessionId: 's1' }           // sub ya está en el payload base
+          ? { sub: 'u1', sessionId: 's1' } // sub ya está en el payload base
           : { sub: 'u1', sessionId: 's1', [claim]: 'valor-reservado' }
 
       jwtVerifyMock.mockResolvedValue({
@@ -75,7 +75,9 @@ describe('RESERVED_JWT_CLAIMS — con schema z.object({})', () => {
       } as any)
 
       const schema = z.object({})
-      const result = await verifyAccessToken('token-reserved-schema', { extraClaimsSchema: schema })
+      const result = await verifyAccessToken('token-reserved-schema', {
+        extraClaimsSchema: schema,
+      })
 
       expect(result.ok).toBe(true)
       if (!result.ok) return
@@ -95,7 +97,9 @@ describe('RESERVED_JWT_CLAIMS — schema que declara claim reservado → fail-fa
       } as any)
 
       const schema = z.object({ [claim]: z.unknown() })
-      const result = await verifyAccessToken('any-token', { extraClaimsSchema: schema })
+      const result = await verifyAccessToken('any-token', {
+        extraClaimsSchema: schema,
+      })
 
       expect(result.ok).toBe(false)
       if (result.ok) return
@@ -115,11 +119,17 @@ describe('Claims similares a reservados — NO son reservados', () => {
     } as any)
 
     const schema = z.object({ expirationTime: z.number() })
-    const result = await verifyAccessToken('token-custom', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('token-custom', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data).toEqual({ id: 'u1', sessionId: 's1', expirationTime: 1800000000 })
+    expect(result.data).toEqual({
+      id: 'u1',
+      sessionId: 's1',
+      expirationTime: 1800000000,
+    })
   })
 
   it('claim "issuer" (no reservado): permitido en schema', async () => {
@@ -129,10 +139,16 @@ describe('Claims similares a reservados — NO son reservados', () => {
     } as any)
 
     const schema = z.object({ issuer: z.string() })
-    const result = await verifyAccessToken('token-issuer', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('token-issuer', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data).toEqual({ id: 'u1', sessionId: 's1', issuer: 'custom-issuer' })
+    expect(result.data).toEqual({
+      id: 'u1',
+      sessionId: 's1',
+      issuer: 'custom-issuer',
+    })
   })
 })

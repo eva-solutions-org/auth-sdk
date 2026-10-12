@@ -45,7 +45,9 @@ describe('readTokensFromCookies re-exports', () => {
   })
 
   it('funciona correctamente al parsear cookies', () => {
-    const result = rootReadTokens('eva_access_token=mytoken; eva_refresh_token=myrefresh')
+    const result = rootReadTokens(
+      'eva_access_token=mytoken; eva_refresh_token=myrefresh',
+    )
     expect(result.accessToken).toBe('mytoken')
     expect(result.refreshToken).toBe('myrefresh')
   })

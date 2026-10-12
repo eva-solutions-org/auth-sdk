@@ -147,9 +147,11 @@ describe('verifyAccessToken', () => {
 
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error.kind).toBe('sdk')
-    expect(result.error.reason).toBe('token_invalid')
-    expect(result.error.status).toBe(401)
+    expect(result.error).toMatchObject({
+      kind: 'sdk',
+      reason: 'token_invalid',
+      status: 401,
+    })
   })
 
   it('retorna token_invalid cuando jwtVerify lanza JWKSTimeout (REQ-JWKS-09)', async () => {
@@ -198,9 +200,11 @@ describe('verifyAccessToken', () => {
     // Assert 1: el result es falla con reason token_invalid y status 401
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error.kind).toBe('sdk')
-    expect(result.error.reason).toBe('token_invalid')
-    expect(result.error.status).toBe(401)
+    expect(result.error).toMatchObject({
+      kind: 'sdk',
+      reason: 'token_invalid',
+      status: 401,
+    })
 
     // Assert 2 (anti-regresión): jwtVerify fue llamado con algorithms: ['ES256'] explícito.
     // Si se quitara algorithms del call site, jose no lanzaría JOSEAlgorithmNotAllowed
@@ -213,7 +217,12 @@ describe('verifyAccessToken', () => {
 
   it('sin schema: JWT con claims extra (phone, empresaId) — NO se exponen en payload', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1', phone: '+543412345', empresaId: 'emp-99' },
+      payload: {
+        sub: 'u1',
+        sessionId: 's1',
+        phone: '+543412345',
+        empresaId: 'emp-99',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -257,7 +266,9 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({ phone: z.string() })
-    const result = await verifyAccessToken('token-with-phone', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('token-with-phone', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result).toEqual({
       ok: true,
@@ -274,12 +285,16 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({ phone: z.string() })
-    const result = await verifyAccessToken('token-missing-phone', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('token-missing-phone', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
-    expect(result.error.message).toBe('Payload del token inválido (claims extra)')
+    expect(result.error.message).toBe(
+      'Payload del token inválido (claims extra)',
+    )
     expect(result.error.status).toBe(401)
   })
 
@@ -290,12 +305,16 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({ phone: z.string() })
-    const result = await verifyAccessToken('token-phone-wrong-type', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('token-phone-wrong-type', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
-    expect(result.error.message).toBe('Payload del token inválido (claims extra)')
+    expect(result.error.message).toBe(
+      'Payload del token inválido (claims extra)',
+    )
     expect(result.error.status).toBe(401)
   })
 
@@ -308,7 +327,9 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({ exp: z.number() })
-    const result = await verifyAccessToken('any-token', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('any-token', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -325,7 +346,9 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({ id: z.string() })
-    const result = await verifyAccessToken('any-token', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('any-token', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -341,7 +364,9 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({ sessionId: z.string() })
-    const result = await verifyAccessToken('any-token', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('any-token', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -359,7 +384,9 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({ phone: z.string().optional() })
-    const result = await verifyAccessToken('token-no-phone', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('token-no-phone', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -376,9 +403,13 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({
-      phone: z.string().refine(async (v) => v.startsWith('+'), 'debe comenzar con +'),
+      phone: z
+        .string()
+        .refine(async (v) => v.startsWith('+'), 'debe comenzar con +'),
     })
-    const result = await verifyAccessToken('token-async', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('token-async', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result).toEqual({
       ok: true,
@@ -420,11 +451,17 @@ describe('verifyAccessToken', () => {
     } as any)
 
     const schema = z.object({ phone: z.string() })
-    const result = await verifyAccessToken('token-full-claims', { extraClaimsSchema: schema })
+    const result = await verifyAccessToken('token-full-claims', {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data).toEqual({ id: 'u1', sessionId: 's1', phone: '+543412345' })
+    expect(result.data).toEqual({
+      id: 'u1',
+      sessionId: 's1',
+      phone: '+543412345',
+    })
     expect(result.data).not.toHaveProperty('iss')
     expect(result.data).not.toHaveProperty('aud')
     expect(result.data).not.toHaveProperty('iat')
@@ -440,7 +477,9 @@ describe('verifyAccessToken — errores de configuración', () => {
       return vi.fn() as any
     })
 
-    await expect(verifyAccessToken('any-token')).rejects.toMatchObject({ name: 'EvaAuthConfigError' })
+    await expect(verifyAccessToken('any-token')).rejects.toMatchObject({
+      name: 'EvaAuthConfigError',
+    })
     expect(jwtVerifyMock).not.toHaveBeenCalled()
   })
 
@@ -451,7 +490,12 @@ describe('verifyAccessToken — errores de configuración', () => {
 
     expect(result).toEqual({
       ok: false,
-      error: { kind: 'sdk', reason: 'token_invalid', message: 'Invalid Compact JWS', status: 401 },
+      error: {
+        kind: 'sdk',
+        reason: 'token_invalid',
+        message: 'Invalid Compact JWS',
+        status: 401,
+      },
     })
   })
 })

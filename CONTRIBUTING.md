@@ -18,6 +18,7 @@ Please read our [Code of Conduct](./CODE_OF_CONDUCT.md) before participating.
    pnpm run test:run
    pnpm run build
    ```
+   `pnpm run build` retries on its own: the tsdown 0.22.0 / rolldown-plugin-dts 0.25.1 build is not deterministic with the `.d.ts.map` files of the index, and today it fails about 60 % of the time without producing them. See [Build y distribución](./docs/configuration.md#build-y-distribución).
 
 ## Pull request workflow
 

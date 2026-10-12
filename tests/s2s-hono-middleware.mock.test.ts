@@ -31,7 +31,7 @@ const NONCE = '00112233445566778899aabbccddeeff'
 async function buildSignedRequest(opts: {
   method?: string
   path?: string
-  body?: Uint8Array
+  body?: Uint8Array<ArrayBuffer>
   secretHex?: string
   clientId?: string
   timestamp?: number
@@ -88,7 +88,10 @@ describe('s2sAuth happy path', () => {
     const res = await app.fetch(req)
 
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { clientId: string; scopes: readonly string[] }
+    const body = (await res.json()) as {
+      clientId: string
+      scopes: readonly string[]
+    }
     expect(body.clientId).toBe(CLIENT_ID)
     expect(body.scopes).toEqual([])
   })
@@ -166,7 +169,9 @@ describe('s2sAuth errores → 401', () => {
     const res = await app.fetch(req)
 
     expect(res.status).toBe(401)
-    const body = (await res.json()) as { error: { code: string; message: string } }
+    const body = (await res.json()) as {
+      error: { code: string; message: string }
+    }
     expect(body.error).toBeDefined()
     expect(body.error.code).toBe('header_missing')
     expect(typeof body.error.message).toBe('string')
@@ -348,7 +353,9 @@ describe('wire format assertions', () => {
     const res = await app.fetch(req)
 
     expect(res.status).toBe(401)
-    const body = (await res.json()) as { error: { code: unknown; message: unknown } }
+    const body = (await res.json()) as {
+      error: { code: unknown; message: unknown }
+    }
     expect(body.error).toBeDefined()
     expect(body.error.code).not.toBeNull()
     expect(body.error.code).not.toBeUndefined()
@@ -373,7 +380,9 @@ describe('wire format assertions', () => {
     const res = await app.fetch(req)
 
     expect(res.status).toBe(403)
-    const body = (await res.json()) as { error: { code: string; required: string } }
+    const body = (await res.json()) as {
+      error: { code: string; required: string }
+    }
     expect(body.error.code).toBe('insufficient_scope')
     expect(body.error.required).toBe('something')
   })
@@ -457,7 +466,9 @@ describe('requireScope({ all }) — AND semantics (D9)', () => {
     const res = await app.fetch(req)
 
     expect(res.status).toBe(403)
-    const body = (await res.json()) as { error: { code: string; requiredAll: string[]; missing: string[] } }
+    const body = (await res.json()) as {
+      error: { code: string; requiredAll: string[]; missing: string[] }
+    }
     expect(body.error.code).toBe('insufficient_scope')
     expect(body.error.requiredAll).toEqual(['admin', 'audit'])
     expect(body.error.missing).toEqual(['audit'])
@@ -500,8 +511,12 @@ describe('requireScope({ all }) — AND semantics (D9)', () => {
 
     expect(res.status).toBe(403)
     const body = (await res.json()) as Record<string, unknown>
-    expect((body['error'] as Record<string, unknown>)['required']).toBeUndefined()
-    expect((body['error'] as Record<string, unknown>)['requiredAll']).toBeDefined()
+    expect(
+      (body['error'] as Record<string, unknown>)['required'],
+    ).toBeUndefined()
+    expect(
+      (body['error'] as Record<string, unknown>)['requiredAll'],
+    ).toBeDefined()
   })
 
   it('sin s2sAuth aplicado → Error propagado (HTTP 500)', async () => {
@@ -571,7 +586,9 @@ describe('requireScope({ any }) — OR semantics (D9)', () => {
     const res = await app.fetch(req)
 
     expect(res.status).toBe(403)
-    const body = (await res.json()) as { error: { code: string; requiredAny: string[] } }
+    const body = (await res.json()) as {
+      error: { code: string; requiredAny: string[] }
+    }
     expect(body.error.code).toBe('insufficient_scope')
     expect(body.error.requiredAny).toEqual(['data:read', 'data:write'])
   })
@@ -653,7 +670,9 @@ describe('requireScope({ any }) — OR semantics (D9)', () => {
 describe('requireScope — setup-time guards (D23)', () => {
   it('throws TypeError cuando {} (empty object — ni all ni any)', () => {
     expect(() => requireScope({} as never)).toThrow(TypeError)
-    expect(() => requireScope({} as never)).toThrow("must specify 'all' or 'any'")
+    expect(() => requireScope({} as never)).toThrow(
+      "must specify 'all' or 'any'",
+    )
   })
 
   it('throws TypeError cuando { all: [] }', () => {
@@ -667,8 +686,12 @@ describe('requireScope — setup-time guards (D23)', () => {
   })
 
   it('throws TypeError cuando { all, any } (mixed — ambos especificados)', () => {
-    expect(() => requireScope({ all: ['x'], any: ['y'] } as never)).toThrow(TypeError)
-    expect(() => requireScope({ all: ['x'], any: ['y'] } as never)).toThrow("cannot use both 'all' and 'any'")
+    expect(() => requireScope({ all: ['x'], any: ['y'] } as never)).toThrow(
+      TypeError,
+    )
+    expect(() => requireScope({ all: ['x'], any: ['y'] } as never)).toThrow(
+      "cannot use both 'all' and 'any'",
+    )
   })
 })
 
@@ -701,7 +724,9 @@ describe('s2sAuth pass-through (D22, D24)', () => {
   })
 
   it('setIfAbsent rejection → Hono responde 500 (fail-closed D10, REQ-HONO-RC-03)', async () => {
-    const setIfAbsent = vi.fn().mockRejectedValue(new Error('cache unavailable'))
+    const setIfAbsent = vi
+      .fn()
+      .mockRejectedValue(new Error('cache unavailable'))
     const app = new Hono()
     app.use(
       '*',
@@ -736,7 +761,9 @@ describe('s2sAuth pass-through (D22, D24)', () => {
     const res = await app.fetch(req)
 
     expect(res.status).toBe(401)
-    const body = (await res.json()) as { error: { code: string; message: string } }
+    const body = (await res.json()) as {
+      error: { code: string; message: string }
+    }
     expect(body.error.code).toBe('replay_detected')
     expect(body.error.message).toBe('Ya usado')
   })

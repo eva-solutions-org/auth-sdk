@@ -32,7 +32,7 @@ async function buildSignedRequest(opts: {
   method?: string
   path?: string
   query?: string
-  body?: Uint8Array
+  body?: Uint8Array<ArrayBuffer>
   clientId?: string
   secretHex?: string
   timestamp?: number
@@ -60,7 +60,8 @@ async function buildSignedRequest(opts: {
     bodyBytes: body,
   }
 
-  const signature = opts.overrideSignature ?? (await signS2SRequest({ parts, secretHex }))
+  const signature =
+    opts.overrideSignature ?? (await signS2SRequest({ parts, secretHex }))
 
   const url = `http://localhost${path}${query ? `?${query}` : ''}`
   const headers: Record<string, string> = {}
@@ -90,7 +91,9 @@ async function buildSignedRequest(opts: {
 describe('happy path', () => {
   it('GET sin body — ok:true con clientId correcto', async () => {
     const req = await buildSignedRequest({ method: 'GET' })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.data.clientId).toBe(CLIENT_ID)
   })
@@ -98,27 +101,35 @@ describe('happy path', () => {
   it('POST con body JSON — ok:true', async () => {
     const body = new TextEncoder().encode(JSON.stringify({ hello: 'world' }))
     const req = await buildSignedRequest({ method: 'POST', body })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
   it('PUT con body — ok:true', async () => {
     const body = new TextEncoder().encode('{"update":true}')
     const req = await buildSignedRequest({ method: 'PUT', body })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
   it('DELETE sin body — ok:true', async () => {
     const req = await buildSignedRequest({ method: 'DELETE' })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
   it('PATCH con body — ok:true', async () => {
     const body = new TextEncoder().encode('{"patch":1}')
     const req = await buildSignedRequest({ method: 'PATCH', body })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 })
@@ -130,7 +141,9 @@ describe('happy path', () => {
 describe('header_missing', () => {
   it('falta x-eva-client-id → reason:header_missing', async () => {
     const req = await buildSignedRequest({ omitClientId: true })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error.reason).toBe('header_missing')
@@ -140,21 +153,27 @@ describe('header_missing', () => {
 
   it('falta x-eva-timestamp → reason:header_missing', async () => {
     const req = await buildSignedRequest({ omitTimestamp: true })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('header_missing')
   })
 
   it('falta x-eva-nonce → reason:header_missing', async () => {
     const req = await buildSignedRequest({ omitNonce: true })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('header_missing')
   })
 
   it('falta x-eva-signature → reason:header_missing', async () => {
     const req = await buildSignedRequest({ omitSignature: true })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('header_missing')
   })
@@ -190,7 +209,9 @@ describe('headers case-insensitive', () => {
       },
     })
 
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
@@ -217,7 +238,9 @@ describe('headers case-insensitive', () => {
       },
     })
 
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 })
@@ -237,7 +260,9 @@ describe('timestamp_invalid', () => {
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
-    const result = await verifyS2SRequest(badReq, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(badReq, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error.reason).toBe('timestamp_invalid')
@@ -255,7 +280,9 @@ describe('timestamp_invalid', () => {
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
-    const result = await verifyS2SRequest(badReq, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(badReq, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('timestamp_invalid')
   })
@@ -278,11 +305,15 @@ describe('timestamp_invalid', () => {
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
-    const result = await verifyS2SRequest(badReq, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(badReq, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     // "0" passes regex /^\d{1,11}$/ → moves to window check → timestamp_expired
     if (!result.ok) {
-      expect(['timestamp_invalid', 'timestamp_expired']).toContain(result.error.reason)
+      expect(['timestamp_invalid', 'timestamp_expired']).toContain(
+        result.error.reason,
+      )
     }
   })
 })
@@ -306,7 +337,9 @@ describe('timestamp_expired', () => {
           'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
         },
       })
-      const result = await verifyS2SRequest(badReq, { secretStore: async () => SECRET_HEX })
+      const result = await verifyS2SRequest(badReq, {
+        secretStore: async () => SECRET_HEX,
+      })
       expect(result.ok).toBe(false)
       if (!result.ok) expect(result.error.reason).toBe('timestamp_expired')
     } finally {
@@ -328,7 +361,9 @@ describe('timestamp_expired', () => {
           'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
         },
       })
-      const result = await verifyS2SRequest(badReq, { secretStore: async () => SECRET_HEX })
+      const result = await verifyS2SRequest(badReq, {
+        secretStore: async () => SECRET_HEX,
+      })
       expect(result.ok).toBe(false)
       if (!result.ok) expect(result.error.reason).toBe('timestamp_expired')
     } finally {
@@ -352,7 +387,9 @@ describe('timestamp boundary AC-15', () => {
     vi.setSystemTime(now * 1000)
 
     const req = await buildSignedRequest({ timestamp: now + 120 })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
@@ -362,7 +399,9 @@ describe('timestamp boundary AC-15', () => {
     vi.setSystemTime(now * 1000)
 
     const req = await buildSignedRequest({ timestamp: now - 120 })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
@@ -380,7 +419,9 @@ describe('timestamp boundary AC-15', () => {
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
-    const result = await verifyS2SRequest(badReq, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(badReq, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('timestamp_expired')
   })
@@ -399,7 +440,9 @@ describe('timestamp boundary AC-15', () => {
         'x-eva-signature': 'sha256=' + 'ab'.repeat(32),
       },
     })
-    const result = await verifyS2SRequest(badReq, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(badReq, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('timestamp_expired')
   })
@@ -422,7 +465,9 @@ describe('signature_malformed', () => {
         'x-eva-signature': 'ab'.repeat(32), // hex sin prefijo
       },
     })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error.reason).toBe('signature_malformed')
@@ -440,7 +485,9 @@ describe('signature_malformed', () => {
         'x-eva-signature': 'sha256=abcd1234abcd1234abcd1234abcd1234', // solo 32 chars
       },
     })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('signature_malformed')
   })
@@ -455,7 +502,9 @@ describe('signature_malformed', () => {
         'x-eva-signature': 'sha256=' + 'z'.repeat(64),
       },
     })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('signature_malformed')
   })
@@ -470,7 +519,9 @@ describe('signature_malformed', () => {
         'x-eva-signature': '',
       },
     })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.reason).toBe('signature_malformed')
   })
@@ -487,7 +538,9 @@ describe('client_unknown', () => {
 
   it('secretStore retorna null → reason:client_unknown', async () => {
     const req = await buildSignedRequest({})
-    const result = await verifyS2SRequest(req, { secretStore: async () => null })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => null,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error.reason).toBe('client_unknown')
@@ -513,8 +566,12 @@ describe('signature_invalid', () => {
   })
 
   it('secretStore retorna secretHex correcto pero firma es inválida → reason:signature_invalid', async () => {
-    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const req = await buildSignedRequest({
+      overrideSignature: 'sha256=' + 'ab'.repeat(32),
+    })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(false)
     if (!result.ok) {
       expect(result.error.reason).toBe('signature_invalid')
@@ -524,7 +581,9 @@ describe('signature_invalid', () => {
 
   it('crypto.subtle.verify se llama exactamente 1 vez con secreto válido + firma inválida (timing-safe)', async () => {
     const spy = vi.spyOn(globalThis.crypto.subtle, 'verify')
-    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'cd'.repeat(32) })
+    const req = await buildSignedRequest({
+      overrideSignature: 'sha256=' + 'cd'.repeat(32),
+    })
     await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
     expect(spy).toHaveBeenCalledTimes(1)
   })
@@ -536,8 +595,13 @@ describe('signature_invalid', () => {
 
 describe('signature válida', () => {
   it('secretStore retorna secretHex correcto + firma correcta → ok:true, data.clientId correcto', async () => {
-    const req = await buildSignedRequest({ clientId: 'mi-servicio', secretHex: SECRET_HEX })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const req = await buildSignedRequest({
+      clientId: 'mi-servicio',
+      secretHex: SECRET_HEX,
+    })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.data.clientId).toBe('mi-servicio')
   })
@@ -553,7 +617,9 @@ describe('query string', () => {
       path: '/internal/webhooks',
       query: 'limit=10&offset=0',
     })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
@@ -571,19 +637,27 @@ describe('query string', () => {
       clientId: CLIENT_ID,
       bodyBytes: new Uint8Array(0),
     }
-    const signature = await signS2SRequest({ parts: partsOrdenado, secretHex: SECRET_HEX })
+    const signature = await signS2SRequest({
+      parts: partsOrdenado,
+      secretHex: SECRET_HEX,
+    })
 
     // Request construida con el mismo query string (el canonical lo ordenará igual en verify)
-    const req = new Request('http://localhost/internal/webhooks?status=pending&limit=10', {
-      method: 'GET',
-      headers: {
-        'x-eva-client-id': CLIENT_ID,
-        'x-eva-timestamp': String(timestamp),
-        'x-eva-nonce': NONCE,
-        'x-eva-signature': signature,
+    const req = new Request(
+      'http://localhost/internal/webhooks?status=pending&limit=10',
+      {
+        method: 'GET',
+        headers: {
+          'x-eva-client-id': CLIENT_ID,
+          'x-eva-timestamp': String(timestamp),
+          'x-eva-nonce': NONCE,
+          'x-eva-signature': signature,
+        },
       },
+    )
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
     })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
     expect(result.ok).toBe(true)
   })
 })
@@ -645,27 +719,35 @@ describe('timestampWindowSeconds override', () => {
 describe('body handling', () => {
   it('GET sin body → ok:true (usa EMPTY_BODY_SHA256_HEX internamente)', async () => {
     const req = await buildSignedRequest({ method: 'GET' })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
   it('DELETE sin body → ok:true', async () => {
     const req = await buildSignedRequest({ method: 'DELETE' })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
   it('POST con body JSON → ok:true (body hasheado correctamente)', async () => {
     const body = new TextEncoder().encode(JSON.stringify({ ids: ['u1', 'u2'] }))
     const req = await buildSignedRequest({ method: 'POST', body })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 
   it('PUT con body → ok:true', async () => {
     const body = new TextEncoder().encode('{"enabled":true}')
     const req = await buildSignedRequest({ method: 'PUT', body })
-    const result = await verifyS2SRequest(req, { secretStore: async () => SECRET_HEX })
+    const result = await verifyS2SRequest(req, {
+      secretStore: async () => SECRET_HEX,
+    })
     expect(result.ok).toBe(true)
   })
 })
@@ -697,13 +779,17 @@ describe('canonical string determinismo bilateral', () => {
 // ---------------------------------------------------------------------------
 
 /** Helper: crea un mock de replayCache con setIfAbsent configurable. */
-function createReplayCache(returns: boolean | (() => boolean | Promise<boolean>)) {
+function createReplayCache(
+  returns: boolean | (() => boolean | Promise<boolean>),
+) {
   return {
-    setIfAbsent: vi.fn().mockImplementation(
-      typeof returns === 'function'
-        ? () => Promise.resolve(returns())
-        : () => Promise.resolve(returns),
-    ),
+    setIfAbsent: vi
+      .fn()
+      .mockImplementation(
+        typeof returns === 'function'
+          ? () => Promise.resolve(returns())
+          : () => Promise.resolve(returns),
+      ),
   }
 }
 
@@ -782,7 +868,9 @@ describe('replayCache — setIfAbsent (D22)', () => {
 
   it('NOT called when HMAC fails (wrong secret)', async () => {
     const cache = createReplayCache(true)
-    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const req = await buildSignedRequest({
+      overrideSignature: 'sha256=' + 'ab'.repeat(32),
+    })
     await verifyS2SRequest(req, {
       secretStore: async () => SECRET_HEX,
       replayCache: cache,
@@ -817,12 +905,16 @@ describe('replayCache — setIfAbsent (D22)', () => {
   it('called AFTER crypto.subtle.verify — order assertion (D16)', async () => {
     const callOrder: string[] = []
 
-    const originalVerify = globalThis.crypto.subtle.verify.bind(globalThis.crypto.subtle)
+    const originalVerify = globalThis.crypto.subtle.verify.bind(
+      globalThis.crypto.subtle,
+    )
     const cryptoVerifySpy = vi.spyOn(globalThis.crypto.subtle, 'verify')
-    cryptoVerifySpy.mockImplementation(async (...args: Parameters<typeof originalVerify>) => {
-      callOrder.push('hmac')
-      return originalVerify(...args)
-    })
+    cryptoVerifySpy.mockImplementation(
+      async (...args: Parameters<typeof originalVerify>) => {
+        callOrder.push('hmac')
+        return originalVerify(...args)
+      },
+    )
 
     const cache = {
       setIfAbsent: vi.fn().mockImplementation(async () => {
@@ -915,7 +1007,9 @@ describe('messages override (D12)', () => {
   })
 
   it('override signature_invalid → custom message en el error', async () => {
-    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const req = await buildSignedRequest({
+      overrideSignature: 'sha256=' + 'ab'.repeat(32),
+    })
     const result = await verifyS2SRequest(req, {
       secretStore: async () => SECRET_HEX,
       messages: { signature_invalid: 'Firma inválida personalizada' },
@@ -943,7 +1037,9 @@ describe('messages override (D12)', () => {
   })
 
   it('partial override: razones no provistas conservan los defaults en inglés', async () => {
-    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const req = await buildSignedRequest({
+      overrideSignature: 'sha256=' + 'ab'.repeat(32),
+    })
     const result = await verifyS2SRequest(req, {
       secretStore: async () => SECRET_HEX,
       messages: { timestamp_expired: 'Timestamp expirado' }, // solo override timestamp_expired
@@ -957,7 +1053,9 @@ describe('messages override (D12)', () => {
   })
 
   it('empty string "" override es respetado (D12 LOCKED)', async () => {
-    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const req = await buildSignedRequest({
+      overrideSignature: 'sha256=' + 'ab'.repeat(32),
+    })
     const result = await verifyS2SRequest(req, {
       secretStore: async () => SECRET_HEX,
       messages: { signature_invalid: '' },
@@ -970,7 +1068,9 @@ describe('messages override (D12)', () => {
   })
 
   it('sin opts.messages → todos los mensajes son los defaults en inglés', async () => {
-    const req = await buildSignedRequest({ overrideSignature: 'sha256=' + 'ab'.repeat(32) })
+    const req = await buildSignedRequest({
+      overrideSignature: 'sha256=' + 'ab'.repeat(32),
+    })
     const result = await verifyS2SRequest(req, {
       secretStore: async () => SECRET_HEX,
       // sin messages

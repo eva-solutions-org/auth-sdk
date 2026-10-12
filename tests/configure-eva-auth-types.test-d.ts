@@ -27,7 +27,12 @@ describe('ConfigureEvaAuthOptions — authUrl en runtime (REQ-SDK-01)', () => {
   })
 
   it('configureEvaAuth acepta authUrl junto con cookieDomain', () => {
-    assertType<void>(configureEvaAuth({ authUrl: 'https://x.com', cookieDomain: '.example.com' }))
+    assertType<void>(
+      configureEvaAuth({
+        authUrl: 'https://x.com',
+        cookieDomain: '.example.com',
+      }),
+    )
   })
 
   it('pasar authUrl como number produce error de TypeScript', () => {
@@ -70,9 +75,15 @@ describe('ConfigureEvaAuthOptions — campos válidos aceptados (REQ-CFG-08)', (
 
 describe('barrels — getEvaEnv y EvaEnv eliminados (REQ-SDK-34)', () => {
   it('getEvaEnv no existe en los barrels', () => {
-    expectTypeOf<typeof import('../src/index')>().not.toHaveProperty('getEvaEnv')
-    expectTypeOf<typeof import('../src/hono/index')>().not.toHaveProperty('getEvaEnv')
-    expectTypeOf<typeof import('../src/generic/index')>().not.toHaveProperty('getEvaEnv')
+    expectTypeOf<typeof import('../src/index')>().not.toHaveProperty(
+      'getEvaEnv',
+    )
+    expectTypeOf<typeof import('../src/hono/index')>().not.toHaveProperty(
+      'getEvaEnv',
+    )
+    expectTypeOf<typeof import('../src/generic/index')>().not.toHaveProperty(
+      'getEvaEnv',
+    )
   })
 
   it('el tipo EvaEnv no es importable desde el barrel raíz', () => {

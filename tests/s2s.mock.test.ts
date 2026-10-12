@@ -10,7 +10,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildS2SCanonicalString, signS2SRequest, EMPTY_BODY_SHA256_HEX } from '../src/s2s/sign'
+import {
+  buildS2SCanonicalString,
+  signS2SRequest,
+  EMPTY_BODY_SHA256_HEX,
+} from '../src/s2s/sign'
 import { createS2SClient } from '../src/s2s/client'
 import type { S2SCanonicalParts } from '../src/s2s/types'
 
@@ -248,7 +252,7 @@ describe('S2SClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fetchMock = vi.fn()
-    global.fetch = fetchMock
+    global.fetch = fetchMock as unknown as typeof fetch
   })
 
   const mockConfig = {
@@ -296,10 +300,18 @@ describe('S2SClient', () => {
 
     expect(url).toContain('/internal/users/user-1')
     expect(options.method).toBe('GET')
-    expect((options.headers as Record<string, string>)['x-eva-client-id']).toBe(CLIENT_ID)
-    expect((options.headers as Record<string, string>)['x-eva-timestamp']).toMatch(/^\d+$/)
-    expect((options.headers as Record<string, string>)['x-eva-nonce']).toMatch(/^[0-9a-f]{32}$/)
-    expect((options.headers as Record<string, string>)['x-eva-signature']).toMatch(/^sha256=[0-9a-f]{64}$/)
+    expect((options.headers as Record<string, string>)['x-eva-client-id']).toBe(
+      CLIENT_ID,
+    )
+    expect(
+      (options.headers as Record<string, string>)['x-eva-timestamp'],
+    ).toMatch(/^\d+$/)
+    expect((options.headers as Record<string, string>)['x-eva-nonce']).toMatch(
+      /^[0-9a-f]{32}$/,
+    )
+    expect(
+      (options.headers as Record<string, string>)['x-eva-signature'],
+    ).toMatch(/^sha256=[0-9a-f]{64}$/)
   })
 
   it('cada llamada envía un nonce distinto', async () => {
@@ -314,7 +326,10 @@ describe('S2SClient', () => {
     await s2s.getUser('user-1')
 
     const nonces = fetchMock.mock.calls.map(
-      ([, options]) => ((options as RequestInit).headers as Record<string, string>)['x-eva-nonce'],
+      ([, options]) =>
+        ((options as RequestInit).headers as Record<string, string>)[
+          'x-eva-nonce'
+        ],
     )
     expect(nonces).toHaveLength(2)
     expect(nonces[0]).not.toBe(nonces[1])
@@ -324,7 +339,9 @@ describe('S2SClient', () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 401,
-      json: async () => ({ error: { code: 'unauthorized', message: 'Unauthorized' } }),
+      json: async () => ({
+        error: { code: 'unauthorized', message: 'Unauthorized' },
+      }),
     })
 
     const s2s = createS2SClient(mockConfig)
@@ -334,7 +351,9 @@ describe('S2SClient', () => {
     if (result.ok) return
     expect(result.error.kind).toBe('api')
     expect(result.error.status).toBe(401)
-    expect((result.error as { kind: 'api'; code: string }).code).toBe('unauthorized')
+    expect((result.error as { kind: 'api'; code: string }).code).toBe(
+      'unauthorized',
+    )
   })
 
   // ─── batchUsers ──────────────────────────────────────────────────────────
@@ -400,7 +419,9 @@ describe('S2SClient', () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 204,
-      json: async () => { throw new Error('No body') },
+      json: async () => {
+        throw new Error('No body')
+      },
     })
 
     const s2s = createS2SClient(mockConfig)
@@ -423,7 +444,9 @@ describe('S2SClient', () => {
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
     expect(result.error.status).toBe(0)
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('network')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'network',
+    )
     expect(result.error.message).toBe('ECONNREFUSED')
   })
 
@@ -500,7 +523,9 @@ describe('S2SClient', () => {
     const afterCall = Math.floor(Date.now() / 1000)
 
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    const sentTimestamp = parseInt((options.headers as Record<string, string>)['x-eva-timestamp'])
+    const sentTimestamp = parseInt(
+      (options.headers as Record<string, string>)['x-eva-timestamp'],
+    )
 
     expect(sentTimestamp).toBeGreaterThanOrEqual(beforeCall)
     expect(sentTimestamp).toBeLessThanOrEqual(afterCall + 1)
@@ -516,7 +541,9 @@ describe('S2SClient', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('malformed')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'malformed',
+    )
     expect(result.error.status).toBe(0)
     // No debe haber llamado a fetch
     expect(fetchMock).not.toHaveBeenCalled()
@@ -546,7 +573,9 @@ describe('S2SClient', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('malformed')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'malformed',
+    )
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -557,7 +586,9 @@ describe('S2SClient', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('malformed')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'malformed',
+    )
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -568,7 +599,9 @@ describe('S2SClient', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('malformed')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'malformed',
+    )
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

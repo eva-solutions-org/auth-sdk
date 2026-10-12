@@ -143,17 +143,35 @@ describe('getMessage export (REQ-ERR-11)', () => {
   })
 
   it('retorna el message de un EvaApiError', () => {
-    const err = { kind: 'api' as const, code: 'unauthorized', message: 'No autorizado', status: 401 }
+    const err = {
+      kind: 'api' as const,
+      code: 'unauthorized',
+      message: 'No autorizado',
+      status: 401,
+    }
     expect(getMessage(err)).toBe('No autorizado')
   })
 
   it('retorna el message de un EvaSdkError', () => {
-    const err = { kind: 'sdk' as const, reason: 'auth_required' as const, message: 'Sin tokens', status: 401 }
+    const err = {
+      kind: 'sdk' as const,
+      reason: 'auth_required' as const,
+      message: 'Sin tokens',
+      status: 401,
+    }
     expect(getMessage(err)).toBe('Sin tokens')
   })
 
   it('funciona como alternativa a result.error.message', () => {
-    const result = { ok: false as const, error: { kind: 'api' as const, code: 'bad_request', message: 'Teléfono inválido', status: 400 } }
+    const result = {
+      ok: false as const,
+      error: {
+        kind: 'api' as const,
+        code: 'bad_request',
+        message: 'Teléfono inválido',
+        status: 400,
+      },
+    }
     expect(getMessage(result.error)).toBe(result.error.message)
   })
 })
@@ -303,7 +321,9 @@ describe('ACCOUNT_STATES export (Batch-14 G1)', () => {
   it('contiene los 6 estados de cuenta', () => {
     expect(ACCOUNT_STATES.no_verificado).toBe('no_verificado')
     expect(ACCOUNT_STATES.verificado).toBe('verificado')
-    expect(ACCOUNT_STATES.pendiente_de_verificacion).toBe('pendiente_de_verificacion')
+    expect(ACCOUNT_STATES.pendiente_de_verificacion).toBe(
+      'pendiente_de_verificacion',
+    )
     expect(ACCOUNT_STATES.suspendido).toBe('suspendido')
     expect(ACCOUNT_STATES.baneado).toBe('baneado')
     expect(ACCOUNT_STATES.eliminado).toBe('eliminado')
@@ -361,8 +381,12 @@ describe('ADMIN_ERROR_CODES export (Batch-14 G4)', () => {
   })
 
   it('tiene service_client_already_exists y service_client_not_found', () => {
-    expect(ADMIN_ERROR_CODES.service_client_already_exists).toBe('service_client_already_exists')
-    expect(ADMIN_ERROR_CODES.service_client_not_found).toBe('service_client_not_found')
+    expect(ADMIN_ERROR_CODES.service_client_already_exists).toBe(
+      'service_client_already_exists',
+    )
+    expect(ADMIN_ERROR_CODES.service_client_not_found).toBe(
+      'service_client_not_found',
+    )
   })
 
   it('los valores son iguales a sus keys (as const)', () => {
@@ -439,7 +463,9 @@ describe('s2sAuth y requireScope NO exportados desde barrel raíz (REQ-API-07)',
 
   it('requireScope no está en el barrel raíz (src/index)', async () => {
     const rootModule = await import('../src/index')
-    expect((rootModule as Record<string, unknown>)['requireScope']).toBeUndefined()
+    expect(
+      (rootModule as Record<string, unknown>)['requireScope'],
+    ).toBeUndefined()
   })
 })
 
@@ -450,7 +476,9 @@ describe('s2sAuth y requireScope NO exportados desde barrel raíz (REQ-API-07)',
 describe('validateHttpsUrl NO exportada desde barrel raíz (REQ-HTTPS-10)', () => {
   it('validateHttpsUrl no está en src/index (barrel público raíz)', async () => {
     const rootModule = await import('../src/index')
-    expect((rootModule as Record<string, unknown>)['validateHttpsUrl']).toBeUndefined()
+    expect(
+      (rootModule as Record<string, unknown>)['validateHttpsUrl'],
+    ).toBeUndefined()
   })
 })
 
@@ -492,10 +520,13 @@ describe('exports eliminados / internos', () => {
     expect(Object.keys(barrel)).not.toContain('getEvaEnv')
   })
 
-  it.each(barrels)('config_error_internals_not_exported: %s', async (_name, load) => {
-    const barrel = await load()
-    const names = Object.keys(barrel)
-    expect(names).not.toContain('isEvaAuthConfigError')
-    expect(names).not.toContain('createEvaAuthConfigError')
-  })
+  it.each(barrels)(
+    'config_error_internals_not_exported: %s',
+    async (_name, load) => {
+      const barrel = await load()
+      const names = Object.keys(barrel)
+      expect(names).not.toContain('isEvaAuthConfigError')
+      expect(names).not.toContain('createEvaAuthConfigError')
+    },
+  )
 })

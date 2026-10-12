@@ -74,11 +74,17 @@ describe('verifyRequest', () => {
       data: { id: 'u1', sessionId: 's1', phone: '+543412345' },
     } as any)
 
-    const result = await verifyRequest(makeRequest('access=valid'), { extraClaimsSchema: schema })
+    const result = await verifyRequest(makeRequest('access=valid'), {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data.payload).toEqual({ id: 'u1', sessionId: 's1', phone: '+543412345' })
+    expect(result.data.payload).toEqual({
+      id: 'u1',
+      sessionId: 's1',
+      phone: '+543412345',
+    })
   })
 
   // ───── Schema mismatch → error 401 ─────
@@ -95,7 +101,9 @@ describe('verifyRequest', () => {
       status: 401,
     } as any)
 
-    const result = await verifyRequest(makeRequest('access=bad'), { extraClaimsSchema: schema })
+    const result = await verifyRequest(makeRequest('access=bad'), {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -135,11 +143,17 @@ describe('verifyRequest', () => {
       data: { id: 'u1', sessionId: 's1', phone: '+543412345' },
     } as any)
 
-    const result = await verifyRequest(makeRequest('refresh=tok'), { extraClaimsSchema: schema })
+    const result = await verifyRequest(makeRequest('refresh=tok'), {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data.payload).toEqual({ id: 'u1', sessionId: 's1', phone: '+543412345' })
+    expect(result.data.payload).toEqual({
+      id: 'u1',
+      sessionId: 's1',
+      phone: '+543412345',
+    })
     expect(result.data.newCookies).toBeDefined()
     expect(setTokenCookies).toHaveBeenCalledWith({
       accessToken: 'new-access',
@@ -167,7 +181,9 @@ describe('verifyRequest', () => {
       status: 401,
     } as any)
 
-    const result = await verifyRequest(makeRequest('refresh=tok'), { extraClaimsSchema: schema })
+    const result = await verifyRequest(makeRequest('refresh=tok'), {
+      extraClaimsSchema: schema,
+    })
 
     expect(result.ok).toBe(false)
     if (result.ok) return
@@ -192,7 +208,9 @@ describe('verifyRequest — errorMessages override (T-44)', () => {
     if (result.ok) return
     expect(result.error.message).toBe('Bad token — custom')
     expect(result.error.kind).toBe('sdk')
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('auth_required')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'auth_required',
+    )
     expect(result.error.status).toBe(401)
   })
 
@@ -206,12 +224,16 @@ describe('verifyRequest — errorMessages override (T-44)', () => {
     if (result.ok) return
     expect(result.error.message).toBe('Autenticación requerida')
     expect(result.error.kind).toBe('sdk')
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('auth_required')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'auth_required',
+    )
     expect(result.error.status).toBe(401)
   })
 
   it('override refreshNoNewTokens — refresh sin tokens', async () => {
-    vi.mocked(readTokensFromCookies).mockReturnValue({ refreshToken: 'tok' } as any)
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      refreshToken: 'tok',
+    } as any)
     vi.mocked(getErrorMessages).mockReturnValue(undefined)
     mockRefresh.mockResolvedValue({ ok: true, data: {} }) // sin tokens
 
@@ -223,15 +245,25 @@ describe('verifyRequest — errorMessages override (T-44)', () => {
     if (result.ok) return
     expect(result.error.message).toBe('No new tokens custom')
     expect(result.error.kind).toBe('sdk')
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('refresh_no_tokens')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'refresh_no_tokens',
+    )
     expect(result.error.status).toBe(401)
   })
 
   it('override verifyFailedAfterRefresh con placeholder {0} reemplazado', async () => {
-    vi.mocked(readTokensFromCookies).mockReturnValue({ refreshToken: 'tok' } as any)
+    vi.mocked(readTokensFromCookies).mockReturnValue({
+      refreshToken: 'tok',
+    } as any)
     vi.mocked(getErrorMessages).mockReturnValue(undefined)
-    mockRefresh.mockResolvedValue({ ok: true, data: { tokens: { accessToken: 'new', refreshToken: 'new-r' } } })
-    vi.mocked(verifyAccessToken).mockResolvedValue({ ok: false, error: 'expired signature' } as any)
+    mockRefresh.mockResolvedValue({
+      ok: true,
+      data: { tokens: { accessToken: 'new', refreshToken: 'new-r' } },
+    })
+    vi.mocked(verifyAccessToken).mockResolvedValue({
+      ok: false,
+      error: 'expired signature',
+    } as any)
 
     const result = await verifyRequest(makeRequest(), {
       errorMessages: { verifyFailedAfterRefresh: 'Verify failed: {0}' },
@@ -241,7 +273,9 @@ describe('verifyRequest — errorMessages override (T-44)', () => {
     if (result.ok) return
     expect(result.error.message).toBe('Verify failed: expired signature')
     expect(result.error.kind).toBe('sdk')
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('verify_failed')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'verify_failed',
+    )
     expect(result.error.status).toBe(401)
   })
 })

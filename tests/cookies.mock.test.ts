@@ -12,7 +12,11 @@ vi.mock('../src/config', () => ({
   configureEvaAuth: vi.fn(),
 }))
 
-import { readTokensFromCookies, setTokenCookies, clearTokenCookies } from '../src/cookies'
+import {
+  readTokensFromCookies,
+  setTokenCookies,
+  clearTokenCookies,
+} from '../src/cookies'
 
 beforeEach(() => {
   mockConfig.cookieDomain = undefined
@@ -91,7 +95,9 @@ describe('setTokenCookies', () => {
 
     for (const cookie of cookies) {
       expect(cookie.split('; ')).toContain('Secure')
-      expect(cookie.indexOf('Secure')).toBeGreaterThan(cookie.indexOf('HttpOnly'))
+      expect(cookie.indexOf('Secure')).toBeGreaterThan(
+        cookie.indexOf('HttpOnly'),
+      )
     }
   })
 
@@ -109,8 +115,12 @@ describe('setTokenCookies', () => {
     const cookies = setTokenCookies(tokens)
 
     const [accessCookie, refreshCookie] = cookies
-    expect(accessCookie).toContain(`${COOKIES.ACCESS_TOKEN}=${tokens.accessToken}`)
-    expect(refreshCookie).toContain(`${COOKIES.REFRESH_TOKEN}=${tokens.refreshToken}`)
+    expect(accessCookie).toContain(
+      `${COOKIES.ACCESS_TOKEN}=${tokens.accessToken}`,
+    )
+    expect(refreshCookie).toContain(
+      `${COOKIES.REFRESH_TOKEN}=${tokens.refreshToken}`,
+    )
   })
 
   it('NO incluye Domain cuando cookieDomain es undefined (zero regression)', () => {
@@ -235,7 +245,10 @@ describe('Secure con authUrl http loopback', () => {
     const cookies = await import('../src/cookies')
     configureEvaAuth({ authUrl: 'http://localhost:4000' })
 
-    for (const cookie of [...cookies.setTokenCookies(createTokenPair()), ...cookies.clearTokenCookies()]) {
+    for (const cookie of [
+      ...cookies.setTokenCookies(createTokenPair()),
+      ...cookies.clearTokenCookies(),
+    ]) {
       expect(cookie.split('; ')).toContain('Secure')
     }
   })

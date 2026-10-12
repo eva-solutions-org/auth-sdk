@@ -43,7 +43,7 @@ describe('AdminClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     fetchMock = vi.fn()
-    global.fetch = fetchMock
+    global.fetch = fetchMock as unknown as typeof fetch
   })
 
   // ─── Autenticación: header X-Admin-Password presente ─────────────────────
@@ -60,7 +60,9 @@ describe('AdminClient', () => {
 
     expect(fetchMock).toHaveBeenCalledOnce()
     const [, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect((options.headers as Record<string, string>)['x-admin-password']).toBe(ADMIN_PASSWORD)
+    expect(
+      (options.headers as Record<string, string>)['x-admin-password'],
+    ).toBe(ADMIN_PASSWORD)
   })
 
   // ─── createServiceClient (REQ-ADMIN-01) ──────────────────────────────────
@@ -83,7 +85,10 @@ describe('AdminClient', () => {
     })
 
     const admin = createAdminClient(mockConfig)
-    const result = await admin.createServiceClient({ slug: 'mi-servicio', scopes: ['users:read'] })
+    const result = await admin.createServiceClient({
+      slug: 'mi-servicio',
+      scopes: ['users:read'],
+    })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -93,14 +98,19 @@ describe('AdminClient', () => {
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(url).toBe(`${BASE_URL}/admin/service-clients`)
     expect(options.method).toBe('POST')
-    expect(JSON.parse(options.body as string)).toEqual({ slug: 'mi-servicio', scopes: ['users:read'] })
+    expect(JSON.parse(options.body as string)).toEqual({
+      slug: 'mi-servicio',
+      scopes: ['users:read'],
+    })
   })
 
   it('createServiceClient: error 409 conflict → Result ok:false EvaApiError', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 409,
-      json: async () => ({ error: { code: 'conflict', message: 'Slug ya existe' } }),
+      json: async () => ({
+        error: { code: 'conflict', message: 'Slug ya existe' },
+      }),
     })
 
     const admin = createAdminClient(mockConfig)
@@ -110,7 +120,9 @@ describe('AdminClient', () => {
     if (result.ok) return
     expect(result.error.kind).toBe('api')
     expect(result.error.status).toBe(409)
-    expect((result.error as { kind: 'api'; code: string }).code).toBe('conflict')
+    expect((result.error as { kind: 'api'; code: string }).code).toBe(
+      'conflict',
+    )
     expect(result.error.message).toBe('Slug ya existe')
   })
 
@@ -160,7 +172,9 @@ describe('AdminClient', () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 404,
-      json: async () => ({ error: { code: 'not_found', message: 'Service client no encontrado' } }),
+      json: async () => ({
+        error: { code: 'not_found', message: 'Service client no encontrado' },
+      }),
     })
 
     const admin = createAdminClient(mockConfig)
@@ -170,7 +184,9 @@ describe('AdminClient', () => {
     if (result.ok) return
     expect(result.error.kind).toBe('api')
     expect(result.error.status).toBe(404)
-    expect((result.error as { kind: 'api'; code: string }).code).toBe('not_found')
+    expect((result.error as { kind: 'api'; code: string }).code).toBe(
+      'not_found',
+    )
   })
 
   // ─── updateServiceClient (REQ-ADMIN-03) ──────────────────────────────────
@@ -184,7 +200,9 @@ describe('AdminClient', () => {
     })
 
     const admin = createAdminClient(mockConfig)
-    const result = await admin.updateServiceClient('mi-servicio', { enabled: false })
+    const result = await admin.updateServiceClient('mi-servicio', {
+      enabled: false,
+    })
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
@@ -202,7 +220,9 @@ describe('AdminClient', () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 204,
-      json: async () => { throw new Error('No body') },
+      json: async () => {
+        throw new Error('No body')
+      },
     })
 
     const admin = createAdminClient(mockConfig)
@@ -240,7 +260,9 @@ describe('AdminClient', () => {
     expect(result.data.secret).toBe('nuevo-secret-hex')
 
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe(`${BASE_URL}/admin/service-clients/mi-servicio/rotate-secret`)
+    expect(url).toBe(
+      `${BASE_URL}/admin/service-clients/mi-servicio/rotate-secret`,
+    )
     expect(options.method).toBe('POST')
   })
 
@@ -278,7 +300,9 @@ describe('AdminClient', () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 404,
-      json: async () => ({ error: { code: 'not_found', message: 'Usuario no encontrado' } }),
+      json: async () => ({
+        error: { code: 'not_found', message: 'Usuario no encontrado' },
+      }),
     })
 
     const admin = createAdminClient(mockConfig)
@@ -302,7 +326,9 @@ describe('AdminClient', () => {
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
     expect(result.error.status).toBe(0)
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('network')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'network',
+    )
     expect(result.error.message).toBe('Connection refused')
   })
 
@@ -312,7 +338,9 @@ describe('AdminClient', () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 503,
-      json: async () => { throw new Error('not JSON') },
+      json: async () => {
+        throw new Error('not JSON')
+      },
     })
 
     const admin = createAdminClient(mockConfig)
@@ -322,7 +350,9 @@ describe('AdminClient', () => {
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
     expect(result.error.status).toBe(503)
-    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe('malformed')
+    expect((result.error as { kind: 'sdk'; reason: string }).reason).toBe(
+      'malformed',
+    )
   })
 
   // ─── Error 401 Unauthorized (contraseña incorrecta) ──────────────────────
@@ -331,7 +361,9 @@ describe('AdminClient', () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 401,
-      json: async () => ({ error: { code: 'unauthorized', message: 'Contraseña incorrecta' } }),
+      json: async () => ({
+        error: { code: 'unauthorized', message: 'Contraseña incorrecta' },
+      }),
     })
 
     const admin = createAdminClient(mockConfig)
@@ -340,7 +372,9 @@ describe('AdminClient', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.kind).toBe('api')
-    expect((result.error as { kind: 'api'; code: string }).code).toBe('unauthorized')
+    expect((result.error as { kind: 'api'; code: string }).code).toBe(
+      'unauthorized',
+    )
   })
 })
 
@@ -353,7 +387,10 @@ describe('createAdminClient — validación baseUrl', () => {
 
   it('baseUrl https válido no lanza (REQ-ADMIN-01)', () => {
     expect(() =>
-      createAdminClient({ ...validConfig, baseUrl: 'https://auth.example.com' }),
+      createAdminClient({
+        ...validConfig,
+        baseUrl: 'https://auth.example.com',
+      }),
     ).not.toThrow()
   })
 
