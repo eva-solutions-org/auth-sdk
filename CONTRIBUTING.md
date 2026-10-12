@@ -6,19 +6,33 @@ Please read our [Code of Conduct](./CODE_OF_CONDUCT.md) before participating.
 
 ## Development setup
 
+The repo is a pnpm workspace (`pnpm-workspace.yaml`, packages under `packages/`):
+
+| Package | Path | Role |
+|---------|------|------|
+| `@eva_solutions/auth-sdk` | `packages/auth-sdk/` | The published SDK (source, tests, build, `CHANGELOG.md`) |
+| `@eva_solutions/auth-contracts` | `packages/auth-contracts/` | Shared API contract. `"private": true`: never published on its own |
+
+`docs/`, `.changeset/`, `.github/` and the community files stay at the repo root.
+
 1. Fork the repo and clone your fork.
-2. Install dependencies:
+2. Install dependencies (once, from the repo root):
    ```bash
    pnpm install
    ```
-3. Verify the baseline passes:
+3. Verify the baseline passes. Run these **from the repo root**, not inside a package:
    ```bash
    pnpm run lint
+   pnpm run fmt:check
    pnpm run type-check
    pnpm run test:run
    pnpm run build
    ```
-   `pnpm run build` retries on its own: the tsdown 0.22.0 / rolldown-plugin-dts 0.25.1 build is not deterministic with the `.d.ts.map` files of the index, and today it fails about 60 % of the time without producing them. See [Build y distribución](./docs/configuration.md#build-y-distribución).
+   - `lint`, `fmt` and `fmt:check` are root scripts with a single config (`.oxlintrc.json`, `.oxfmtrc.jsonc`) over both packages. Use `pnpm run fmt` to fix formatting.
+   - `type-check` and `test:run` build `@eva_solutions/auth-contracts` first (`build:contracts`), because the SDK consumes the contract from its built `dist/`. A bare `pnpm -r type-check` on a clean tree fails with "cannot find module": use the root scripts.
+   - `pnpm run test:types` runs the type tests only.
+   - To work on a single package, use `pnpm --filter @eva_solutions/auth-sdk run <script>`; run `pnpm run build:contracts` first if the contract changed.
+   - `pnpm run build` retries on its own: the tsdown 0.22.0 / rolldown-plugin-dts 0.25.1 build is not deterministic with the `.d.ts.map` files of the index, and today it fails about 60 % of the time without producing them. See [Build y distribución](./docs/configuration.md#build-y-distribución).
 
 ## Pull request workflow
 
@@ -29,7 +43,7 @@ Please read our [Code of Conduct](./CODE_OF_CONDUCT.md) before participating.
    ```bash
    pnpm run changeset
    ```
-   Choose `patch` for bug fixes, `minor` for additions, `major` only after maintainer review.
+   Choose `patch` for bug fixes, `minor` for additions, `major` only after maintainer review. Changesets target `@eva_solutions/auth-sdk`; the contract package is private and is not versioned or published by itself.
 5. Commit using [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
 6. Open a PR targeting `main`. Fill in the PR template.
 
@@ -80,6 +94,12 @@ Once the package exists on npm, recovering trust **never needs a token**:
 3. Open a PR with a `patch` changeset, merge it, and merge the Version PR it produces. Confirm the publish with the checks of step 8.
 
 A token is only an emergency fallback. Using one again needs a new, deliberate authorization and its own revocation afterwards.
+
+### Tags and packing
+
+- **Tag format.** The repo is a workspace, so release tags are named after the package: `@eva_solutions/auth-sdk@X.Y.Z` (not `vX.Y.Z`).
+- **Check the tarball contents** without writing anything: `npm pack --dry-run`, run inside `packages/auth-sdk` (it is what the CI `publish-dryrun` job runs). It must list `LICENSE`, `README.md`, `CHANGELOG.md` and `dist/`. `pnpm pack --dry-run` does not exist in pnpm 11.28.2 (`Unknown option`); a real `pnpm pack` writes a `.tgz` in the current directory.
+- **Nothing publishes from a PR branch.** `release.yml` runs `changeset publish` on every push to `main`; `@eva_solutions/auth-contracts` is skipped because it is private.
 
 ### Things that surprise people
 

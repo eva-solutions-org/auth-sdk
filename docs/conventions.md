@@ -61,14 +61,14 @@ import { evaAuth } from '@eva_solutions/auth-sdk/hono/middleware'
 ## Tests
 
 - Un archivo por módulo con sufijo `.mock.test.ts`
-- Fixtures compartidas en `tests/helpers/fixtures.ts`
+- Fixtures compartidas en `packages/auth-sdk/tests/helpers/fixtures.ts`
 - Runner: Vitest
 - Mocks: `vi.mock()`
 
 Estructura:
 
 ```
-tests/
+packages/auth-sdk/tests/
 ├── client.mock.test.ts
 ├── cookies.mock.test.ts
 ├── hono-auth-routes.mock.test.ts

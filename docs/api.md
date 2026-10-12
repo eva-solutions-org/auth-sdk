@@ -59,7 +59,7 @@ Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza
 
 ---
 
-> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<authUrl>/.well-known/jwks.json`. La URL viene de `configureEvaAuth({ authUrl })` (ver [configuration.md](configuration.md#url-del-auth-service)). Cache de 24 h, cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). No hay forma de invalidar la cache manualmente.
+> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../packages/auth-sdk/CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<authUrl>/.well-known/jwks.json`. La URL viene de `configureEvaAuth({ authUrl })` (ver [configuration.md](configuration.md#url-del-auth-service)). Cache de 24 h, cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). No hay forma de invalidar la cache manualmente.
 
 ---
 
@@ -787,7 +787,7 @@ clientId\n
 sha256(bodyBytes)
 ```
 
-`canonicalQuery` no es el query string tal cual: se parte por `&`, se decodifica cada nombre/valor, se ordena por (nombre, valor), se re-codifica en RFC 3986 y se une de nuevo. Un query vacío da `""`. Fuente: `canonicalizeQuery` en `src/s2s/sign.ts`.
+`canonicalQuery` no es el query string tal cual: se parte por `&`, se decodifica cada nombre/valor, se ordena por (nombre, valor), se re-codifica en RFC 3986 y se une de nuevo. Un query vacío da `""`. Fuente: `canonicalizeQuery` en `packages/auth-sdk/src/s2s/sign.ts`.
 
 Para requests sin body, se usa el hash del cuerpo vacío (`EMPTY_BODY_SHA256_HEX`).
 

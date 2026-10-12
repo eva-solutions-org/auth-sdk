@@ -64,7 +64,7 @@ Comunicación con el navegador del usuario:
 ## Estructura de módulos
 
 ```
-src/
+packages/auth-sdk/src/
 ├── client.ts          # createEvaAuth(), punto de entrada público del SDK → ADR-008
 ├── config.ts          # Config runtime: configureEvaAuth, getAuthUrl (authUrl inmutable), validación y errores de configuración → ADR-017
 ├── types.ts           # Todos los tipos exportados

@@ -319,12 +319,12 @@ El SDK se compila **una sola vez** (`pnpm run build`, tsdown; formatos ESM y CJS
 
 | Script | Uso |
 |--------|-----|
-| `pnpm run build` | Compila `dist/` con la guarda de mapas (`scripts/build-with-maps.mjs`) |
+| `pnpm run build` | Compila `dist/` con la guarda de mapas (`packages/auth-sdk/scripts/build-with-maps.mjs`) |
 | `pnpm run dev` | Compila en modo watch (`tsdown --watch`), sin pasar por la guarda |
 
 ### Guarda de mapas de declaraciones
 
-El build de tsdown 0.22.0 / rolldown-plugin-dts 0.25.1 no es determinista: a veces fusiona un chunk `.d.ts` en el index y omite los mapas de declaraciones. Por eso `pnpm run build` no invoca tsdown directamente, sino `scripts/build-with-maps.mjs`:
+El build de tsdown 0.22.0 / rolldown-plugin-dts 0.25.1 no es determinista: a veces fusiona un chunk `.d.ts` en el index y omite los mapas de declaraciones. Por eso `pnpm run build` no invoca tsdown directamente, sino `packages/auth-sdk/scripts/build-with-maps.mjs`:
 
 - Corre tsdown y verifica que existan `dist/index.d.ts.map` y `dist/index.d.cts.map`.
 - Si falta alguno, limpia `dist/` y reintenta, hasta 10 intentos en total.
@@ -349,8 +349,9 @@ npm install @eva_solutions/auth-sdk
 ```bash
 # En el repo del SDK
 pnpm run build
+cd packages/auth-sdk
 pnpm pack
-# Genera eva_solutions-auth-sdk-<version>.tgz en la raíz del repo (*.tgz está en .gitignore)
+# Genera eva_solutions-auth-sdk-<version>.tgz en packages/auth-sdk/ (*.tgz está en .gitignore)
 
 # En el proyecto consumidor
 npm install ../path/to/eva_solutions-auth-sdk-<version>.tgz
@@ -510,7 +511,7 @@ local (por llamada) > global (configureEvaAuth) > defaults en español
 
 ### Todas las keys disponibles
 
-<!-- Defaults sincronizados con src/error-messages.ts. Si modificás los defaults, actualizá esta tabla. -->
+<!-- Defaults sincronizados con packages/auth-sdk/src/error-messages.ts. Si modificás los defaults, actualizá esta tabla. -->
 
 | Key | Default (español) |
 |-----|-------------------|
@@ -733,4 +734,4 @@ expect(res.status).toBe(401)
 expect(await res.json()).toEqual({ error: 'No token' })
 ```
 
-Ver los tests en `tests/hono-auth-routes.mock.test.ts` y `tests/generic-verify.mock.test.ts` para ejemplos completos.
+Ver los tests en `packages/auth-sdk/tests/hono-auth-routes.mock.test.ts` y `packages/auth-sdk/tests/generic-verify.mock.test.ts` para ejemplos completos.

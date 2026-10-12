@@ -68,7 +68,7 @@ El SDK es dueño del algoritmo de firma S2S (canonical de 7 líneas, ver [api.md
 - **TTL del replayCache** `2 * timestampWindowSeconds + 1`. Con el TTL anterior (igual a la ventana) una clave podía expirar mientras el request aún era aceptable por timestamp, abriendo una ventana de replay.
 - **El anti-replay solo existe con `replayCache`** compartido entre instancias y atómico; sin él, un request capturado se puede reenviar durante la ventana.
 - **Query malformado falla cerrado**: un query con percent-encoding inválido (`?a=%ZZ`) se rechaza con `signature_invalid` por el mismo camino que una firma inválida (secreto y HMAC incluidos, `replayCache` intacto); nunca llega a 500. Un secreto no hex devuelto por `secretStore` es un error de configuración y se lanza de forma explícita, sin incluir el secreto en el mensaje.
-- **Vector de paridad (KAT)**: `tests/s2s-nonce.mock.test.ts` (test `KAT: canonical y firma literales`) trae un canonical y una firma literales calculados de forma independiente con `node:crypto`. Cualquier otro repo que verifique o firme S2S por su cuenta debe reproducirlos.
+- **Vector de paridad (KAT)**: `packages/auth-sdk/tests/s2s-nonce.mock.test.ts` (test `KAT: canonical y firma literales`) trae un canonical y una firma literales calculados de forma independiente con `node:crypto`. Cualquier otro repo que verifique o firme S2S por su cuenta debe reproducirlos.
 - Decisión y alternativas: [ADR-018](decisions.md#adr-018-nonce-obligatorio-en-las-firmas-s2s-x-eva-nonce).
 
 ---
