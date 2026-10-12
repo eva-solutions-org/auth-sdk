@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
+  ADMIN_ROUTES,
   AUTH_ROUTES,
   INTERNAL_USER_ROUTES,
   SESSION_ROUTES,
   USER_ROUTES,
+  WEBHOOK_ROUTES,
 } from '@eva_solutions/auth-contracts'
+import { createAdminClient } from '../src/admin/client'
 import { createS2SClient } from '../src/s2s/client'
 import { createHttpClient } from '../src/http-client'
 import { createAuthServiceResponse, createDeviceInfo } from './helpers/fixtures'
@@ -184,4 +187,125 @@ describe('client_paths_equal_descriptors_pre_prefix: internal users', () => {
       pathname: INTERNAL_USER_ROUTES.batch.path,
     })
   })
+})
+
+describe('client_paths_equal_descriptors_pre_prefix: webhooks', () => {
+  const s2s = createS2SClient({
+    clientId: 'svc',
+    secretHex: 'a'.repeat(64),
+    baseUrl: 'https://auth.example',
+  })
+  const ID = '550e8400-e29b-41d4-a716-446655440000'
+  const fill = (path: string) => path.replace('{id}', ID)
+
+  const cases = [
+    [
+      'createWebhookSubscription',
+      WEBHOOK_ROUTES.createSubscription,
+      () =>
+        s2s.createWebhookSubscription({
+          url: 'https://hooks.example/in',
+          eventCodes: ['user.created'],
+        }),
+    ],
+    [
+      'listWebhookSubscriptions',
+      WEBHOOK_ROUTES.listSubscriptions,
+      () => s2s.listWebhookSubscriptions(),
+    ],
+    [
+      'getWebhookSubscription',
+      WEBHOOK_ROUTES.getSubscription,
+      () => s2s.getWebhookSubscription(ID),
+    ],
+    [
+      'updateWebhookSubscription',
+      WEBHOOK_ROUTES.updateSubscription,
+      () => s2s.updateWebhookSubscription(ID, { enabled: false }),
+    ],
+    [
+      'deleteWebhookSubscription',
+      WEBHOOK_ROUTES.deleteSubscription,
+      () => s2s.deleteWebhookSubscription(ID),
+    ],
+    [
+      'rotateWebhookSubscriptionSecret',
+      WEBHOOK_ROUTES.rotateSubscriptionSecret,
+      () => s2s.rotateWebhookSubscriptionSecret(ID),
+    ],
+    [
+      'listWebhookDeliveries',
+      WEBHOOK_ROUTES.listDeliveries,
+      () => s2s.listWebhookDeliveries(),
+    ],
+  ] as const
+
+  it.each(cases)(
+    '%s uses its descriptor method and path',
+    async (_n, route, call) => {
+      await call()
+
+      expect(lastCall()).toEqual({
+        method: route.method,
+        pathname: fill(route.path),
+      })
+    },
+  )
+})
+
+describe('client_paths_equal_descriptors_pre_prefix: admin', () => {
+  const admin = createAdminClient({
+    adminPassword: 'pw',
+    baseUrl: 'https://auth.example',
+  })
+  const SLUG = 'whatsapp-api'
+  const USER_ID = '550e8400-e29b-41d4-a716-446655440000'
+  const fill = (path: string) =>
+    path.replace('{slug}', SLUG).replace('{id}', USER_ID)
+
+  const cases = [
+    [
+      'createServiceClient',
+      ADMIN_ROUTES.createServiceClient,
+      () => admin.createServiceClient({ slug: SLUG }),
+    ],
+    [
+      'listServiceClients',
+      ADMIN_ROUTES.listServiceClients,
+      () => admin.listServiceClients(),
+    ],
+    [
+      'getServiceClient',
+      ADMIN_ROUTES.getServiceClient,
+      () => admin.getServiceClient(SLUG),
+    ],
+    [
+      'updateServiceClient',
+      ADMIN_ROUTES.updateServiceClient,
+      () => admin.updateServiceClient(SLUG, { enabled: false }),
+    ],
+    [
+      'deleteServiceClient',
+      ADMIN_ROUTES.deleteServiceClient,
+      () => admin.deleteServiceClient(SLUG),
+    ],
+    [
+      'rotateServiceClientSecret',
+      ADMIN_ROUTES.rotateServiceClientSecret,
+      () => admin.rotateServiceClientSecret(SLUG),
+    ],
+    ['restoreUser', ADMIN_ROUTES.restoreUser, () => admin.restoreUser(USER_ID)],
+  ] as const
+
+  it.each(cases)(
+    '%s uses its descriptor method and path',
+    async (_n, route, call) => {
+      await call()
+
+      expect(lastCall()).toEqual({
+        method: route.method,
+        pathname: fill(route.path),
+      })
+    },
+  )
 })

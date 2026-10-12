@@ -4,6 +4,9 @@
  * REQ-S2S-05 LOCKED: la ventana de tiempo para el timestamp S2S es de 120 segundos.
  */
 
+import { INTERNAL_HEADERS } from '@eva_solutions/auth-contracts'
+import type { ServiceClientScope } from '@eva_solutions/auth-contracts'
+
 /**
  * Ventana máxima (en segundos) para aceptar un request S2S.
  * Si |serverTime - timestamp| > S2S_TIMESTAMP_WINDOW_SECONDS → firma rechazada.
@@ -31,7 +34,9 @@ export { USERS_BATCH_MAX_IDS } from '@eva_solutions/auth-contracts'
 
 /**
  * Catálogo de scopes S2S reconocidos por el Auth Service.
- * Fuente: API `src/routes/webhook-router.ts` + `internal-router.ts`.
+ *
+ * Se mantiene como objeto del SDK (`S2S_SCOPES.USERS_READ`) pero sus valores deben ser miembros del
+ * catálogo `SERVICE_CLIENT_SCOPES` del contrato: `satisfies` lo comprueba en compilación.
  *
  * @example
  * ```ts
@@ -46,7 +51,7 @@ export const S2S_SCOPES = {
   USERS_READ: 'users:read',
   WEBHOOKS_READ: 'webhooks:read',
   WEBHOOKS_WRITE: 'webhooks:write',
-} as const
+} as const satisfies Record<string, ServiceClientScope>
 
 /** Unión de literales de todos los scopes S2S reconocidos. */
 export type S2SScope = (typeof S2S_SCOPES)[keyof typeof S2S_SCOPES]
@@ -63,5 +68,5 @@ export type S2SScope = (typeof S2S_SCOPES)[keyof typeof S2S_SCOPES]
  * ```
  */
 export const S2S_RESPONSE_HEADERS = {
-  SERVER_TIME: 'x-eva-server-time',
+  SERVER_TIME: INTERNAL_HEADERS.X_EVA_SERVER_TIME,
 } as const

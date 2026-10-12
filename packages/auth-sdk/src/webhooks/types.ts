@@ -4,12 +4,16 @@
  * REQ-WH-08, REQ-ADMIN-06 LOCKED.
  */
 
-import type { EVENT_CODES } from './constants'
+import type {
+  Delivery,
+  EventCode,
+  RotateSubscriptionSecretResponse,
+} from '@eva_solutions/auth-contracts'
 
 /**
- * Tipo del event code — unión de los 11 valores del catálogo.
+ * Tipo del event code — unión de los 11 valores del catálogo (alias del contrato compartido).
  */
-export type EventCode = (typeof EVENT_CODES)[keyof typeof EVENT_CODES]
+export type { EventCode }
 
 /**
  * Payload genérico de un evento webhook tal como lo emite el Auth Service.
@@ -30,6 +34,9 @@ export type WebhookPayload<TData = Record<string, unknown>> = {
 /**
  * Subscription de webhook (sin el signingKey — solo metadata).
  * Shape del wire del API en GET /internal/webhooks/subscriptions/*.
+ *
+ * Tipo propio del SDK, no alias del contrato: aquí `eventCodes` es `EventCode[]` (más ergonómico
+ * para quien lo consume) y en el wire es `string[]`.
  */
 export type WebhookSubscription = {
   id: string
@@ -51,26 +58,12 @@ export type WebhookSubscriptionWithSecret = {
 }
 
 /**
- * Delivery de un webhook (intento de entrega a la URL del consumer).
+ * Delivery de un webhook (intento de entrega a la URL del consumer). Alias del contrato.
  */
-export type WebhookDelivery = {
-  id: string
-  subscriptionId: string
-  eventId: string
-  status: 'pending' | 'delivering' | 'success' | 'expired'
-  attempts: number
-  lastAttemptAt: string | null
-  nextRetryAt: string | null
-  responseStatus: number | null
-  createdAt: string
-}
+export type WebhookDelivery = Delivery
 
 /**
- * Resultado de rotar el secret de una subscription.
- * El signingKey nuevo solo se devuelve una vez.
+ * Resultado de rotar el secret de una subscription (alias del `data` de la respuesta del
+ * contrato). El signingKey nuevo solo se devuelve una vez.
  */
-export type RotateWebhookSecretResult = {
-  id: string
-  signingKey: string
-  updatedAt: string
-}
+export type RotateWebhookSecretResult = RotateSubscriptionSecretResponse['data']

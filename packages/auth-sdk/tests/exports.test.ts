@@ -817,3 +817,54 @@ describe('S2 constants come from the contract (REQ-SDK-04, REQ-SDK-09)', () => {
     )
   })
 })
+
+// ──────────────────────────────────────────────────────────────────────────────
+// S3: webhook constants and the S2S catalog come from the contract and keep their public shape
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('S3 constants come from the contract (REQ-SDK-04, REQ-SDK-09)', () => {
+  const read = (relative: string) =>
+    readFileSync(new URL(relative, import.meta.url), 'utf8')
+
+  it('EVENT_CODES, WEBHOOK_HEADERS and the timestamp window are the contract values', async () => {
+    const contract = await import('@eva_solutions/auth-contracts')
+
+    expect(EVENT_CODES).toBe(contract.EVENT_CODES)
+    expect(WEBHOOK_HEADERS).toBe(contract.WEBHOOK_HEADERS)
+    expect(WEBHOOK_TIMESTAMP_WINDOW_SECONDS).toBe(
+      contract.WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
+    )
+    expect(Object.keys(EVENT_CODES)).toHaveLength(11)
+  })
+
+  it('S2S_SCOPES stays an SDK object whose values are the contract scope catalog (D-27)', async () => {
+    const contract = await import('@eva_solutions/auth-contracts')
+
+    expect(Object.values(S2S_SCOPES).sort()).toEqual(
+      [...contract.SERVICE_CLIENT_SCOPES].sort(),
+    )
+    expect(S2S_SCOPES.USERS_READ).toBe('users:read')
+    expect(S2S_SCOPES.WEBHOOKS_READ).toBe('webhooks:read')
+    expect(S2S_SCOPES.WEBHOOKS_WRITE).toBe('webhooks:write')
+    expect(read('../src/s2s/constants.ts')).toMatch(
+      /satisfies Record<string, ServiceClientScope>/,
+    )
+  })
+
+  it('S2S_RESPONSE_HEADERS.SERVER_TIME is the contract internal header name', async () => {
+    const contract = await import('@eva_solutions/auth-contracts')
+
+    expect(S2S_RESPONSE_HEADERS.SERVER_TIME).toBe(
+      contract.INTERNAL_HEADERS.X_EVA_SERVER_TIME,
+    )
+  })
+
+  it('webhooks/constants.ts holds no local copy of the values and no stale reference', () => {
+    const source = read('../src/webhooks/constants.ts')
+
+    expect(source).not.toMatch(/USER_CREATED:\s*'user\.created'/)
+    expect(source).not.toMatch(/x-eva-webhook-signature/)
+    expect(source).not.toMatch(/WEBHOOK_TIMESTAMP_WINDOW_SECONDS\s*=\s*\d/)
+    expect(source).not.toContain('webhook-constants.ts')
+  })
+})

@@ -14,11 +14,14 @@
  *   DELETE /internal/webhooks/subscriptions/:id
  *   POST /internal/webhooks/subscriptions/:id/rotate-secret
  *   GET  /internal/webhooks/deliveries
+ *
+ * Los paths salen de `INTERNAL_USER_ROUTES` y `WEBHOOK_ROUTES` (contrato compartido) vía `apiPath`.
  */
 
 import {
   INTERNAL_USER_ROUTES,
   USERS_BATCH_MAX_IDS,
+  WEBHOOK_ROUTES,
 } from '@eva_solutions/auth-contracts'
 import { apiPath } from '../api-path'
 import { validateHttpsUrl } from '../config'
@@ -266,7 +269,7 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<WebhookSubscriptionWithSecret>({
         config,
         method: 'POST',
-        pathname: '/internal/webhooks/subscriptions',
+        pathname: apiPath(WEBHOOK_ROUTES.createSubscription),
         body: input,
       })
     },
@@ -277,7 +280,7 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<{ subscriptions: WebhookSubscription[] }>({
         config,
         method: 'GET',
-        pathname: '/internal/webhooks/subscriptions',
+        pathname: apiPath(WEBHOOK_ROUTES.listSubscriptions),
       })
     },
 
@@ -289,7 +292,7 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<WebhookSubscription>({
         config,
         method: 'GET',
-        pathname: `/internal/webhooks/subscriptions/${segment}`,
+        pathname: apiPath(WEBHOOK_ROUTES.getSubscription, { id: segment }),
       })
     },
 
@@ -302,7 +305,7 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<WebhookSubscription>({
         config,
         method: 'PATCH',
-        pathname: `/internal/webhooks/subscriptions/${segment}`,
+        pathname: apiPath(WEBHOOK_ROUTES.updateSubscription, { id: segment }),
         body: input,
       })
     },
@@ -313,7 +316,7 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<void>({
         config,
         method: 'DELETE',
-        pathname: `/internal/webhooks/subscriptions/${segment}`,
+        pathname: apiPath(WEBHOOK_ROUTES.deleteSubscription, { id: segment }),
       })
     },
 
@@ -326,7 +329,9 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<RotateWebhookSecretResult>({
         config,
         method: 'POST',
-        pathname: `/internal/webhooks/subscriptions/${segment}/rotate-secret`,
+        pathname: apiPath(WEBHOOK_ROUTES.rotateSubscriptionSecret, {
+          id: segment,
+        }),
       })
     },
 
@@ -364,7 +369,7 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<{ deliveries: WebhookDelivery[] }>({
         config,
         method: 'GET',
-        pathname: '/internal/webhooks/deliveries',
+        pathname: apiPath(WEBHOOK_ROUTES.listDeliveries),
         rawQuery,
       })
     },

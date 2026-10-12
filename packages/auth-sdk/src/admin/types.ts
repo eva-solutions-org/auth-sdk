@@ -4,6 +4,12 @@
  * REQ-ADMIN-06 LOCKED.
  */
 
+import type {
+  CreateServiceClientResponse,
+  RotateServiceClientSecretResponse,
+  ServiceClientPublic as ContractServiceClientPublic,
+  UpdateServiceClientResponse,
+} from '@eva_solutions/auth-contracts'
 import type { AccountState } from '../account-states'
 
 /**
@@ -25,19 +31,13 @@ export type AdminClientConfig = {
  * Shape del wire en GET /admin/service-clients/*.
  * Las fechas vienen serializadas como ISO strings en el wire.
  */
-export type ServiceClientPublic = {
-  id: string
-  slug: string
-  name: string
-  enabled: boolean
-  scopes: string[]
-  lastUsedAt: string | null
-  createdAt: string
-  updatedAt: string
-}
+export type ServiceClientPublic = ContractServiceClientPublic
 
 /**
  * Input para crear un nuevo service client.
+ *
+ * Tipo propio del SDK, no alias del contrato: `scopes` acepta cualquier string y es el API quien lo
+ * valida contra el catálogo (`SERVICE_CLIENT_SCOPES`).
  */
 export type CreateServiceClientInput = {
   /** Slug único del service client (lowercase, sin espacios). */
@@ -52,19 +52,12 @@ export type CreateServiceClientInput = {
  * Resultado de crear un service client.
  * El `secret` solo se devuelve UNA VEZ — guardarlo de inmediato.
  */
-export type CreateServiceClientResult = {
-  id: string
-  slug: string
-  name: string
-  scopes: string[]
-  enabled: true
-  secret: string
-  warning: string
-}
+export type CreateServiceClientResult = CreateServiceClientResponse['data']
 
 /**
  * Input para actualizar un service client (patch parcial).
- * Al menos un campo debe estar presente.
+ * Al menos un campo debe estar presente. Tipo propio del SDK por la misma razón que
+ * {@link CreateServiceClientInput}.
  */
 export type UpdateServiceClientInput = {
   enabled?: boolean
@@ -76,24 +69,20 @@ export type UpdateServiceClientInput = {
  * Resultado de actualizar un service client.
  * Incluye `warning` cuando se modifican los scopes.
  */
-export type UpdateServiceClientResult = {
-  cliente: ServiceClientPublic
-  warning?: string
-}
+export type UpdateServiceClientResult = UpdateServiceClientResponse['data']
 
 /**
  * Resultado de rotar el secret de un service client.
  * El `secret` nuevo solo se devuelve UNA VEZ.
  */
-export type RotateSecretResult = {
-  slug: string
-  secret: string
-  warning: string
-}
+export type RotateSecretResult = RotateServiceClientSecretResponse['data']
 
 /**
  * Resultado de restaurar una cuenta de usuario eliminada.
  * REQ-RESTORE-01 LOCKED.
+ *
+ * Tipo propio del SDK: `stateAccount` es la unión completa `AccountState`, y en el wire es el único
+ * literal `no_verificado`.
  */
 export type RestoreUserResult = {
   userId: string

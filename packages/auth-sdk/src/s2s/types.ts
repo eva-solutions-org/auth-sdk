@@ -5,7 +5,9 @@
  */
 
 import type {
+  CreateSubscriptionRequest,
   ProfileResponse,
+  UpdateSubscriptionRequest,
   UsersBatchRequest,
   UsersBatchResponse,
 } from '@eva_solutions/auth-contracts'
@@ -85,28 +87,23 @@ export type S2SBatchUsersInput = UsersBatchRequest
 export type S2SBatchUsersResult = UsersBatchResponse['data']
 
 /**
- * Input para crear una subscription de webhook.
+ * Input para crear una subscription de webhook (alias del request del contrato): `url` donde el
+ * Auth Service enviará los eventos, `eventCodes` a suscribir (al menos uno) y `enabled` (por
+ * defecto `true` en el API).
  */
-export type CreateWebhookSubscriptionInput = {
-  /** URL pública donde el Auth Service enviará los eventos. */
-  url: string
-  /** Lista de event codes a suscribir. */
-  eventCodes: string[]
-  /** Si la subscription está activa al crearla. Default: true en el API. */
-  enabled?: boolean
-}
+export type CreateWebhookSubscriptionInput = CreateSubscriptionRequest
 
 /**
- * Input para actualizar una subscription de webhook (patch parcial).
+ * Input para actualizar una subscription de webhook (patch parcial; alias del request del
+ * contrato).
  */
-export type UpdateWebhookSubscriptionInput = {
-  url?: string
-  eventCodes?: string[]
-  enabled?: boolean
-}
+export type UpdateWebhookSubscriptionInput = UpdateSubscriptionRequest
 
 /**
  * Query params para listar deliveries.
+ *
+ * Tipo propio del SDK, no alias del contrato: el query del contrato coacciona strings a números y
+ * por eso su tipo de entrada es `unknown`; aquí `limit` y `offset` son `number`.
  */
 export type ListWebhookDeliveriesQuery = {
   event_id?: string

@@ -15,8 +15,13 @@
  *   DELETE /admin/service-clients/:slug                 → deleteServiceClient (204)
  *   POST   /admin/service-clients/:slug/rotate-secret   → rotateServiceClientSecret
  *   POST   /admin/users/:id/restore                     → restoreUser
+ *
+ * Los paths salen de `ADMIN_ROUTES` (contrato compartido) vía `apiPath`; el slug y el id se
+ * insertan tal cual, sin codificar (a diferencia del cliente S2S).
  */
 
+import { ADMIN_ROUTES } from '@eva_solutions/auth-contracts'
+import { apiPath } from '../api-path'
 import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../parse-error-response'
 import type { Result } from '../types'
@@ -141,7 +146,7 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       return adminFetch<CreateServiceClientResult>({
         config,
         method: 'POST',
-        pathname: '/admin/service-clients',
+        pathname: apiPath(ADMIN_ROUTES.createServiceClient),
         body: input,
       })
     },
@@ -152,7 +157,7 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       return adminFetch<{ clientes: ServiceClientPublic[] }>({
         config,
         method: 'GET',
-        pathname: '/admin/service-clients',
+        pathname: apiPath(ADMIN_ROUTES.listServiceClients),
       })
     },
 
@@ -162,7 +167,7 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       return adminFetch<{ cliente: ServiceClientPublic }>({
         config,
         method: 'GET',
-        pathname: `/admin/service-clients/${slug}`,
+        pathname: apiPath(ADMIN_ROUTES.getServiceClient, { slug }),
       })
     },
 
@@ -173,7 +178,7 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       return adminFetch<UpdateServiceClientResult>({
         config,
         method: 'PATCH',
-        pathname: `/admin/service-clients/${slug}`,
+        pathname: apiPath(ADMIN_ROUTES.updateServiceClient, { slug }),
         body: input,
       })
     },
@@ -182,7 +187,7 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       return adminFetch<void>({
         config,
         method: 'DELETE',
-        pathname: `/admin/service-clients/${slug}`,
+        pathname: apiPath(ADMIN_ROUTES.deleteServiceClient, { slug }),
       })
     },
 
@@ -192,7 +197,7 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       return adminFetch<RotateSecretResult>({
         config,
         method: 'POST',
-        pathname: `/admin/service-clients/${slug}/rotate-secret`,
+        pathname: apiPath(ADMIN_ROUTES.rotateServiceClientSecret, { slug }),
       })
     },
 
@@ -200,7 +205,7 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       return adminFetch<RestoreUserResult>({
         config,
         method: 'POST',
-        pathname: `/admin/users/${userId}/restore`,
+        pathname: apiPath(ADMIN_ROUTES.restoreUser, { id: userId }),
       })
     },
   }

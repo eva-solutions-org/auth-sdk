@@ -651,3 +651,108 @@ describe('S2 SDK mirrors equal the contract (D-28)', () => {
     }>()
   })
 })
+
+// ───── S3 contract aliases (D-28): old SDK type == contract type, proven before the swap ─────
+
+import type {
+  CreateServiceClientRequest as ContractCreateServiceClientRequest,
+  CreateServiceClientResponse as ContractCreateServiceClientResponse,
+  CreateSubscriptionRequest as ContractCreateSubscriptionRequest,
+  DeliveriesQuery as ContractDeliveriesQuery,
+  Delivery as ContractDelivery,
+  EVENT_CODES as CONTRACT_EVENT_CODES,
+  EventCode as ContractEventCode,
+  RestoreUserResponse as ContractRestoreUserResponse,
+  RotateServiceClientSecretResponse as ContractRotateServiceClientSecretResponse,
+  RotateSubscriptionSecretResponse as ContractRotateSubscriptionSecretResponse,
+  ServiceClientPublic as ContractServiceClientPublic,
+  ServiceClientScope as ContractServiceClientScope,
+  Subscription as ContractSubscription,
+  UpdateServiceClientRequest as ContractUpdateServiceClientRequest,
+  UpdateServiceClientResponse as ContractUpdateServiceClientResponse,
+  UpdateSubscriptionRequest as ContractUpdateSubscriptionRequest,
+  WEBHOOK_HEADERS as CONTRACT_WEBHOOK_HEADERS,
+} from '@eva_solutions/auth-contracts'
+import type {
+  EVENT_CODES as SDK_EVENT_CODES,
+  WEBHOOK_HEADERS as SDK_WEBHOOK_HEADERS,
+} from '../src/webhooks/constants'
+import type {
+  RotateWebhookSecretResult,
+  WebhookDelivery,
+  WebhookSubscription,
+  WebhookSubscriptionWithSecret,
+} from '../src/webhooks/types'
+import type {
+  CreateServiceClientInput,
+  RestoreUserResult,
+  RotateSecretResult,
+  UpdateServiceClientInput,
+  UpdateServiceClientResult,
+} from '../src/admin/types'
+import type {
+  CreateWebhookSubscriptionInput,
+  ListWebhookDeliveriesQuery,
+  UpdateWebhookSubscriptionInput,
+} from '../src/s2s/types'
+import type { S2SScope } from '../src/s2s/constants'
+
+describe('S3 SDK mirrors equal the contract (D-28)', () => {
+  it('webhook constants have the contract type', () => {
+    expectTypeOf<typeof SDK_EVENT_CODES>().toEqualTypeOf<
+      typeof CONTRACT_EVENT_CODES
+    >()
+    expectTypeOf<typeof SDK_WEBHOOK_HEADERS>().toEqualTypeOf<
+      typeof CONTRACT_WEBHOOK_HEADERS
+    >()
+    expectTypeOf<EventCode>().toEqualTypeOf<ContractEventCode>()
+  })
+
+  it('WebhookDelivery and RotateWebhookSecretResult equal the contract shapes', () => {
+    expectTypeOf<WebhookDelivery>().toEqualTypeOf<ContractDelivery>()
+    expectTypeOf<RotateWebhookSecretResult>().toEqualTypeOf<
+      ContractRotateSubscriptionSecretResponse['data']
+    >()
+  })
+
+  it('admin result shapes equal the contract responses', () => {
+    expectTypeOf<ServiceClientPublic>().toEqualTypeOf<ContractServiceClientPublic>()
+    expectTypeOf<CreateServiceClientResult>().toEqualTypeOf<
+      ContractCreateServiceClientResponse['data']
+    >()
+    expectTypeOf<UpdateServiceClientResult>().toEqualTypeOf<
+      ContractUpdateServiceClientResponse['data']
+    >()
+    expectTypeOf<RotateSecretResult>().toEqualTypeOf<
+      ContractRotateServiceClientSecretResponse['data']
+    >()
+  })
+
+  it('webhook subscription inputs equal the contract request shapes', () => {
+    expectTypeOf<CreateWebhookSubscriptionInput>().toEqualTypeOf<ContractCreateSubscriptionRequest>()
+    expectTypeOf<UpdateWebhookSubscriptionInput>().toEqualTypeOf<ContractUpdateSubscriptionRequest>()
+  })
+
+  // SDK-owned on purpose (listed in apply-progress): the SDK type is more ergonomic than the wire
+  // type, so these stay hand-written and this block records that they do NOT alias the contract.
+  it('SDK-owned ergonomic types stay different from the wire types', () => {
+    // `eventCodes` is `EventCode[]` for SDK callers, `string[]` on the wire
+    expectTypeOf<WebhookSubscription>().not.toEqualTypeOf<ContractSubscription>()
+    expectTypeOf<
+      WebhookSubscriptionWithSecret['subscription']
+    >().toEqualTypeOf<WebhookSubscription>()
+    // the coerced numbers of the query are `unknown` as zod input; the SDK takes numbers
+    expectTypeOf<ListWebhookDeliveriesQuery>().not.toEqualTypeOf<ContractDeliveriesQuery>()
+    // the SDK accepts any scope string on input, the contract narrows it to the catalog
+    expectTypeOf<CreateServiceClientInput>().not.toEqualTypeOf<ContractCreateServiceClientRequest>()
+    expectTypeOf<UpdateServiceClientInput>().not.toEqualTypeOf<ContractUpdateServiceClientRequest>()
+    // `stateAccount` is the full AccountState union in the SDK, the one restore literal on the wire
+    expectTypeOf<RestoreUserResult>().not.toEqualTypeOf<
+      ContractRestoreUserResponse['data']
+    >()
+  })
+
+  it('S2S_SCOPES values are the contract scopes (D-27)', () => {
+    expectTypeOf<S2SScope>().toEqualTypeOf<ContractServiceClientScope>()
+  })
+})
