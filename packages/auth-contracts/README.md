@@ -25,7 +25,7 @@ All exports come from `src/index.ts`, which re-exports the modules below.
 
 Request types are `z.input<>` of the schema, response types are `z.output<>`. Refresh answers with `loginResponseSchema` and logout with `messageResponseSchema`: there is no separate schema for them.
 
-Route descriptors are plain data: `path` is relative to `API_PREFIX` and uses the OpenAPI template form (`/sessions/{id}`). `API_PREFIX` is declared here, but the SDK clients do not prepend it yet; routes are still served and requested without it. Request handling, middleware and the full OpenAPI route definitions (`createRoute`) stay in the API.
+Route descriptors are plain data: `path` is relative to `API_PREFIX` and uses the OpenAPI template form (`/sessions/{id}`). `API_PREFIX` (`/api/v1`) is declared here and the SDK clients prepend it to every route they build (`apiPath()`); the JWKS and `/health` stay at the origin root. Request handling, middleware and the full OpenAPI route definitions (`createRoute`) stay in the API.
 
 ## PURE and SCHEMA modules
 

@@ -184,13 +184,13 @@ import { signS2SHeaders } from '@eva_solutions/auth-sdk/s2s';
 const bodyBytes = new TextEncoder().encode(JSON.stringify({ id: '123' }));
 const headers = await signS2SHeaders({
   method: 'POST',
-  path: '/internal/users',
+  path: '/api/v1/internal/users',
   bodyBytes,
   clientId: 'my-service',
   secretHex: process.env.S2S_SECRET!,
 });
 
-await fetch('https://auth.example.com/internal/users', {
+await fetch('https://auth.example.com/api/v1/internal/users', {
   method: 'POST',
   headers: { 'content-type': 'application/json', ...headers },
   body: bodyBytes,

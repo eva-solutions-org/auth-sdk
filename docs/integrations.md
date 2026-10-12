@@ -6,7 +6,7 @@
 
 | Role | What it does | How it uses the SDK |
 |------|--------------|---------------------|
-| **Auth Service** | Server. Issues JWTs (ES256), serves the JWKS, exposes the `/internal/*` S2S endpoints. Not part of this repo (see [adr-013-oss-model.md](adr-013-oss-model.md)). | Server-side S2S verification (`s2sAuth`) and request signing (`signS2SRequest`). |
+| **Auth Service** | Server. Issues JWTs (ES256), serves the JWKS, exposes the `/api/v1/internal/*` S2S endpoints. Not part of this repo (see [adr-013-oss-model.md](adr-013-oss-model.md)). | Server-side S2S verification (`s2sAuth`) and request signing (`signS2SRequest`). |
 | **Auth - SDK** (this repo) | Client library: JWT cookie middleware, auth proxy routes, S2S client and verifier. | — |
 | **App backend** | Any service that protects its routes with JWT cookies and/or calls the Auth Service over S2S. | JWT cookie middleware, auth proxy routes and S2S client. |
 
@@ -32,7 +32,8 @@ These are the values the SDK and the Auth Service must agree on. Changing any of
 | Access cookie name | `eva_access_token` (max age 15 min) | `packages/auth-sdk/src/constants.ts` (`COOKIES`, `COOKIE_MAX_AGE`) |
 | Refresh cookie name | `eva_refresh_token` (max age 30 days) | `packages/auth-sdk/src/constants.ts` |
 | JWT issuer / audience / algorithm | `auth-service` / `proyecto-global` / `ES256` | `packages/auth-sdk/src/constants.ts` (`JWT_CONFIG`) |
-| JWKS location | `<auth url>/.well-known/jwks.json`, fetched at runtime | `packages/auth-sdk/src/jwks.ts` |
+| JWKS location | `<auth url>/.well-known/jwks.json` (root of the Auth Service, not under `/api/v1`), fetched at runtime | `packages/auth-sdk/src/jwks.ts` |
+| Auth Service route prefix | `/api/v1` on every route except JWKS, `/health`, `/ui` and `/doc`. Added by `apiPath()`; `authUrl` does not include it. | `packages/auth-contracts/src/routes.ts` (`API_PREFIX`), `packages/auth-sdk/src/api-path.ts` |
 | S2S headers | `X-Eva-Client-Id`, `X-Eva-Timestamp`, `X-Eva-Nonce` (32 lowercase hex, `^[0-9a-f]{32}$`, new per request), `X-Eva-Signature` (`sha256=` prefix). All four are required. | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
 | S2S canonical string (7 lines) | `METHOD`, path, **canonicalized** query (decoded, sorted by name then value, RFC 3986 re-encoded), timestamp, nonce, client id, `sha256(body)`, joined by newlines (`buildS2SCanonicalString` and `canonicalizeQuery` in `packages/auth-sdk/src/s2s/sign.ts`). The SDK owns this algorithm: any other implementation (for example a server-side verifier in the Auth Service) must follow it, not the reverse. | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
 | S2S replay protection | `replayCache.setIfAbsent(key, ttl)` with key `${clientId}:${nonce}` and ttl `2 * timestampWindowSeconds + 1` (241 s by default). Verification failures use the reasons `header_missing`, `timestamp_invalid`, `timestamp_expired`, `nonce_malformed`, `signature_malformed`, `client_unknown`, `signature_invalid`, `replay_detected`. | [api.md, section S2S](api.md#eva_solutionsauth-sdks2s) |
@@ -107,7 +108,7 @@ A change to an exposed contract above is not done until the consumers run it. Ch
 
 ## What the SDK consumes from the Auth Service
 
-The SDK calls the Auth Service at the configured `authUrl`: the JWKS (`/.well-known/jwks.json`) to verify access tokens, the user-facing auth endpoints behind `evaAuthRoutes()` (`login`, `login/get-code`, `login/refresh`, `login/logout`, `user`, `user/empresas`, `sessions`, `health`; `packages/auth-sdk/src/http-client.ts`; `login` needs the `challengeId` returned by `login/get-code`, so the SDK 3.0.0 only works against an Auth Service that issues and checks it), and the S2S client's `/internal/users/*` and `/internal/webhooks/*` endpoints (`packages/auth-sdk/src/s2s/client.ts`, table in [api.md](api.md#eva_solutionsauth-sdks2s)). The Auth Service owns these endpoints, their scopes and their behavior.
+The SDK calls the Auth Service at the configured `authUrl`: the JWKS (`/.well-known/jwks.json`) to verify access tokens, the user-facing auth endpoints behind `evaAuthRoutes()` (`/api/v1/login`, `/api/v1/login/get-code`, `/api/v1/login/refresh`, `/api/v1/login/logout`, `/api/v1/user`, `/api/v1/user/empresas`, `/api/v1/sessions`, and `/health` at the root; `packages/auth-sdk/src/http-client.ts`; `login` needs the `challengeId` returned by `login/get-code`, so the SDK 3.0.0 only works against an Auth Service that issues and checks it), and the S2S client's `/api/v1/internal/users/*` and `/api/v1/internal/webhooks/*` endpoints (`packages/auth-sdk/src/s2s/client.ts`, table in [api.md](api.md#eva_solutionsauth-sdks2s)). The Auth Service owns these endpoints, their scopes and their behavior.
 
 ## Verification sources
 

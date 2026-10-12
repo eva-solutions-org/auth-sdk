@@ -178,6 +178,7 @@ configureEvaAuth({ authUrl: process.env.AUTH_URL })
 | Con credenciales (`https://user:pass@host`) | Lanza |
 | Con query o fragmento (`?a=1`, `#x`, incluso un `?` o `#` solitario) | Lanza |
 
+- **Sin `/api/v1`**: `authUrl` no lleva el prefijo de versión. El SDK lo agrega a cada ruta del Auth Service (`/api/v1/...`); el JWKS y `/health` se piden en la raíz de `authUrl`. Ver [migration.md](migration.md#9-rutas-del-auth-service-bajo-apiv1).
 - **Normalización**: host en minúsculas y sin `/` final. `getAuthUrl()` devuelve la forma normalizada.
 - **Sin eco**: los mensajes de error no repiten el valor recibido (podría traer credenciales). El rechazo de http remoto muestra solo el href normalizado.
 - **Inmutable**: repetir la llamada con el mismo valor normalizado es no-op; con otro valor lanza `authUrl ya fue configurada y no puede cambiar en runtime`.
@@ -400,7 +401,7 @@ El sub-router se monta con un prefijo fijo. El estándar es `/auth`:
 app.route('/auth', evaAuthRoutes())
 ```
 
-Todos los endpoints quedan bajo `/auth/*` (ej: `/auth/login`, `/auth/me`, `/auth/sessions`).
+Todos los endpoints quedan bajo `/auth/*` (ej: `/auth/login`, `/auth/me`, `/auth/sessions`). Son rutas del BFF de tu backend, no del Auth Service: no llevan `/api/v1`.
 
 ---
 

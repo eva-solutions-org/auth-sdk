@@ -42,7 +42,7 @@ Run scripts as `pnpm run <script>` (`version` and `docs` collide with pnpm built
 
 ## Consumers & server
 
-- **The Auth Service (private)** — the server this SDK talks to (JWKS, public auth routes, S2S `/internal/*` as documented in [`docs/api.md`](docs/api.md)).
+- **The Auth Service (private)** — the server this SDK talks to (JWKS, public auth routes, S2S `/api/v1/internal/*` as documented in [`docs/api.md`](docs/api.md)).
 - **Internal consumer services (private)** — install the SDK as a package.
 
 The contract this SDK exposes and the release/propagation checklist live in [`docs/integrations.md`](docs/integrations.md).

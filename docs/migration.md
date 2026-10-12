@@ -10,7 +10,8 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 4. Si desarrollas en local, sirve tu app por https (las cookies ahora son siempre `Secure`).
 5. Si firmas requests S2S a mano (sin `createS2SClient`), cambia a `signS2SHeaders` (sección 7). Si verificas S2S, cada request entrante debe traer `x-eva-nonce`.
 6. Si tu frontend hace el login OTP (`login.getCode` / `login.verify` o `POST /get-code` + `POST /login`), conserva el `challengeId` que devuelve `get-code` y envíalo con el código (sección 8).
-7. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
+7. Si llamas al Auth Service sin el SDK (fetch directo, proxy, gateway por path), todas sus rutas viven ahora bajo `/api/v1`. `AUTH_URL` no cambia (sección 9).
+8. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
 
 ## Resumen de breaking changes
 
@@ -25,6 +26,7 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 | 7 | `authUrl` | Inmutable: un segundo valor distinto lanza |
 | 8 | S2S | Nuevo header obligatorio `x-eva-nonce`; canonical de 7 líneas; razón `nonce_malformed`; clave y TTL del `replayCache` cambian |
 | 9 | Login OTP | `get-code` devuelve `challengeId` y `/login` (`LoginSchema`, `http-client.login`, `login.verify`) lo exige |
+| 10 | Rutas del Auth Service | Todas bajo `/api/v1` (login, user, sessions, `/internal/*`, `/admin/*`, webhooks); JWKS y `/health` siguen en la raíz; `AUTH_URL` no cambia |
 
 ---
 
@@ -142,7 +144,7 @@ Las firmas S2S ahora incluyen un nonce por request. No hay modo de compatibilida
 
 **Cambios de `createS2SClient` que sí pueden afectarte:**
 
-- **Prefijo de `baseUrl` en la firma.** El cliente firma el pathname de la URL final, incluido el prefijo de `baseUrl` (por ejemplo `/auth/internal/users/...`). Si entre el cliente y el verificador hay un proxy o gateway que **quita** ese prefijo, el verificador verá `/internal/users/...`, la firma no coincidirá y responderá `signature_invalid`. Opciones: que el proxy conserve el prefijo, o usar un `baseUrl` sin prefijo y enrutar por host.
+- **Prefijo de `baseUrl` en la firma.** El cliente firma el pathname de la URL final, incluido el prefijo de `baseUrl` (por ejemplo `/auth/api/v1/internal/users/...`). Si entre el cliente y el verificador hay un proxy o gateway que **quita** ese prefijo, el verificador verá `/api/v1/internal/users/...`, la firma no coincidirá y responderá `signature_invalid`. Opciones: que el proxy conserve el prefijo, o usar un `baseUrl` sin prefijo y enrutar por host.
 - **Ids validados y codificados.** `getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription` y `rotateWebhookSubscriptionSecret` devuelven `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }`, sin hacer fetch, si el id es vacío, `.` o `..` (crudo o percent-decodificado, `%2e` en cualquier caso). Cualquier otro id pasa por `encodeURIComponent`: `a/b` viaja como `a%2Fb`, `a?b` como `a%3Fb`. Los UUID no cambian.
 
 **Si firmas a mano** con `signS2SRequest` y armas los headers tú:
@@ -211,6 +213,39 @@ Reglas:
 - Si el usuario pide un código nuevo, reemplaza el `challengeId` guardado: el anterior deja de servir (con varias pestañas gana el último `get-code`).
 - Un `challengeId` ausente da 400; uno distinto al vigente, o ya consumido, da 401 `Credenciales inválidas`, igual que un código incorrecto pero sin gastar intentos.
 - Actualiza el SDK y el Auth Service juntos: un Auth Service anterior no emite `challengeId` (el login del frontend no tendría qué enviar) y uno nuevo rechaza el login sin él.
+
+---
+
+## 9. Rutas del Auth Service bajo `/api/v1`
+
+El Auth Service sirve todas sus rutas HTTP bajo `/api/v1`: login, user, sessions, `/internal/*`, `/admin/*` y webhooks. En la raíz quedan solo `/.well-known/jwks.json`, `/health`, `/ui` y `/doc`. Una ruta sin prefijo (por ejemplo `POST /login`) responde 404 `not_found`, sin redirección. El SDK 3.0.0 antepone el prefijo en todos sus clientes (`createHttpClient`, `createS2SClient`, `createAdminClient`), así que solo funciona contra un Auth Service que sirva `/api/v1`: actualiza ambos juntos.
+
+| Ruta del Auth Service | 2.x | 3.0.0 |
+|-----------------------|-----|-------|
+| Login OTP | `POST /login/get-code` | `POST /api/v1/login/get-code` |
+| Perfil | `GET /user` | `GET /api/v1/user` |
+| S2S usuarios | `GET /internal/users/{id}` | `GET /api/v1/internal/users/{id}` |
+| Admin | `POST /admin/service-clients` | `POST /api/v1/admin/service-clients` |
+| JWKS | `GET /.well-known/jwks.json` | sin cambio |
+| Health | `GET /health` | sin cambio |
+
+**`AUTH_URL` no cambia.** El prefijo no va en `authUrl`: el SDK lo agrega dentro de cada path (`apiPath()` devuelve `API_PREFIX + path`). Si lo pusieras en `authUrl`, el JWKS se buscaría en `<authUrl>/.well-known/jwks.json` = `/api/v1/.well-known/jwks.json`, que responde 404, y la verificación de tokens dejaría de funcionar.
+
+**`baseUrl` con path** (`createS2SClient`, `createAdminClient`): el prefijo del path se conserva y `/api/v1` se agrega después. El cliente firma el pathname final.
+
+```ts
+const s2s = createS2SClient({ baseUrl: 'https://auth.test/auth', /* ... */ })
+await s2s.getUser('u1')
+// GET https://auth.test/auth/api/v1/internal/users/u1
+// pathname firmado: /auth/api/v1/internal/users/u1
+```
+
+**Qué revisar:**
+
+- Un proxy o gateway que enruta o filtra por path debe dejar pasar `/api/v1/*`.
+- Un verificador S2S propio recibe y verifica el pathname `/api/v1/internal/...`.
+- Si llamas al Auth Service sin el SDK, cambia tus paths a `/api/v1/...`.
+- Las rutas de **tu** backend no cambian: lo que montas con `evaAuthRoutes()` (por ejemplo `/auth/login`, `/auth/me`) y lo que consumen los hooks de React (`useAuthData('/sessions')`) son rutas del BFF del consumidor, no del Auth Service, y no se prefijan.
 
 ---
 

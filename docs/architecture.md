@@ -21,6 +21,8 @@ Comunicación interna con headers custom:
 | Response | `x-eva-new-access-token` | Nuevo access token (si rotado) |
 | Response | `x-eva-new-refresh-token` | Nuevo refresh token (si rotado) |
 
+El Auth Service sirve todas sus rutas bajo `/api/v1`, salvo el JWKS (`/.well-known/jwks.json`) y `/health`, que siguen en la raíz. El SDK antepone el prefijo; `authUrl` no lo lleva.
+
 ### Capa 2: Frontend ↔ Backend consumidor (cookies HttpOnly)
 
 Comunicación con el navegador del usuario:
@@ -70,7 +72,7 @@ packages/auth-sdk/src/
 ├── types.ts           # Todos los tipos exportados
 ├── errors.ts          # EvaAuthError, createAuthError, isAuthError
 ├── constants.ts       # HEADERS (re-export del contrato), COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
-├── api-path.ts        # apiPath(): construye la ruta de un descriptor del contrato (rellena {param})
+├── api-path.ts        # apiPath(): construye la ruta de un descriptor del contrato (rellena {param} y antepone API_PREFIX = /api/v1)
 ├── parse-error-response.ts  # parseErrorResponse (módulo puro: sin zod, solo `import type`)
 ├── refresh-dedup.ts   # Deduplicación de refresh compartida (Map por refreshToken)
 ├── jwks.ts            # JWKS remoto lazy (jose createRemoteJWKSet): cache 24h, cooldown 30s, timeout 5s
@@ -128,6 +130,10 @@ El repo es un workspace pnpm con dos paquetes: `packages/auth-sdk` (el SDK publi
 - El SDK consume el contrato desde su `dist` construido, no desde las fuentes: los scripts raíz `type-check` y `test:run` corren antes `build:contracts`. Un `pnpm -r type-check` pelado en un árbol limpio falla con "cannot find module".
 - El contrato se compila con `unbundle: true` (un archivo `dist` por módulo fuente) y `"sideEffects": false`, para que el bundler del SDK descarte los módulos del contrato que un entry no usa.
 - `zod` es peer del contrato (`^4.4.3`) y dependency del SDK (`^4.4.3`). Los schemas inlineados importan `zod` desde la resolución del consumidor, por lo que el consumidor debe tener **una sola copia** en su lock.
+
+### Prefijo `/api/v1`
+
+`API_PREFIX` (`'/api/v1'`) vive en el módulo PURE `routes.ts`, y los `path` de los descriptores son relativos a él. `apiPath()` (`src/api-path.ts`) devuelve `API_PREFIX + path` con los `{param}` rellenados; `http-client.ts`, `s2s/client.ts` y `admin/client.ts` arman todas sus rutas ahí, así que el prefijo vive en un solo lugar. Quedan fuera de `apiPath()`, en la raíz del Auth Service, `/.well-known/jwks.json` (`jwks.ts`) y `/health` (`http-client.ts`). El prefijo va dentro de los paths y no en `authUrl`: si estuviera en `authUrl`, el JWKS se pediría bajo `/api/v1` y devolvería 404. Las requests a `/internal/*` firman el pathname final, ya con el prefijo. Guía de migración: [migration.md](migration.md#9-rutas-del-auth-service-bajo-apiv1).
 
 ### Módulos PURE y SCHEMA
 

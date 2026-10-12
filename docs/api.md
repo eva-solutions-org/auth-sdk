@@ -59,7 +59,7 @@ Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza
 
 ---
 
-> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../packages/auth-sdk/CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<authUrl>/.well-known/jwks.json`. La URL viene de `configureEvaAuth({ authUrl })` (ver [configuration.md](configuration.md#url-del-auth-service)). Cache de 24 h, cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). No hay forma de invalidar la cache manualmente.
+> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../packages/auth-sdk/CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<authUrl>/.well-known/jwks.json` (en la raíz del Auth Service, sin `/api/v1`). La URL viene de `configureEvaAuth({ authUrl })` (ver [configuration.md](configuration.md#url-del-auth-service)). Cache de 24 h, cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). No hay forma de invalidar la cache manualmente.
 
 ---
 
@@ -226,6 +226,8 @@ Retorna `Hono`.
 | `GET` | `/sessions` | cookies | `{ data: EvaSession[] }` |
 | `DELETE` | `/sessions/:id` | cookies | `{ data: { message } }` |
 | `DELETE` | `/sessions` | cookies | `{ data: { message, count } }` + Clear-Cookie |
+
+> Estas rutas son las del BFF de **tu** backend, montadas bajo el prefijo que elijas (por ejemplo `/auth`). No son las del Auth Service y no llevan `/api/v1`: por dentro, el SDK llama al Auth Service en `/api/v1/...`.
 
 ---
 
@@ -707,15 +709,17 @@ const restored = await admin.restoreUser('uuid-del-usuario')
 
 ### Métodos del AdminClient
 
+Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migration.md#9-rutas-del-auth-service-bajo-apiv1)).
+
 | Método | HTTP | Path | Descripción |
 |--------|------|------|-------------|
-| `createServiceClient(input)` | POST | `/admin/service-clients` | Crea client. Secret one-time. |
-| `listServiceClients()` | GET | `/admin/service-clients` | Lista todos. |
-| `getServiceClient(slug)` | GET | `/admin/service-clients/:slug` | Detalle por slug. |
-| `updateServiceClient(slug, input)` | PATCH | `/admin/service-clients/:slug` | Parche parcial. |
-| `deleteServiceClient(slug)` | DELETE | `/admin/service-clients/:slug` | Hard-delete. 204. |
-| `rotateServiceClientSecret(slug)` | POST | `/admin/service-clients/:slug/rotate-secret` | Rota secret. One-time. |
-| `restoreUser(userId)` | POST | `/admin/users/:id/restore` | Restaura usuario eliminado. |
+| `createServiceClient(input)` | POST | `/api/v1/admin/service-clients` | Crea client. Secret one-time. |
+| `listServiceClients()` | GET | `/api/v1/admin/service-clients` | Lista todos. |
+| `getServiceClient(slug)` | GET | `/api/v1/admin/service-clients/:slug` | Detalle por slug. |
+| `updateServiceClient(slug, input)` | PATCH | `/api/v1/admin/service-clients/:slug` | Parche parcial. |
+| `deleteServiceClient(slug)` | DELETE | `/api/v1/admin/service-clients/:slug` | Hard-delete. 204. |
+| `rotateServiceClientSecret(slug)` | POST | `/api/v1/admin/service-clients/:slug/rotate-secret` | Rota secret. One-time. |
+| `restoreUser(userId)` | POST | `/api/v1/admin/users/:id/restore` | Restaura usuario eliminado. |
 
 Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.
 
@@ -756,7 +760,7 @@ const rotated = await s2s.rotateWebhookSubscriptionSecret('subscription-id')
 const deliveries = await s2s.listWebhookDeliveries({ status: 'failed', limit: 20 })
 ```
 
-`baseUrl` puede llevar un prefijo de path (por ejemplo `https://host/auth`). El cliente firma el pathname de la URL final (`/auth/internal/users/...`), que es el que lee el verificador en `request.url`. Si un proxy quita ese prefijo antes de llegar al verificador, la firma falla con `signature_invalid` (ver [migration.md](migration.md), sección 7).
+`baseUrl` puede llevar un prefijo de path (por ejemplo `https://host/auth`). Todas las rutas del Auth Service llevan además el prefijo `/api/v1`, que el cliente agrega después del de `baseUrl`: `https://host/auth` → `https://host/auth/api/v1/internal/users/u1`. El cliente firma el pathname de la URL final (`/auth/api/v1/internal/users/...`), que es el que lee el verificador en `request.url`. Si un proxy quita ese prefijo antes de llegar al verificador, la firma falla con `signature_invalid` (ver [migration.md](migration.md), sección 7).
 
 Los ids que recibe el cliente (`getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription`, `rotateWebhookSubscriptionSecret`) se validan y se codifican como un solo segmento de path: un id vacío, `.` o `..` (crudo o percent-decodificado) devuelve `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }` sin hacer fetch, y el resto pasa por `encodeURIComponent` (`a/b` → `a%2Fb`). Los UUID no cambian.
 
@@ -837,17 +841,19 @@ Un query malformado sigue el mismo camino que una firma inválida (consulta `sec
 
 ### Métodos del S2SClient
 
+Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migration.md#9-rutas-del-auth-service-bajo-apiv1)).
+
 | Método | HTTP | Path | Descripción |
 |--------|------|------|-------------|
-| `getUser(userId)` | GET | `/internal/users/:id` | Obtiene usuario por ID. |
-| `batchUsers(input)` | POST | `/internal/users/batch` | Lote de usuarios por IDs. |
-| `createWebhookSubscription(input)` | POST | `/internal/webhooks/subscriptions` | Crea subscription. `signingKey` one-time. |
-| `listWebhookSubscriptions()` | GET | `/internal/webhooks/subscriptions` | Lista subscriptions. |
-| `getWebhookSubscription(id)` | GET | `/internal/webhooks/subscriptions/:id` | Detalle por ID. |
-| `updateWebhookSubscription(id, input)` | PATCH | `/internal/webhooks/subscriptions/:id` | Actualiza subscription. |
-| `deleteWebhookSubscription(id)` | DELETE | `/internal/webhooks/subscriptions/:id` | Elimina subscription. 204. |
-| `rotateWebhookSubscriptionSecret(id)` | POST | `/internal/webhooks/subscriptions/:id/rotate-secret` | Rota signing key. One-time. |
-| `listWebhookDeliveries(query?)` | GET | `/internal/webhooks/deliveries` | Lista entregas con filtros. |
+| `getUser(userId)` | GET | `/api/v1/internal/users/:id` | Obtiene usuario por ID. |
+| `batchUsers(input)` | POST | `/api/v1/internal/users/batch` | Lote de usuarios por IDs. |
+| `createWebhookSubscription(input)` | POST | `/api/v1/internal/webhooks/subscriptions` | Crea subscription. `signingKey` one-time. |
+| `listWebhookSubscriptions()` | GET | `/api/v1/internal/webhooks/subscriptions` | Lista subscriptions. |
+| `getWebhookSubscription(id)` | GET | `/api/v1/internal/webhooks/subscriptions/:id` | Detalle por ID. |
+| `updateWebhookSubscription(id, input)` | PATCH | `/api/v1/internal/webhooks/subscriptions/:id` | Actualiza subscription. |
+| `deleteWebhookSubscription(id)` | DELETE | `/api/v1/internal/webhooks/subscriptions/:id` | Elimina subscription. 204. |
+| `rotateWebhookSubscriptionSecret(id)` | POST | `/api/v1/internal/webhooks/subscriptions/:id/rotate-secret` | Rota signing key. One-time. |
+| `listWebhookDeliveries(query?)` | GET | `/api/v1/internal/webhooks/deliveries` | Lista entregas con filtros. |
 
 Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.
 
@@ -869,25 +875,25 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `CoreErrorCode` | type | Unión de literales de `ERROR_CODES` |
 | `HEADERS` | constante | Nombres de los headers de sesión: `AUTHORIZATION`, `REFRESH_TOKEN`, `NEW_ACCESS_TOKEN`, `NEW_REFRESH_TOKEN` |
 | `INTERNAL_HEADERS` | constante | Nombres de los headers S2S: `X_EVA_CLIENT_ID`, `X_EVA_TIMESTAMP`, `X_EVA_NONCE`, `X_EVA_SIGNATURE`, `X_EVA_SERVER_TIME` |
-| `API_PREFIX` | constante | `'/api/v1'`. Declarado, pero los clientes del SDK todavía no lo anteponen a sus rutas |
-| `AUTH_ROUTES` | constante | Descriptores `{ method, path }` de `getCode`, `login`, `refresh` y `logout`, con `path` relativo a `API_PREFIX` |
-| `USER_ROUTES`, `SESSION_ROUTES`, `INTERNAL_USER_ROUTES` | constante | Descriptores `{ method, path }` de usuario (`get`, `update`, `deactivate`, `listCompanies`), sesiones (`list`, `deleteOne`, `deleteAll`) y `/internal/users` (`get`, `batch`) |
+| `API_PREFIX` | constante | `'/api/v1'`: prefijo de todas las rutas del Auth Service salvo JWKS, `/health`, `/ui` y `/doc`. Los clientes del SDK lo anteponen con `apiPath()` |
+| `AUTH_ROUTES` | constante | Descriptores `{ method, path }` de `getCode`, `login`, `refresh` y `logout`, con `path` relativo a `API_PREFIX` (la ruta real es `/api/v1` + `path`) |
+| `USER_ROUTES`, `SESSION_ROUTES`, `INTERNAL_USER_ROUTES` | constante | Descriptores `{ method, path }` de usuario (`get`, `update`, `deactivate`, `listCompanies`), sesiones (`list`, `deleteOne`, `deleteAll`) y `/api/v1/internal/users` (`get`, `batch`) |
 | `ACCOUNT_STATES` | constante | Objeto con los 6 estados de cuenta (clave igual a valor); también se re-exporta desde `@eva_solutions/auth-sdk` |
 | `ACTIVITY_STATES`, `PRIVACY_STATES` | constante | Tuplas `as const` de los estados de actividad y de privacidad |
-| `USERS_BATCH_MAX_IDS` | constante | `100`: tope de ids de `POST /internal/users/batch`. El schema del batch no lleva `.max`; el tope lo aplican el SDK y la API |
-| `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema`, `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /user` (objeto estricto base, sin `.refine`) |
+| `USERS_BATCH_MAX_IDS` | constante | `100`: tope de ids de `POST /api/v1/internal/users/batch`. El schema del batch no lleva `.max`; el tope lo aplican el SDK y la API |
+| `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema`, `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /api/v1/user` (objeto estricto base, sin `.refine`) |
 | `sessionListResponseSchema` (+ `SessionListResponse`, `Session`) | schema + type | Listado de sesiones |
-| `usersBatchRequestSchema`, `usersBatchResponseSchema` (+ `UsersBatchRequest`, `UsersBatchResponse`) | schema + type | `POST /internal/users/batch` |
-| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/internal/webhooks/*` y de las 7 de `/admin/*` (6 de service-clients más `restoreUser`) |
+| `usersBatchRequestSchema`, `usersBatchResponseSchema` (+ `UsersBatchRequest`, `UsersBatchResponse`) | schema + type | `POST /api/v1/internal/users/batch` |
+| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/api/v1/internal/webhooks/*` y de las 7 de `/api/v1/admin/*` (6 de service-clients más `restoreUser`) |
 | `EVENT_CODES` (+ type `EventCode`) | constante | Los 11 event codes de los webhooks (clave en mayúsculas, valor `user.created`, ...) |
 | `WEBHOOK_HEADERS`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` | constante | Nombres en minúsculas de los headers del webhook (`SIGNATURE`, `ID`, `TIMESTAMP`) y ventana de la marca de tiempo (`300` s) |
 | `SERVICE_CLIENT_SCOPES` (+ type `ServiceClientScope`), `DELIVERY_STATUSES` | constante | Tupla de scopes (`users:read`, `webhooks:read`, `webhooks:write`) y de estados de entrega |
 | `createSubscriptionRequestSchema`, `updateSubscriptionRequestSchema`, `deliveriesQuerySchema`, `subscriptionSchema`, `subscriptionWithSecretResponseSchema`, `subscriptionResponseSchema`, `subscriptionListResponseSchema`, `rotateSubscriptionSecretResponseSchema`, `deliverySchema`, `deliveryListResponseSchema` (+ tipos) | schema + type | Webhooks: subscriptions y deliveries |
-| `serviceClientSlugSchema`, `createServiceClientRequestSchema`, `updateServiceClientRequestSchema` (base estricto, sin `.refine`), `serviceClientPublicSchema`, `createServiceClientResponseSchema`, `listServiceClientsResponseSchema`, `getServiceClientResponseSchema`, `updateServiceClientResponseSchema`, `rotateServiceClientSecretResponseSchema`, `restoreUserResponseSchema` (+ tipos) | schema + type | Service clients (`/admin/service-clients`) y restaurar usuario |
+| `serviceClientSlugSchema`, `createServiceClientRequestSchema`, `updateServiceClientRequestSchema` (base estricto, sin `.refine`), `serviceClientPublicSchema`, `createServiceClientResponseSchema`, `listServiceClientsResponseSchema`, `getServiceClientResponseSchema`, `updateServiceClientResponseSchema`, `rotateServiceClientSecretResponseSchema`, `restoreUserResponseSchema` (+ tipos) | schema + type | Service clients (`/api/v1/admin/service-clients`) y restaurar usuario |
 | `HttpMethod`, `RouteDescriptor` | types | Tipos de los descriptores |
 | `errorResponseSchema`, `ErrorResponse` | schema + type | Cuerpo de error `{ error: { code, message } }` (id OpenAPI `ErrorBody`) |
 | `messageResponseSchema`, `messageWithCountResponseSchema` (+ tipos `MessageResponse`, `MessageWithCountResponse`) | schema + type | Respuestas genéricas con mensaje |
-| `getCodeRequestSchema`, `getCodeResponseSchema`, `loginRequestSchema`, `loginResponseSchema` | schema | Flujo de login. `/login/refresh` responde con `loginResponseSchema` y `/login/logout` con `messageResponseSchema` |
+| `getCodeRequestSchema`, `getCodeResponseSchema`, `loginRequestSchema`, `loginResponseSchema` | schema | Flujo de login. `/api/v1/login/refresh` responde con `loginResponseSchema` y `/api/v1/login/logout` con `messageResponseSchema` |
 | `GetCodeRequest`, `GetCodeResponse`, `LoginRequest`, `LoginResponse` | type | `z.input<>` para requests y `z.output<>` para responses |
 
 Los schemas usan metadata `.meta()` (nunca `.openapi()`) y los de request son objetos planos estrictos, sin `.refine`. `ERROR_CODES` y `HEADERS` también se re-exportan desde `@eva_solutions/auth-sdk`. Los schemas BFF del SDK (`GetCodeSchema`, `LoginSchema`, `UpdateUserSchema`) siguen siendo propios y más laxos: la autoridad de validación es el servidor.
@@ -952,7 +958,7 @@ Retorna:
 
 ### `useUser()`
 
-Hook para obtener datos del usuario autenticado. Usa `useAuthData` internamente para `GET /me`.
+Hook para obtener datos del usuario autenticado. Usa `useAuthData` internamente para `GET /me` (ruta del BFF del consumidor, no del Auth Service).
 
 ```ts
 const { data, isLoading, error } = useUser()
@@ -962,7 +968,7 @@ const { data, isLoading, error } = useUser()
 
 ### `useSessions()`
 
-Hook para obtener sesiones activas. Usa `useAuthData` internamente para `GET /sessions`.
+Hook para obtener sesiones activas. Usa `useAuthData` internamente para `GET /sessions` (ruta del BFF del consumidor, no del Auth Service: no lleva `/api/v1`).
 
 ```ts
 const { data, isLoading, error } = useSessions()
@@ -972,7 +978,7 @@ const { data, isLoading, error } = useSessions()
 
 ### `useEmpresas()`
 
-Hook para obtener empresas del usuario. Usa `useAuthData` internamente para `GET /empresas`.
+Hook para obtener empresas del usuario. Usa `useAuthData` internamente para `GET /empresas` (ruta del BFF del consumidor, no del Auth Service).
 
 ```ts
 const { data, isLoading, error } = useEmpresas()
