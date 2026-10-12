@@ -181,16 +181,16 @@ each call generates a fresh nonce:
 ```ts
 import { signS2SHeaders } from '@eva_solutions/auth-sdk/s2s';
 
-const bodyBytes = new TextEncoder().encode(JSON.stringify({ id: '123' }));
+const bodyBytes = new TextEncoder().encode(JSON.stringify({ ids: ['user-id-123'] }));
 const headers = await signS2SHeaders({
   method: 'POST',
-  path: '/api/v1/internal/users',
+  path: '/api/v1/internal/users/batch',
   bodyBytes,
   clientId: 'my-service',
   secretHex: process.env.S2S_SECRET!,
 });
 
-await fetch('https://auth.example.com/api/v1/internal/users', {
+await fetch('https://auth.example.com/api/v1/internal/users/batch', {
   method: 'POST',
   headers: { 'content-type': 'application/json', ...headers },
   body: bodyBytes,
