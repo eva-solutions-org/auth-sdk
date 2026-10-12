@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { AUTH_ROUTES } from '@eva_solutions/auth-contracts'
+import {
+  AUTH_ROUTES,
+  SESSION_ROUTES,
+  USER_ROUTES,
+} from '@eva_solutions/auth-contracts'
 import { apiPath } from './api-path'
 import { isEvaAuthConfigError } from './config'
 import { HEADERS, getAuthServiceUrl } from './constants'
@@ -140,13 +144,13 @@ const logout = (params: {
   })
 
 const getUser = (params: { accessToken: string }): Promise<Result<EvaUser>> =>
-  authFetch('/user', { accessToken: params.accessToken })
+  authFetch(apiPath(USER_ROUTES.get), { accessToken: params.accessToken })
 
 const updateUser = (params: {
   accessToken: string
   data: Record<string, unknown>
 }): Promise<Result<EvaUser>> =>
-  authFetch('/user', {
+  authFetch(apiPath(USER_ROUTES.update), {
     method: 'PATCH',
     accessToken: params.accessToken,
     body: params.data,
@@ -155,17 +159,22 @@ const updateUser = (params: {
 const deleteUser = (params: {
   accessToken: string
 }): Promise<Result<{ message: string }>> =>
-  authFetch('/user', { method: 'DELETE', accessToken: params.accessToken })
+  authFetch(apiPath(USER_ROUTES.deactivate), {
+    method: 'DELETE',
+    accessToken: params.accessToken,
+  })
 
 const getUserEmpresas = (params: {
   accessToken: string
 }): Promise<Result<EvaEmpresa[]>> =>
-  authFetch('/user/empresas', { accessToken: params.accessToken })
+  authFetch(apiPath(USER_ROUTES.listCompanies), {
+    accessToken: params.accessToken,
+  })
 
 const getSessions = (params: {
   accessToken: string
 }): Promise<Result<EvaSession[]>> =>
-  authFetch('/sessions', { accessToken: params.accessToken })
+  authFetch(apiPath(SESSION_ROUTES.list), { accessToken: params.accessToken })
 
 const deleteSession = (params: {
   accessToken: string
@@ -182,16 +191,19 @@ const deleteSession = (params: {
       },
     })
   }
-  return authFetch(`/sessions/${params.sessionId}`, {
-    method: 'DELETE',
-    accessToken: params.accessToken,
-  })
+  return authFetch(
+    apiPath(SESSION_ROUTES.deleteOne, { id: params.sessionId }),
+    {
+      method: 'DELETE',
+      accessToken: params.accessToken,
+    },
+  )
 }
 
 const deleteAllSessions = (params: {
   refreshToken: string
 }): Promise<Result<{ message: string; count: number }>> =>
-  authFetch('/sessions', {
+  authFetch(apiPath(SESSION_ROUTES.deleteAll), {
     method: 'DELETE',
     refreshToken: params.refreshToken,
   })

@@ -1,38 +1,23 @@
-export type ActivityState = 'activo' | 'ausente' | 'ocupado' | 'desconectado'
-export type PrivacyState = 'publico' | 'amigos' | 'invisible'
+// Import rule (D-35): this module is reachable from `src/react`, so it takes ONLY `import type` from
+// the contract. A by-value import of a schema module would pull its load-time `.meta()`
+// registrations into the react bundle (the react closure gate fails on it).
+import type {
+  ACTIVITY_STATES,
+  PRIVACY_STATES,
+  Company,
+  PublicProfile,
+  Session,
+} from '@eva_solutions/auth-contracts'
 
-export type EvaUser = {
-  id: string
-  phone: string
-  name: string | null
-  lastName: string | null
-  email: string | null
-  dni: string | null
-  stateActivity: ActivityState
-  statePrivacy: PrivacyState
-  createdAt: string
-}
+// The shapes below are aliases of the shared contract: the wire is defined there, once.
+export type ActivityState = (typeof ACTIVITY_STATES)[number]
+export type PrivacyState = (typeof PRIVACY_STATES)[number]
 
-export type EvaSession = {
-  sessionId: string
-  deviceType: string
-  os: string
-  browser: string
-  ipAddress: string
-  createdAt: string
-  current: boolean
-}
+export type EvaUser = PublicProfile
 
-export type EvaEmpresa = {
-  id: string
-  ruc: string
-  razonSocial: string
-  slug: string
-  direccion: string | null
-  celular: string | null
-  email: string | null
-  img: string | null
-}
+export type EvaSession = Session
+
+export type EvaEmpresa = Company
 
 export type EvaTokenPayload<TExtra extends Record<string, unknown> = {}> = {
   id: string

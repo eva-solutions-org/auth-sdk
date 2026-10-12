@@ -778,3 +778,42 @@ describe('contracts_subpath_esm_cjs (REQ-SDK-01)', () => {
     )
   })
 })
+
+// ──────────────────────────────────────────────────────────────────────────────
+// S2: ACCOUNT_STATES and USERS_BATCH_MAX_IDS come from the contract and keep their public shape
+// ──────────────────────────────────────────────────────────────────────────────
+
+describe('S2 constants come from the contract (REQ-SDK-04, REQ-SDK-09)', () => {
+  it('ACCOUNT_STATES is the contract object and keeps its object shape (D-03)', async () => {
+    const contract = await import('@eva_solutions/auth-contracts')
+
+    expect(ACCOUNT_STATES).toBe(contract.ACCOUNT_STATES)
+    expect(Array.isArray(ACCOUNT_STATES)).toBe(false)
+    expect(Object.keys(ACCOUNT_STATES)).toEqual([
+      'no_verificado',
+      'verificado',
+      'pendiente_de_verificacion',
+      'suspendido',
+      'baneado',
+      'eliminado',
+    ])
+  })
+
+  it('USERS_BATCH_MAX_IDS is the contract constant', async () => {
+    const contract = await import('@eva_solutions/auth-contracts')
+
+    expect(USERS_BATCH_MAX_IDS).toBe(contract.USERS_BATCH_MAX_IDS)
+  })
+
+  it('account-states.ts and s2s/constants.ts hold no local copy of the values', () => {
+    const read = (relative: string) =>
+      readFileSync(new URL(relative, import.meta.url), 'utf8')
+
+    expect(read('../src/account-states.ts')).not.toMatch(
+      /no_verificado:\s*'no_verificado'/,
+    )
+    expect(read('../src/s2s/constants.ts')).not.toMatch(
+      /USERS_BATCH_MAX_IDS\s*=\s*\d/,
+    )
+  })
+})

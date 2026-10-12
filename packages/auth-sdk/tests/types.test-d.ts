@@ -585,3 +585,69 @@ describe('S1 SDK mirrors equal the contract (D-28)', () => {
     expectTypeOf<typeof SDK_HEADERS>().toEqualTypeOf<typeof CONTRACT_HEADERS>()
   })
 })
+
+// ───── S2 contract aliases (D-28): old SDK type == contract type, proven before the swap ─────
+
+import type {
+  ACCOUNT_STATES as CONTRACT_ACCOUNT_STATES,
+  ACTIVITY_STATES as CONTRACT_ACTIVITY_STATES,
+  PRIVACY_STATES as CONTRACT_PRIVACY_STATES,
+  Company as ContractCompany,
+  ProfileResponse as ContractProfileResponse,
+  PublicProfile as ContractPublicProfile,
+  Session as ContractSession,
+  UsersBatchRequest as ContractUsersBatchRequest,
+  UsersBatchResponse as ContractUsersBatchResponse,
+} from '@eva_solutions/auth-contracts'
+import type {
+  ActivityState,
+  EvaEmpresa,
+  EvaSession,
+  EvaUser,
+  PrivacyState,
+} from '../src/types'
+import type { ACCOUNT_STATES as SDK_ACCOUNT_STATES } from '../src/account-states'
+import type {
+  S2SBatchUsersInput,
+  S2SBatchUsersResult,
+  S2SGetUserResult,
+} from '../src/s2s/types'
+
+describe('S2 SDK mirrors equal the contract (D-28)', () => {
+  it('EvaUser == contract PublicProfile', () => {
+    expectTypeOf<EvaUser>().toEqualTypeOf<ContractPublicProfile>()
+  })
+
+  it('EvaSession == contract Session and EvaEmpresa == contract Company', () => {
+    expectTypeOf<EvaSession>().toEqualTypeOf<ContractSession>()
+    expectTypeOf<EvaEmpresa>().toEqualTypeOf<ContractCompany>()
+  })
+
+  it('ActivityState and PrivacyState are the members of the contract tuples', () => {
+    expectTypeOf<ActivityState>().toEqualTypeOf<
+      (typeof CONTRACT_ACTIVITY_STATES)[number]
+    >()
+    expectTypeOf<PrivacyState>().toEqualTypeOf<
+      (typeof CONTRACT_PRIVACY_STATES)[number]
+    >()
+  })
+
+  it('ACCOUNT_STATES has the contract type', () => {
+    expectTypeOf<typeof SDK_ACCOUNT_STATES>().toEqualTypeOf<
+      typeof CONTRACT_ACCOUNT_STATES
+    >()
+  })
+
+  it('S2S batch input and result equal the contract batch shapes', () => {
+    expectTypeOf<S2SBatchUsersInput>().toEqualTypeOf<ContractUsersBatchRequest>()
+    expectTypeOf<S2SBatchUsersResult>().toEqualTypeOf<
+      ContractUsersBatchResponse['data']
+    >()
+  })
+
+  it('S2S get user result wraps the contract profile', () => {
+    expectTypeOf<S2SGetUserResult>().toEqualTypeOf<{
+      user: ContractProfileResponse['data']
+    }>()
+  })
+})

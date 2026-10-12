@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { AUTH_ROUTES } from '@eva_solutions/auth-contracts'
+import {
+  AUTH_ROUTES,
+  INTERNAL_USER_ROUTES,
+  SESSION_ROUTES,
+  USER_ROUTES,
+} from '@eva_solutions/auth-contracts'
+import { createS2SClient } from '../src/s2s/client'
 import { createHttpClient } from '../src/http-client'
 import { createAuthServiceResponse, createDeviceInfo } from './helpers/fixtures'
 
@@ -87,5 +93,95 @@ describe('client_paths_equal_descriptors_pre_prefix', () => {
 
     expect(source).toContain('/.well-known/jwks.json')
     expect(source).not.toContain('api-path')
+  })
+})
+
+const SESSION_ID = '550e8400-e29b-41d4-a716-446655440000'
+
+describe('client_paths_equal_descriptors_pre_prefix: users and sessions', () => {
+  const cases = [
+    [
+      'getUser',
+      USER_ROUTES.get,
+      {},
+      () => client.getUser({ accessToken: 'a' }),
+    ],
+    [
+      'updateUser',
+      USER_ROUTES.update,
+      {},
+      () => client.updateUser({ accessToken: 'a', data: { name: 'Ana' } }),
+    ],
+    [
+      'deleteUser',
+      USER_ROUTES.deactivate,
+      {},
+      () => client.deleteUser({ accessToken: 'a' }),
+    ],
+    [
+      'getUserEmpresas',
+      USER_ROUTES.listCompanies,
+      {},
+      () => client.getUserEmpresas({ accessToken: 'a' }),
+    ],
+    [
+      'getSessions',
+      SESSION_ROUTES.list,
+      {},
+      () => client.getSessions({ accessToken: 'a' }),
+    ],
+    [
+      'deleteSession',
+      SESSION_ROUTES.deleteOne,
+      { id: SESSION_ID },
+      () => client.deleteSession({ accessToken: 'a', sessionId: SESSION_ID }),
+    ],
+    [
+      'deleteAllSessions',
+      SESSION_ROUTES.deleteAll,
+      {},
+      () => client.deleteAllSessions({ refreshToken: 'r' }),
+    ],
+  ] as const
+
+  it.each(cases)(
+    '%s uses its descriptor method and path',
+    async (_n, route, params, call) => {
+      await call()
+
+      expect(lastCall()).toEqual({
+        method: route.method,
+        pathname: route.path.replace(
+          /\{(\w+)\}/g,
+          (_m, key: string) => (params as Record<string, string>)[key] ?? '',
+        ),
+      })
+    },
+  )
+})
+
+describe('client_paths_equal_descriptors_pre_prefix: internal users', () => {
+  const s2s = createS2SClient({
+    clientId: 'svc',
+    secretHex: 'a'.repeat(64),
+    baseUrl: 'https://auth.example',
+  })
+
+  it('getUser uses the internal user descriptor', async () => {
+    await s2s.getUser('user-1')
+
+    expect(lastCall()).toEqual({
+      method: INTERNAL_USER_ROUTES.get.method,
+      pathname: '/internal/users/user-1',
+    })
+  })
+
+  it('batchUsers uses the batch descriptor', async () => {
+    await s2s.batchUsers({ ids: ['user-1'] })
+
+    expect(lastCall()).toEqual({
+      method: INTERNAL_USER_ROUTES.batch.method,
+      pathname: INTERNAL_USER_ROUTES.batch.path,
+    })
   })
 })

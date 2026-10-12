@@ -16,11 +16,15 @@
  *   GET  /internal/webhooks/deliveries
  */
 
+import {
+  INTERNAL_USER_ROUTES,
+  USERS_BATCH_MAX_IDS,
+} from '@eva_solutions/auth-contracts'
+import { apiPath } from '../api-path'
 import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../parse-error-response'
 import type { Result } from '../types'
 import { signS2SHeaders } from './sign'
-import { USERS_BATCH_MAX_IDS } from './constants'
 import type {
   S2SClientConfig,
   S2SGetUserResult,
@@ -222,7 +226,7 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<S2SGetUserResult>({
         config,
         method: 'GET',
-        pathname: `/internal/users/${segment}`,
+        pathname: apiPath(INTERNAL_USER_ROUTES.get, { id: segment }),
       })
     },
 
@@ -230,7 +234,8 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
      * Consulta múltiples usuarios por ID en una sola llamada.
      *
      * @param input - Input con la lista de IDs a consultar.
-     * @param input.ids - Máximo `USERS_BATCH_MAX_IDS` (100) IDs por llamada.
+     * @param input.ids - Máximo `USERS_BATCH_MAX_IDS` (100, constante del contrato compartido)
+     *   IDs por llamada. El schema del request no lleva ese tope: lo aplica este cliente.
      *   Si se superan, retorna error sin hacer fetch al API.
      */
     async batchUsers(
@@ -250,7 +255,7 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
       return s2sFetch<S2SBatchUsersResult>({
         config,
         method: 'POST',
-        pathname: '/internal/users/batch',
+        pathname: apiPath(INTERNAL_USER_ROUTES.batch),
         body: input,
       })
     },

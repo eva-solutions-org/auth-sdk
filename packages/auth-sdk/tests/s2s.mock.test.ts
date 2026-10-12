@@ -737,3 +737,52 @@ describe('createS2SClient — validación baseUrl', () => {
     ).not.toThrow()
   })
 })
+
+// ---------------------------------------------------------------------------
+// REQ-SDK-13 / D-04: the batch cap is the contract constant, applied before any network call
+// ---------------------------------------------------------------------------
+
+describe('batchUsers cap comes from the contract (REQ-SDK-13)', () => {
+  const config = {
+    clientId: CLIENT_ID,
+    secretHex: SECRET_HEX,
+    baseUrl: BASE_URL,
+  }
+
+  it('users_batch_over_cap_rejected_before_network', async () => {
+    const fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+    const { USERS_BATCH_MAX_IDS } =
+      await import('@eva_solutions/auth-contracts')
+    const ids = Array.from(
+      { length: USERS_BATCH_MAX_IDS + 1 },
+      (_, i) => `u-${i}`,
+    )
+
+    const result = await createS2SClient(config).batchUsers({ ids })
+
+    expect(USERS_BATCH_MAX_IDS).toBe(100)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error).toMatchObject({ kind: 'sdk', reason: 'malformed' })
+    expect(result.error.message).toContain(String(USERS_BATCH_MAX_IDS))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('users_batch_at_cap_sends_the_request', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { users: [] } }),
+    })
+    global.fetch = fetchMock as unknown as typeof fetch
+    const { USERS_BATCH_MAX_IDS } =
+      await import('@eva_solutions/auth-contracts')
+    const ids = Array.from({ length: USERS_BATCH_MAX_IDS }, (_, i) => `u-${i}`)
+
+    const result = await createS2SClient(config).batchUsers({ ids })
+
+    expect(result.ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+})

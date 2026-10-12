@@ -23,8 +23,11 @@ export const S2S_NONCE_REGEX = /^[0-9a-f]{32}$/
 /**
  * Máximo de IDs permitidos por llamada a `batchUsers`.
  * Si se superan, el cliente retorna un error sin hacer fetch al API.
+ *
+ * Re-export del contrato compartido: el tope NO está en el schema del request (un máximo ahí
+ * cambiaría el documento OpenAPI publicado), lo aplica quien lo consume leyendo esta constante.
  */
-export const USERS_BATCH_MAX_IDS = 100
+export { USERS_BATCH_MAX_IDS } from '@eva_solutions/auth-contracts'
 
 /**
  * Catálogo de scopes S2S reconocidos por el Auth Service.

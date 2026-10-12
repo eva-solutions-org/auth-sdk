@@ -4,7 +4,11 @@
  * REQ-S2S-06 LOCKED.
  */
 
-import type { EvaUser } from '../types'
+import type {
+  ProfileResponse,
+  UsersBatchRequest,
+  UsersBatchResponse,
+} from '@eva_solutions/auth-contracts'
 import type {
   WebhookSubscription,
   WebhookSubscriptionWithSecret,
@@ -61,25 +65,24 @@ export type S2SCanonicalParts = {
 
 /**
  * Resultado de `getUser` — perfil público del usuario.
+ * El perfil es el del contrato compartido; `{ user }` es solo el envoltorio que arma el cliente
+ * al desenvolver `data`.
  */
 export type S2SGetUserResult = {
-  user: EvaUser
+  user: ProfileResponse['data']
 }
 
 /**
- * Input para `batchUsers` — lista de IDs a consultar.
+ * Input para `batchUsers` — lista de IDs a consultar (alias del request del contrato).
+ * El tope de `USERS_BATCH_MAX_IDS` lo aplica el cliente, no el tipo.
  */
-export type S2SBatchUsersInput = {
-  ids: string[]
-}
+export type S2SBatchUsersInput = UsersBatchRequest
 
 /**
- * Resultado de `batchUsers` — usuarios activos encontrados.
- * IDs inválidos, inexistentes o soft-deleted se omiten.
+ * Resultado de `batchUsers` — usuarios activos encontrados (alias del `data` de la respuesta del
+ * contrato). IDs inválidos, inexistentes o soft-deleted se omiten.
  */
-export type S2SBatchUsersResult = {
-  users: EvaUser[]
-}
+export type S2SBatchUsersResult = UsersBatchResponse['data']
 
 /**
  * Input para crear una subscription de webhook.
