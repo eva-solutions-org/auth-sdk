@@ -12,16 +12,27 @@ import { DELIVERY_STATUSES, EVENT_CODES } from './constants'
 const UUID_REGEX =
   /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
-// Webhook target URL: no whitespace anywhere. A regex check, not a refinement: request bodies stay
+// Webhook target URL: scheme `http` or `https` followed by two slashes, then no whitespace and no
+// control characters (C0 and DEL). The scheme is spelled with explicit classes because the regex
+// has no flags, and it is part of the published `pattern`, so spec-based validators enforce it too.
+// A regex plus a native URL option, not a refinement: request bodies stay
 // plain objects. The "no userinfo (`user:pass@host`)" rule is NOT here: for special schemes the
 // WHATWG parser accepts `https:u@h`, `https:/u@h` or a backslash form as if the two slashes were
 // there, so no regex over the raw text detects it reliably, and a lookahead in the published
 // `pattern` would not be portable to RE2 validators. The API applies the rule by parsing the URL.
-const WEBHOOK_URL_REGEX = /^\S+$/
+// oxlint-disable-next-line no-control-regex -- rejecting control characters is the point of this pattern
+const WEBHOOK_URL_REGEX = /^[hH][tT][tT][pP][sS]?:\/\/[^\s\x00-\x1F\x7F]+$/
 
 // The regex goes BEFORE `.url()`: zod's url check trims the value it returns, so a regex placed
-// after it would never see the padding whitespace it must reject.
-const webhookUrlSchema = z.string().regex(WEBHOOK_URL_REGEX).url().max(2048)
+// after it would never see the padding whitespace it must reject. The `protocol` option is matched
+// by zod against the parsed, lowercased scheme, so an uppercase scheme passes; it is not published
+// (the JSON Schema keeps `format: uri` and the `pattern` above), which is why the regex also
+// carries the scheme.
+const webhookUrlSchema = z
+  .string()
+  .regex(WEBHOOK_URL_REGEX)
+  .url({ protocol: /^https?$/ })
+  .max(2048)
 
 // Closed catalog of event codes. Duplicates are not rejected here: that needs a refinement, which
 // the API applies on top of this schema.

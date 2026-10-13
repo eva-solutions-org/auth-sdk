@@ -464,7 +464,7 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
       contract.updateSubscriptionRequestSchema.safeParse({ extra: 1 }).success,
     ).toBe(false)
 
-    // webhook url: no whitespace and no credentials in the authority (an `@` past the authority is fine)
+    // webhook url: http(s) only, no whitespace or control characters, and no credentials in the authority (an `@` past the authority is fine)
     const HOOK = 'https://hooks.example.test/in'
     const EVENTS = ['user.created']
     for (const url of [
@@ -472,6 +472,9 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
       'https://hooks.example.test:8443/in?next=a@b#frag@x',
       'https://hooks.example.test/user@home',
       'https://hooks.example.test/?r=http://x@y',
+      'http://hooks.example.test/in',
+      'HTTPS://hooks.example.test/in',
+      'HTTP://hooks.example.test/in',
     ]) {
       expect(
         contract.createSubscriptionRequestSchema.safeParse({
@@ -490,6 +493,15 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
       'https://hooks.example.test/in ',
       'https://hooks.example.test/a b',
       'https://hooks.example.test/a	b',
+      'javascript:alert(1)',
+      'mailto:a@b.com',
+      'ftp://hooks.example.test/in',
+      'data:text/plain,x',
+      '\x01https://hooks.example.test/in',
+      'https://hooks.example.test/a\x01b',
+      'https://hooks.example.test/a\x7Fb',
+      '\x7Fhttps://hooks.example.test/in',
+      'https:hooks.example.test/in',
       `https://hooks.example.test/${'a'.repeat(2048)}`,
     ]) {
       expect(
@@ -830,7 +842,8 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
       }).success
     // The contract only rejects whitespace and non-URLs; the "no credentials" rule is the API's.
     expect(create('https://user:pass@hooks.example.test/in')).toBe(true)
-    expect(create('HTTPS:u@hooks.example.test/in')).toBe(true)
+    // The scheme without `//` is not a valid http(s) URL for the contract (zod's http guard).
+    expect(create('HTTPS:u@hooks.example.test/in')).toBe(false)
     expect(create('HTTPS://hooks.example.test/in')).toBe(true)
     // Whitespace is still rejected before `.url()` trims it.
     expect(create(' https://hooks.example.test/in')).toBe(false)
