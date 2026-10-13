@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { DELIVERY_STATUSES } from './constants'
+import { DELIVERY_STATUSES, EVENT_CODES } from './constants'
 
 /**
  * SCHEMA module: webhook subscriptions and their deliveries. Request bodies are strict BASE
@@ -7,21 +7,38 @@ import { DELIVERY_STATUSES } from './constants'
  */
 
 // Any-version UUID: the filters of the deliveries listing are matched, never generated.
+// No regex flags: JSON Schema has none, so a `pattern` generated from a flagged regex would carry
+// the flag as literal text and reject every real value. Case-insensitivity uses explicit classes.
 const UUID_REGEX =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
+// Webhook target URL: no whitespace anywhere. A regex check, not a refinement: request bodies stay
+// plain objects. The "no userinfo (`user:pass@host`)" rule is NOT here: for special schemes the
+// WHATWG parser accepts `https:u@h`, `https:/u@h` or a backslash form as if the two slashes were
+// there, so no regex over the raw text detects it reliably, and a lookahead in the published
+// `pattern` would not be portable to RE2 validators. The API applies the rule by parsing the URL.
+const WEBHOOK_URL_REGEX = /^\S+$/
+
+// The regex goes BEFORE `.url()`: zod's url check trims the value it returns, so a regex placed
+// after it would never see the padding whitespace it must reject.
+const webhookUrlSchema = z.string().regex(WEBHOOK_URL_REGEX).url().max(2048)
+
+// Closed catalog of event codes. Duplicates are not rejected here: that needs a refinement, which
+// the API applies on top of this schema.
+const eventCodesSchema = z.array(z.enum(EVENT_CODES)).min(1)
 
 export const createSubscriptionRequestSchema = z
   .object({
-    url: z.string().url().max(2048),
-    eventCodes: z.array(z.string()).min(1),
+    url: webhookUrlSchema,
+    eventCodes: eventCodesSchema,
     enabled: z.boolean().optional().default(true),
   })
   .strict()
 
 export const updateSubscriptionRequestSchema = z
   .object({
-    url: z.string().url().max(2048).optional(),
-    eventCodes: z.array(z.string()).min(1).optional(),
+    url: webhookUrlSchema.optional(),
+    eventCodes: eventCodesSchema.optional(),
     enabled: z.boolean().optional(),
   })
   .strict()

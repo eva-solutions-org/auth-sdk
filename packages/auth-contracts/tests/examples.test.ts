@@ -464,6 +464,85 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
       contract.updateSubscriptionRequestSchema.safeParse({ extra: 1 }).success,
     ).toBe(false)
 
+    // webhook url: no whitespace and no credentials in the authority (an `@` past the authority is fine)
+    const HOOK = 'https://hooks.example.test/in'
+    const EVENTS = ['user.created']
+    for (const url of [
+      HOOK,
+      'https://hooks.example.test:8443/in?next=a@b#frag@x',
+      'https://hooks.example.test/user@home',
+      'https://hooks.example.test/?r=http://x@y',
+    ]) {
+      expect(
+        contract.createSubscriptionRequestSchema.safeParse({
+          url,
+          eventCodes: EVENTS,
+        }).success,
+        url,
+      ).toBe(true)
+      expect(
+        contract.updateSubscriptionRequestSchema.safeParse({ url }).success,
+        url,
+      ).toBe(true)
+    }
+    for (const url of [
+      ' https://hooks.example.test/in',
+      'https://hooks.example.test/in ',
+      'https://hooks.example.test/a b',
+      'https://hooks.example.test/a	b',
+      `https://hooks.example.test/${'a'.repeat(2048)}`,
+    ]) {
+      expect(
+        contract.createSubscriptionRequestSchema.safeParse({
+          url,
+          eventCodes: EVENTS,
+        }).success,
+        url,
+      ).toBe(false)
+      expect(
+        contract.updateSubscriptionRequestSchema.safeParse({ url }).success,
+        url,
+      ).toBe(false)
+    }
+
+    // webhook eventCodes: only members of the closed catalog (duplicates are the API's refine)
+    for (const code of Object.values(contract.EVENT_CODES)) {
+      expect(
+        contract.createSubscriptionRequestSchema.safeParse({
+          url: HOOK,
+          eventCodes: [code],
+        }).success,
+        code,
+      ).toBe(true)
+    }
+    for (const eventCodes of [
+      ['user.unknown'],
+      ['USER_CREATED'],
+      ['user.created', 'nope'],
+      [''],
+      [1],
+    ]) {
+      expect(
+        contract.createSubscriptionRequestSchema.safeParse({
+          url: HOOK,
+          eventCodes,
+        }).success,
+        JSON.stringify(eventCodes),
+      ).toBe(false)
+      expect(
+        contract.updateSubscriptionRequestSchema.safeParse({ eventCodes })
+          .success,
+        JSON.stringify(eventCodes),
+      ).toBe(false)
+    }
+    expect(
+      contract.createSubscriptionRequestSchema.safeParse({
+        url: HOOK,
+        eventCodes: ['user.created', 'user.created'],
+      }).success,
+      'duplicates pass the contract on purpose: the API refines them',
+    ).toBe(true)
+
     // deliveries query: coerced numbers, defaults 50/0, status enum, uuid filters
     expect(contract.deliveriesQuerySchema.parse({})).toEqual({
       limit: 50,
@@ -702,6 +781,60 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
     expect(idOf(contract.restoreUserResponseSchema)).toBe(
       'AdminRestaurarUsuarioResponse',
     )
+  })
+
+  it('no_regex_exposed_in_the_openapi_has_flags', () => {
+    // JSON Schema `pattern` has no flags: a flagged regex is published by the API generator with
+    // the flag as literal text (`...$/i`) and any validator built from the spec rejects every real
+    // value. `z.toJSONSchema` drops the flags silently, so the regex objects are inspected directly:
+    // the walk follows every object reachable from each exported schema and collects each RegExp.
+    const regexes = new Set<RegExp>()
+    const seen = new Set<unknown>()
+    const walk = (node: unknown): void => {
+      if (typeof node !== 'object' || node === null || seen.has(node)) return
+      seen.add(node)
+      if (node instanceof Map || node instanceof Set) {
+        node.forEach(walk)
+        return
+      }
+      // `_zod` is not enumerable on checks and schemas, so own property names are walked.
+      for (const key of Object.getOwnPropertyNames(node)) {
+        const descriptor = Object.getOwnPropertyDescriptor(node, key)
+        if (!descriptor || !('value' in descriptor)) continue
+        const value: unknown = descriptor.value
+        // Only the regexes of a format check (`def.pattern` next to `def.check`) end up in the
+        // OpenAPI. zod's own `_zod.pattern` on non-string types (e.g. boolean) never does.
+        if (value instanceof RegExp && key === 'pattern' && 'check' in node) {
+          regexes.add(value)
+        } else {
+          walk(value)
+        }
+      }
+    }
+    for (const value of Object.values(contract)) {
+      if (value instanceof z.ZodType) walk(value)
+    }
+
+    // Vacuity guard: the webhook url, the UUID filters and the plain-field regexes are all reached.
+    expect(regexes.size).toBeGreaterThanOrEqual(5)
+    for (const regex of regexes) {
+      expect(regex.flags, regex.source).toBe('')
+    }
+  })
+
+  it('webhook_url_contract_does_not_judge_userinfo_the_api_does', () => {
+    const create = (url: string) =>
+      contract.createSubscriptionRequestSchema.safeParse({
+        url,
+        eventCodes: ['user.created'],
+      }).success
+    // The contract only rejects whitespace and non-URLs; the "no credentials" rule is the API's.
+    expect(create('https://user:pass@hooks.example.test/in')).toBe(true)
+    expect(create('HTTPS:u@hooks.example.test/in')).toBe(true)
+    expect(create('HTTPS://hooks.example.test/in')).toBe(true)
+    // Whitespace is still rejected before `.url()` trims it.
+    expect(create(' https://hooks.example.test/in')).toBe(false)
+    expect(create('https://hooks.example.test/a b')).toBe(false)
   })
 
   it('s3_schemas_have_no_drizzle_and_the_secret_format_stays_in_the_api', () => {
