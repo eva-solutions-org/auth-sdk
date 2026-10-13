@@ -41,6 +41,8 @@ Why it matters: the SDK `react` entry is size-budgeted. `.meta()` writes to zod'
 - ESM only, `"sideEffects": false`, built with `unbundle: true` (one `dist` file per source module).
 - Metadata uses `.meta({ id, description, example })` only. Never `.openapi()`: the contract has no `hono` or `@hono/zod-openapi` dependency, and the API plugs these schemas into `createRoute` as they are.
 - Body schemas stay plain strict objects, without `.refine`, so the OpenAPI document does not change when a schema moves here. Extra validation is added by the consumer.
+- Regexes in schemas carry **no flags** (`/i`, `/u`...). JSON Schema has no flags, so the OpenAPI generator would publish the flag as literal text inside `pattern` and every real value would fail a spec-built validator. Use explicit classes instead (`[0-9a-fA-F]`). `tests/examples.test.ts` fails if any format regex has flags.
+- Webhook requests: `url` rejects whitespace through a simple regex (plus `.url()` and a 2048 maximum), and `eventCodes` is `z.enum(EVENT_CODES)` with at least one item (type `EventCode[]`). Userinfo (`user:pass@host`) and duplicates are not rejected here: the WHATWG parser accepts variants such as `https:u:p@h` that no regex can detect reliably, so the API applies the userinfo rule by parsing the URL and the duplicate rule with a refinement.
 - Identifiers are English; schemas are named `{subject}{Request|Response}Schema`.
 - `zod` is a **peer dependency** (`^4.4.3`), so the consumer decides the copy. A consumer must resolve exactly one `zod` version, otherwise schema types stop being compatible with `@hono/zod-openapi` in `createRoute`.
 - No `hono`, no Drizzle, no runtime dependencies.

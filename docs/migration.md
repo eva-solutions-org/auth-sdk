@@ -28,6 +28,7 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 | 9 | Login OTP | `get-code` devuelve `challengeId` y `/login` (`LoginSchema`, `http-client.login`, `login.verify`) lo exige |
 | 10 | Rutas del Auth Service | Todas bajo `/api/v1` (login, user, sessions, `/internal/*`, `/admin/*`, webhooks); JWKS y `/health` siguen en la raíz; `AUTH_URL` no cambia |
 | 11 | `S2SGetUserResult` (solo tipos) | Es `ProfileResponse['data']`: el perfil va directo en `result.data`, sin `{ user }`. En runtime ya era así |
+| 12 | Cliente admin y entrada de webhooks (endurecimiento) | `slug`/`userId` del admin se validan y codifican (error `malformed` en un `Result`, sin lanzar); los ids S2S rechazan también valores no string; `url` de webhooks sin espacios (el userinfo lo rechaza la API) y `eventCodes: EventCode[]` (secciones 7 y 11) |
 
 ---
 
@@ -146,7 +147,8 @@ Las firmas S2S ahora incluyen un nonce por request. No hay modo de compatibilida
 **Cambios de `createS2SClient` que sí pueden afectarte:**
 
 - **Prefijo de `baseUrl` en la firma.** El cliente firma el pathname de la URL final, incluido el prefijo de `baseUrl` (por ejemplo `/auth/api/v1/internal/users/...`). Si entre el cliente y el verificador hay un proxy o gateway que **quita** ese prefijo, el verificador verá `/api/v1/internal/users/...`, la firma no coincidirá y responderá `signature_invalid`. Opciones: que el proxy conserve el prefijo, o usar un `baseUrl` sin prefijo y enrutar por host.
-- **Ids validados y codificados.** `getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription` y `rotateWebhookSubscriptionSecret` devuelven `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }`, sin hacer fetch, si el id es vacío, `.` o `..` (crudo o percent-decodificado, `%2e` en cualquier caso). Cualquier otro id pasa por `encodeURIComponent`: `a/b` viaja como `a%2Fb`, `a?b` como `a%3Fb`. Los UUID no cambian.
+- **Ids validados y codificados.** `getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription` y `rotateWebhookSubscriptionSecret` devuelven `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }`, sin hacer fetch, si el id no es un string, es vacío, `.` o `..` (crudo o percent-decodificado, `%2e` en cualquier caso). Cualquier otro id pasa por `encodeURIComponent`: `a/b` viaja como `a%2Fb`, `a?b` como `a%3Fb`. Los UUID no cambian. Rechazar valores que no son string (por ejemplo `undefined` o un número que llega de un `any`) es un endurecimiento: el helper es el mismo que usa el cliente admin (sección 11).
+- **Entrada de webhooks más estricta.** `createWebhookSubscription` y `updateWebhookSubscription` usan el contrato compartido: `url` sin espacios (el contrato no rechaza el userinfo: la API parsea la URL y rechaza `https://user:pass@host` y `https://user@host`, incluidas variantes sin `//`; un `@` en el path o el query sigue siendo válido) y `eventCodes` solo con valores de `EVENT_CODES`, mínimo uno. En tipos, `eventCodes` es `EventCode[]` (antes aceptaba cualquier string): si guardabas los códigos en un `string[]`, tipéalos como `EventCode[]`. El userinfo y los duplicados no los rechaza el contrato sino el Auth Service.
 
 **Si firmas a mano** con `signS2SRequest` y armas los headers tú:
 
@@ -253,6 +255,14 @@ await s2s.getUser('u1')
 ## 10. `getUser`: el perfil va en `result.data`
 
 `S2SGetUserResult` pasa de `{ user: perfil }` a `perfil` (`ProfileResponse['data']`). El tipo anterior no coincidía con el runtime: `getUser` ya entregaba el perfil directo, así que el código que leía `result.data.user` no tipaba contra la realidad. Cambia `result.data.user.x` por `result.data.x`. Un usuario inexistente o soft-deleted llega como error con `code: 'user_not_found'` (404); `isNotFound` también es true para un 404 de ruta (`not_found`), así que para detectar un usuario ausente usa `matchError(err, 'user_not_found')`.
+
+---
+
+## 11. Cliente admin: `slug` y `userId` validados y codificados
+
+`getServiceClient`, `updateServiceClient`, `deleteServiceClient`, `rotateServiceClientSecret` (parámetro `slug`) y `restoreUser` (parámetro `userId`) tratan el valor como un solo segmento de path, igual que los ids del cliente S2S (sección 7). Si no es un string, es vacío, `.` o `..` (crudo o percent-decodificado), devuelven `{ ok: false, error: { kind: 'sdk', reason: 'malformed', status: 0 } }` sin hacer fetch: **no lanzan** ni rechazan la promesa. Cualquier otro valor pasa por `encodeURIComponent` (`a/b` viaja como `a%2Fb`, `a%2Fb` como `a%252Fb`). Los slugs válidos del contrato (`^[a-z][a-z0-9-]{2,63}$`) y los UUID no cambian.
+
+**Qué hacer:** nada si manejas `result.ok === false`. Si pasabas slugs con caracteres especiales esperando que viajaran sin codificar, ahora el Auth Service los recibe codificados.
 
 ---
 
