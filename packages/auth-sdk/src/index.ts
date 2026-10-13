@@ -105,6 +105,7 @@ export {
   USERS_BATCH_MAX_IDS,
   S2S_SCOPES,
   S2S_RESPONSE_HEADERS,
+  S2S_ERROR_CODES,
   verifyS2SRequest,
 } from './s2s'
 export type {
@@ -118,6 +119,7 @@ export type {
   UpdateWebhookSubscriptionInput,
   ListWebhookDeliveriesQuery,
   S2SScope,
+  S2SErrorCode,
   // v1.1.0: server-side verify types
   S2SVerifyReason,
   S2SVerifyError,

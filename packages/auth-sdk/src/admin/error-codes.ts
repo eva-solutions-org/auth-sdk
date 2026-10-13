@@ -16,6 +16,12 @@
 export const ADMIN_ERROR_CODES = {
   service_client_already_exists: 'service_client_already_exists',
   service_client_not_found: 'service_client_not_found',
+  /**
+   * `rotate-secret` perdió contra otra rotación concurrente del mismo service client (409).
+   * El perdedor no recibe secret; es reintentable.
+   */
+  service_client_secret_rotation_conflict:
+    'service_client_secret_rotation_conflict',
 } as const
 
 /** Unión de literales de los error codes específicos del módulo Admin. */

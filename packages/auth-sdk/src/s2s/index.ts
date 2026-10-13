@@ -26,6 +26,9 @@ export {
 } from './constants'
 export type { S2SScope } from './constants'
 
+export { S2S_ERROR_CODES } from './error-codes'
+export type { S2SErrorCode } from './error-codes'
+
 export type {
   S2SClientConfig,
   S2SCanonicalParts,

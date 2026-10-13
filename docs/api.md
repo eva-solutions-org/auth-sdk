@@ -119,7 +119,8 @@ Retorna `string`.
 | `SDK_ERROR_REASONS` | Enum cerrado de 6 reasons internos del SDK. Solo aplica a `EvaSdkError` (kind: `'sdk'`). |
 | `ACCOUNT_STATES` | Catálogo de 6 estados de cuenta: `no_verificado`, `verificado`, `pendiente_de_verificacion`, `suspendido`, `baneado`, `eliminado`. Úsalo en lugar de magic strings para comparar `stateAccount`. |
 | `WEBHOOK_HEADERS` | Nombres de los headers HTTP que el Auth Service incluye en cada webhook: `SIGNATURE`, `ID`, `TIMESTAMP`. |
-| `ADMIN_ERROR_CODES` | Códigos de error específicos del módulo Admin: `service_client_already_exists`, `service_client_not_found`. |
+| `ADMIN_ERROR_CODES` | Códigos de error específicos del módulo Admin: `service_client_already_exists`, `service_client_not_found`, `service_client_secret_rotation_conflict`. |
+| `S2S_ERROR_CODES` | Códigos de error específicos del módulo S2S (usuarios y webhooks): `user_not_found`, `webhook_subscription_duplicate`, `webhook_subscription_not_found`, `webhook_secret_rotation_conflict`, `webhook_url_invalid`, `webhook_event_codes_empty`. |
 | `S2S_SCOPES` | Catálogo de scopes S2S reconocidos: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`. |
 | `S2S_RESPONSE_HEADERS` | Header de respuesta S2S: `SERVER_TIME` (`x-eva-server-time`). |
 | `USERS_BATCH_MAX_IDS` | Número máximo de IDs por llamada a `batchUsers` (100). El cliente valida este límite antes de hacer fetch. |
@@ -149,6 +150,8 @@ Retorna `string`.
 | `AccountState` | type | Unión de literales de estados de cuenta |
 | `S2SScope` | type | Unión de literales de scopes S2S |
 | `AdminErrorCode` | type | Unión de literales de error codes Admin |
+| `S2S_ERROR_CODES` | constante | Error codes específicos del módulo S2S (usuarios y webhooks) |
+| `S2SErrorCode` | type | Unión de literales de error codes S2S |
 
 ---
 
@@ -718,7 +721,7 @@ Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migra
 | `getServiceClient(slug)` | GET | `/api/v1/admin/service-clients/:slug` | Detalle por slug. |
 | `updateServiceClient(slug, input)` | PATCH | `/api/v1/admin/service-clients/:slug` | Parche parcial. |
 | `deleteServiceClient(slug)` | DELETE | `/api/v1/admin/service-clients/:slug` | Hard-delete. 204. |
-| `rotateServiceClientSecret(slug)` | POST | `/api/v1/admin/service-clients/:slug/rotate-secret` | Rota secret. One-time. |
+| `rotateServiceClientSecret(slug)` | POST | `/api/v1/admin/service-clients/:slug/rotate-secret` | Rota secret. One-time. Puede responder `409 service_client_secret_rotation_conflict` (`ADMIN_ERROR_CODES`) si otra rotación concurrente ganó: esa llamada no recibe secret y se puede reintentar. |
 | `restoreUser(userId)` | POST | `/api/v1/admin/users/:id/restore` | Restaura usuario eliminado. |
 
 Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.
@@ -764,14 +767,19 @@ if (sub.ok) {
 
 const subs = await s2s.listWebhookSubscriptions()
 const rotated = await s2s.rotateWebhookSubscriptionSecret('subscription-id')
+// Si otra rotación concurrente de la misma subscription ganó, rotated.ok es false con
+// status 409 y error.code S2S_ERROR_CODES.webhook_secret_rotation_conflict (reintentable): esta llamada
+// no recibe clave, así que no hay clave nueva de este caller que guardar. Reintenta.
 const deliveries = await s2s.listWebhookDeliveries({ status: 'failed', limit: 20 })
 ```
+
+`S2S_ERROR_CODES` (con el tipo `S2SErrorCode`) lista los codes propios de usuarios y webhooks, para comparar sin strings sueltos (`result.error.code === S2S_ERROR_CODES.webhook_url_invalid`). El catálogo `ErrorCode` sigue abierto: un code que no esté en la lista no rompe la compilación.
 
 `baseUrl` puede llevar un prefijo de path (por ejemplo `https://host/auth`). Todas las rutas del Auth Service llevan además el prefijo `/api/v1`, que el cliente agrega después del de `baseUrl`: `https://host/auth` → `https://host/auth/api/v1/internal/users/u1`. El cliente firma el pathname de la URL final (`/auth/api/v1/internal/users/...`), que es el que lee el verificador en `request.url`. Si un proxy quita ese prefijo antes de llegar al verificador, la firma falla con `signature_invalid` (ver [migration.md](migration.md), sección 7).
 
 Los ids que recibe el cliente (`getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription`, `rotateWebhookSubscriptionSecret`) se validan y se codifican como un solo segmento de path: un id que no es string, vacío, `.` o `..` (crudo o percent-decodificado) devuelve `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }` sin hacer fetch, y el resto pasa por `encodeURIComponent` (`a/b` → `a%2Fb`). Los UUID no cambian. El cliente admin aplica la misma regla a `slug` y `userId` (ver [Métodos del AdminClient](#métodos-del-adminclient)).
 
-La entrada de `createWebhookSubscription` y `updateWebhookSubscription` sigue el contrato compartido: `url` con esquema `http` o `https` seguido de `//`, sin espacios ni caracteres de control (`javascript:`, `ftp://` y `https:host/x` se rechazan; el contrato no rechaza el userinfo: lo rechaza el Auth Service al parsear la URL, `https://user:pass@host` y `https://user@host`; un `@` en el path o el query es válido) y `eventCodes` con valores de `EVENT_CODES` (tipo `EventCode[]`), mínimo uno. Los duplicados en `eventCodes` tampoco los rechaza el contrato: los rechaza el Auth Service.
+La entrada de `createWebhookSubscription` y `updateWebhookSubscription` sigue el contrato compartido: `url` con esquema `http` o `https` seguido de `//`, sin espacios ni caracteres de control (`javascript:`, `ftp://` y `https:host/x` se rechazan; el contrato no rechaza el userinfo: lo rechaza el Auth Service al parsear la URL, `https://user:pass@host` y `https://user@host`; un `@` en el path o el query es válido) y `eventCodes` con valores de `EVENT_CODES` (tipo `EventCode[]`), mínimo uno. Los duplicados en `eventCodes` tampoco los rechaza el contrato: los rechaza el Auth Service. El Auth Service devuelve `eventCodes` sin repetidos y ordenados en orden de bytes, no en el orden en que los enviaste, y no admite dos subscriptions del mismo service client con la misma URL normalizada y el mismo conjunto de `eventCodes` (`409 webhook_subscription_duplicate`, también en `updateWebhookSubscription`).
 
 ### Firma HMAC automática
 
@@ -861,7 +869,7 @@ Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migra
 | `getWebhookSubscription(id)` | GET | `/api/v1/internal/webhooks/subscriptions/:id` | Detalle por ID. |
 | `updateWebhookSubscription(id, input)` | PATCH | `/api/v1/internal/webhooks/subscriptions/:id` | Actualiza subscription. |
 | `deleteWebhookSubscription(id)` | DELETE | `/api/v1/internal/webhooks/subscriptions/:id` | Elimina subscription. 204. |
-| `rotateWebhookSubscriptionSecret(id)` | POST | `/api/v1/internal/webhooks/subscriptions/:id/rotate-secret` | Rota signing key. One-time. |
+| `rotateWebhookSubscriptionSecret(id)` | POST | `/api/v1/internal/webhooks/subscriptions/:id/rotate-secret` | Rota signing key. One-time. Puede responder `409 webhook_secret_rotation_conflict` si otra rotación concurrente ganó: esa llamada no recibe clave (no hay clave nueva de ese caller que guardar) y se puede reintentar. |
 | `listWebhookDeliveries(query?)` | GET | `/api/v1/internal/webhooks/deliveries` | Lista entregas con filtros. |
 
 Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.

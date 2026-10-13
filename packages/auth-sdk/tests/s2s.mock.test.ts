@@ -16,6 +16,7 @@ import {
   EMPTY_BODY_SHA256_HEX,
 } from '../src/s2s/sign'
 import { createS2SClient } from '../src/s2s/client'
+import { S2S_ERROR_CODES } from '../src/s2s/error-codes'
 import type { ProfileResponse } from '@eva_solutions/auth-contracts'
 import { matchError } from '../src/error-helpers'
 import type { S2SCanonicalParts } from '../src/s2s/types'
@@ -555,6 +556,31 @@ describe('S2SClient', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.data.signingKey).toBe('b'.repeat(64))
+  })
+
+  it('rotateWebhookSubscriptionSecret: 409 webhook_secret_rotation_conflict → EvaApiError sin clave, comparable con S2S_ERROR_CODES', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        error: {
+          code: 'webhook_secret_rotation_conflict',
+          message: 'Otra rotación cambió la clave de firma al mismo tiempo',
+        },
+      }),
+    })
+
+    const s2s = createS2SClient(mockConfig)
+    const result = await s2s.rotateWebhookSubscriptionSecret('sub-1')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('api')
+    expect(result.error.status).toBe(409)
+    if (result.error.kind !== 'api') return
+    expect(result.error.code).toBe(
+      S2S_ERROR_CODES.webhook_secret_rotation_conflict,
+    )
   })
 
   // ─── Ventana de timestamp: firma incluye timestamp reciente ──────────────

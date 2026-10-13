@@ -241,6 +241,8 @@ import type {
   CreateServiceClientResult,
 } from '../src/admin/types'
 import type { S2SClientConfig } from '../src/s2s/types'
+import type { AdminErrorCode } from '../src/admin/error-codes'
+import type { S2SErrorCode } from '../src/s2s/error-codes'
 import { assertType } from 'vitest'
 
 // REQ-WH-08 — WebhookPayload importable + EventCode assignable
@@ -322,6 +324,40 @@ describe('Admin types (REQ-ADMIN-06)', () => {
       secret: 'abc123hex',
       warning: 'Store the secret now',
     })
+  })
+})
+
+// AdminErrorCode / S2SErrorCode — uniones cerradas, asignables al ErrorCode abierto
+describe('AdminErrorCode y S2SErrorCode', () => {
+  it('AdminErrorCode es la unión exacta de los codes admin', () => {
+    expectTypeOf<AdminErrorCode>().toEqualTypeOf<
+      | 'service_client_already_exists'
+      | 'service_client_not_found'
+      | 'service_client_secret_rotation_conflict'
+    >()
+  })
+
+  it('S2SErrorCode es la unión exacta de los codes s2s', () => {
+    expectTypeOf<S2SErrorCode>().toEqualTypeOf<
+      | 'user_not_found'
+      | 'webhook_subscription_duplicate'
+      | 'webhook_subscription_not_found'
+      | 'webhook_secret_rotation_conflict'
+      | 'webhook_url_invalid'
+      | 'webhook_event_codes_empty'
+    >()
+  })
+
+  it('ambas son asignables a ErrorCode', () => {
+    expectTypeOf<AdminErrorCode>().toMatchTypeOf<ErrorCode>()
+    expectTypeOf<S2SErrorCode>().toMatchTypeOf<ErrorCode>()
+  })
+
+  it('un code fuera de la unión no es AdminErrorCode ni S2SErrorCode', () => {
+    // @ts-expect-error — 'no_such_code' no pertenece a AdminErrorCode
+    assertType<AdminErrorCode>('no_such_code')
+    // @ts-expect-error — 'no_such_code' no pertenece a S2SErrorCode
+    assertType<S2SErrorCode>('no_such_code')
   })
 })
 

@@ -102,6 +102,7 @@ A change to an exposed contract above is not done until the consumers run it. Ch
 
 - [ ] Add a changeset (`pnpm changeset`): `major` for a breaking change, `minor` for an additive one.
 - [ ] Update [migration.md](migration.md) for breaking changes, and [api.md](api.md) / [configuration.md](configuration.md) for changed API or config (link, do not duplicate).
+- [ ] If the Auth Service API adds an error code on an admin or `/internal/*` route, add it to `ADMIN_ERROR_CODES` / `S2S_ERROR_CODES` (`packages/auth-sdk/src/admin/error-codes.ts`, `packages/auth-sdk/src/s2s/error-codes.ts`) and to the exact-set tests in `tests/exports.test.ts`.
 - [ ] Merge to `main`; the release workflow opens the Version PR (`changeset version`) and, once that PR is merged, publishes. Follow the maintainer steps in [CONTRIBUTING.md](../CONTRIBUTING.md#releasing-maintainers).
 - [ ] Each consumer updates its pinned version and lockfile, following the install method documented in its own repo, and passes `authUrl` if it did not before.
 - [ ] Each consumer runs its tests. They mock or exercise the SDK, so a signature or error-shape change fails there first.

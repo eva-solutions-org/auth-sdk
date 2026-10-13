@@ -45,6 +45,7 @@ import {
   S2S_TIMESTAMP_WINDOW_SECONDS,
   S2S_SCOPES,
   S2S_RESPONSE_HEADERS,
+  S2S_ERROR_CODES,
   USERS_BATCH_MAX_IDS,
   // S2S server-side — v1.1.0 (REQ-API-06)
   verifyS2SRequest,
@@ -398,8 +399,52 @@ describe('ADMIN_ERROR_CODES export (Batch-14 G4)', () => {
     )
   })
 
+  it('tiene service_client_secret_rotation_conflict (409 reintentable de rotate-secret)', () => {
+    expect(ADMIN_ERROR_CODES.service_client_secret_rotation_conflict).toBe(
+      'service_client_secret_rotation_conflict',
+    )
+  })
+
+  it('contiene exactamente los codes que emite el API en /admin/service-clients', () => {
+    expect(Object.keys(ADMIN_ERROR_CODES).sort()).toEqual([
+      'service_client_already_exists',
+      'service_client_not_found',
+      'service_client_secret_rotation_conflict',
+    ])
+  })
+
   it('los valores son iguales a sus keys (as const)', () => {
     for (const [k, v] of Object.entries(ADMIN_ERROR_CODES)) {
+      expect(v).toBe(k)
+    }
+  })
+})
+
+describe('S2S_ERROR_CODES export', () => {
+  it('existe y es un objeto', () => {
+    expect(S2S_ERROR_CODES).toBeDefined()
+    expect(typeof S2S_ERROR_CODES).toBe('object')
+  })
+
+  it('tiene webhook_secret_rotation_conflict (409 reintentable de rotate-secret)', () => {
+    expect(S2S_ERROR_CODES.webhook_secret_rotation_conflict).toBe(
+      'webhook_secret_rotation_conflict',
+    )
+  })
+
+  it('contiene exactamente los codes que emite el API en /internal/users y /internal/webhooks', () => {
+    expect(Object.keys(S2S_ERROR_CODES).sort()).toEqual([
+      'user_not_found',
+      'webhook_event_codes_empty',
+      'webhook_secret_rotation_conflict',
+      'webhook_subscription_duplicate',
+      'webhook_subscription_not_found',
+      'webhook_url_invalid',
+    ])
+  })
+
+  it('los valores son iguales a sus keys (as const)', () => {
+    for (const [k, v] of Object.entries(S2S_ERROR_CODES)) {
       expect(v).toBe(k)
     }
   })
@@ -574,6 +619,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'EVENT_CODES',
     'HEADERS',
     'JWT_CONFIG',
+    'S2S_ERROR_CODES',
     'S2S_RESPONSE_HEADERS',
     'S2S_SCOPES',
     'S2S_TIMESTAMP_WINDOW_SECONDS',
@@ -705,6 +751,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
   admin: ['ADMIN_ERROR_CODES', 'createAdminClient'],
   s2s: [
     'EMPTY_BODY_SHA256_HEX',
+    'S2S_ERROR_CODES',
     'S2S_RESPONSE_HEADERS',
     'S2S_SCOPES',
     'S2S_TIMESTAMP_WINDOW_SECONDS',

@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createAdminClient } from '../src/admin/client'
+import { ADMIN_ERROR_CODES } from '../src/admin/error-codes'
 import type { Result } from '../src/types'
 
 // ---------------------------------------------------------------------------
@@ -265,6 +266,31 @@ describe('AdminClient', () => {
       `${BASE_URL}/api/v1/admin/service-clients/mi-servicio/rotate-secret`,
     )
     expect(options.method).toBe('POST')
+  })
+
+  it('rotateServiceClientSecret: 409 service_client_secret_rotation_conflict → EvaApiError sin secret, comparable con ADMIN_ERROR_CODES', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        error: {
+          code: 'service_client_secret_rotation_conflict',
+          message: 'Otra rotación cambió el secret al mismo tiempo',
+        },
+      }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    const result = await admin.rotateServiceClientSecret('mi-servicio')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('api')
+    expect(result.error.status).toBe(409)
+    if (result.error.kind !== 'api') return
+    expect(result.error.code).toBe(
+      ADMIN_ERROR_CODES.service_client_secret_rotation_conflict,
+    )
   })
 
   // ─── restoreUser (REQ-RESTORE-01) ────────────────────────────────────────
