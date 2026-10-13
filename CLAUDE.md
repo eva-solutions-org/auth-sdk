@@ -38,6 +38,7 @@ Run scripts as `pnpm run <script>` (`version` and `docs` collide with pnpm built
 - **Style**: oxfmt + oxlint.
 - **Docs**: `docs/` is the single source of truth. This repo has no project skills: the directory in this file is the only index. Rules and behavior live in `docs/`, never in this file. Update the affected doc in the same change.
 - **Public OSS repo**: never commit secrets, tokens, internal URLs or private topology.
+- **Compatibility (until there is production)**: nothing in the ecosystem is in production yet and dev data is disposable. Breaking changes (contract, schema or data) are allowed and preferred when they save code or improve the system: favor the best long-term design over backward compatibility, and still ship them as `feat!` with a major changeset. This rule expires the day there is production with real data; from then on, incompatible changes go back to expand/contract.
 - **Release checklist and consumer propagation**: [`docs/integrations.md`](docs/integrations.md).
 
 ## Consumers & server
