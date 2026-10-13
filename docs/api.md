@@ -629,7 +629,7 @@ if (!isValid) {
 }
 ```
 
-**IMPORTANTE**: `signingKey` es el `secretHash` del subscription tal como el API lo entrega — **NO debe re-hashearse** antes de pasarlo. Re-hashearlo produce `false`.
+**IMPORTANTE**: `signingKey` es la signing key que Auth entregó **una sola vez** al crear o rotar la suscripción (Auth la guarda cifrada) — el receptor la usa tal cual y **NO debe re-hashearla** antes de pasarla. Re-hashearlo produce `false`.
 
 ### Ventana anti-replay
 
