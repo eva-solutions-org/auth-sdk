@@ -217,9 +217,7 @@ async function s2sFetch<T>({
  * })
  * const result = await s2s.getUser(userId)
  * if (!result.ok) return handleError(result.error)
- * // El runtime entrega el perfil directamente en `result.data`; el tipo declara
- * // `{ user }` por un bug conocido (ver `S2SGetUserResult`), no uses `result.data.user`.
- * return result.data
+ * return result.data // perfil del usuario
  * ```
  */
 export function createS2SClient(config: S2SClientConfig): S2SClient {

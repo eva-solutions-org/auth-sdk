@@ -66,16 +66,11 @@ export type S2SCanonicalParts = {
 }
 
 /**
- * Resultado de `getUser` — perfil público del usuario.
- *
- * ADVERTENCIA (bug conocido, fix pendiente en un cambio separado): el tipo declara `{ user }`,
- * pero el runtime NO construye ese envoltorio. `s2sFetch` devuelve `json.data` y el wire de Auth
- * es `{ data: perfil }`, así que el perfil llega directamente en `result.data`. No confíes en
- * `result.data.user`: en runtime es `undefined`.
+ * Resultado de `getUser` — perfil público del usuario (alias del `data` de la respuesta del
+ * contrato). El wire es `{ data: perfil }` y `result.data` es el perfil directamente, sin
+ * envoltorio. Un usuario inexistente o soft-deleted llega como error `user_not_found` (404).
  */
-export type S2SGetUserResult = {
-  user: ProfileResponse['data']
-}
+export type S2SGetUserResult = ProfileResponse['data']
 
 /**
  * Input para `batchUsers` — lista de IDs a consultar (alias del request del contrato).

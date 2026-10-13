@@ -16,6 +16,8 @@ import {
   EMPTY_BODY_SHA256_HEX,
 } from '../src/s2s/sign'
 import { createS2SClient } from '../src/s2s/client'
+import type { ProfileResponse } from '@eva_solutions/auth-contracts'
+import { matchError } from '../src/error-helpers'
 import type { S2SCanonicalParts } from '../src/s2s/types'
 
 // ---------------------------------------------------------------------------
@@ -270,11 +272,11 @@ describe('S2SClient', () => {
 
   // ─── getUser: happy path ──────────────────────────────────────────────────
 
-  it('getUser: happy path — retorna Result ok con user', async () => {
+  it('getUser: happy path — retorna Result ok con el perfil', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ data: { user: mockUser } }),
+      json: async () => ({ data: mockUser }),
     })
 
     const s2s = createS2SClient(mockConfig)
@@ -282,14 +284,63 @@ describe('S2SClient', () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data.user).toEqual(mockUser)
+    expect(result.data).toEqual(mockUser)
+  })
+
+  it('getUser: consumes the real wire shape { data: profile } and returns the profile in result.data', async () => {
+    // Typed against the shared contract so the fixture cannot drift from the real wire.
+    const wire = {
+      data: {
+        id: 'user-1',
+        phone: '+51999999999',
+        name: 'Ana',
+        lastName: 'Perez',
+        email: null,
+        dni: null,
+        stateActivity: 'activo',
+        statePrivacy: 'publico',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    } satisfies ProfileResponse
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => wire,
+    })
+
+    const s2s = createS2SClient(mockConfig)
+    const result = await s2s.getUser('user-1')
+
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.data).toEqual(wire.data)
+    expect(result.data.id).toBe('user-1')
+    expect('user' in result.data).toBe(false)
+  })
+
+  it('getUser: 404 user_not_found → Result ok:false with code user_not_found', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({
+        error: { code: 'user_not_found', message: 'User not found' },
+      }),
+    })
+
+    const s2s = createS2SClient(mockConfig)
+    const result = await s2s.getUser('missing')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.status).toBe(404)
+    expect(matchError(result.error, 'user_not_found')).toBe(true)
   })
 
   it('getUser: envía headers S2S correctos (client-id, timestamp, signature)', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ data: { user: mockUser } }),
+      json: async () => ({ data: mockUser }),
     })
 
     const s2s = createS2SClient(mockConfig)
@@ -318,7 +369,7 @@ describe('S2SClient', () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ data: { user: mockUser } }),
+      json: async () => ({ data: mockUser }),
     })
 
     const s2s = createS2SClient(mockConfig)
@@ -512,7 +563,7 @@ describe('S2SClient', () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ data: { user: mockUser } }),
+      json: async () => ({ data: mockUser }),
     })
 
     const beforeCall = Math.floor(Date.now() / 1000)
