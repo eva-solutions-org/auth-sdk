@@ -771,7 +771,7 @@ const deliveries = await s2s.listWebhookDeliveries({ status: 'failed', limit: 20
 
 Los ids que recibe el cliente (`getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription`, `rotateWebhookSubscriptionSecret`) se validan y se codifican como un solo segmento de path: un id que no es string, vacío, `.` o `..` (crudo o percent-decodificado) devuelve `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }` sin hacer fetch, y el resto pasa por `encodeURIComponent` (`a/b` → `a%2Fb`). Los UUID no cambian. El cliente admin aplica la misma regla a `slug` y `userId` (ver [Métodos del AdminClient](#métodos-del-adminclient)).
 
-La entrada de `createWebhookSubscription` y `updateWebhookSubscription` sigue el contrato compartido: `url` sin espacios (el contrato no rechaza el userinfo: lo rechaza el Auth Service al parsear la URL, `https://user:pass@host` y `https://user@host`, incluidas variantes sin `//`; un `@` en el path o el query es válido) y `eventCodes` con valores de `EVENT_CODES` (tipo `EventCode[]`), mínimo uno. Los duplicados en `eventCodes` tampoco los rechaza el contrato: los rechaza el Auth Service.
+La entrada de `createWebhookSubscription` y `updateWebhookSubscription` sigue el contrato compartido: `url` con esquema `http` o `https` seguido de `//`, sin espacios ni caracteres de control (`javascript:`, `ftp://` y `https:host/x` se rechazan; el contrato no rechaza el userinfo: lo rechaza el Auth Service al parsear la URL, `https://user:pass@host` y `https://user@host`; un `@` en el path o el query es válido) y `eventCodes` con valores de `EVENT_CODES` (tipo `EventCode[]`), mínimo uno. Los duplicados en `eventCodes` tampoco los rechaza el contrato: los rechaza el Auth Service.
 
 ### Firma HMAC automática
 
