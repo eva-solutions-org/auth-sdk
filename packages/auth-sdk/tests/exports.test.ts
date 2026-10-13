@@ -21,6 +21,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
+import { SERVICE_CLIENT_SCOPES } from '@eva_solutions/auth-contracts'
 import {
   // Runtime values — nuevos
   ERROR_CODES,
@@ -368,6 +369,13 @@ describe('S2S_SCOPES export (Batch-14 G3)', () => {
     expect(S2S_SCOPES.USERS_READ).toBe('users:read')
     expect(S2S_SCOPES.WEBHOOKS_READ).toBe('webhooks:read')
     expect(S2S_SCOPES.WEBHOOKS_WRITE).toBe('webhooks:write')
+  })
+
+  it('sus valores son EXACTAMENTE el catálogo SERVICE_CLIENT_SCOPES del contrato', () => {
+    // `satisfies` solo prueba que cada valor existe en el contrato, no que estén todos.
+    const values = Object.values(S2S_SCOPES)
+    expect(new Set(values).size).toBe(values.length)
+    expect([...values].sort()).toEqual([...SERVICE_CLIENT_SCOPES].sort())
   })
 })
 

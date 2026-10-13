@@ -17,13 +17,16 @@
  *   POST   /admin/users/:id/restore                     → restoreUser
  *
  * Los paths salen de `ADMIN_ROUTES` (contrato compartido) vía `apiPath`; el slug y el id se
- * insertan tal cual, sin codificar (a diferencia del cliente S2S).
+ * codifican como UN segmento con `encodePathSegment` (el mismo helper del cliente S2S) antes de
+ * insertarlos. Un slug/id vacío, `.`, `..` o que no sea string devuelve un `Result` de error
+ * (`kind: 'sdk'`, `reason: 'malformed'`) sin hacer la request.
  */
 
 import { ADMIN_ROUTES } from '@eva_solutions/auth-contracts'
 import { apiPath } from '../api-path'
 import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../parse-error-response'
+import { encodePathSegment } from '../path-segment'
 import type { Result } from '../types'
 import type {
   AdminClientConfig,
@@ -116,6 +119,22 @@ async function adminFetch<T>({
   }
 }
 
+/**
+ * Result de error para un slug/id que no se puede usar como segmento del path. Se devuelve antes
+ * de armar la URL: `apiPath` lanzaría con un param ausente y la promesa se rechazaría.
+ */
+function invalidParamResult(method: string, param: string): Result<never> {
+  return {
+    ok: false,
+    error: {
+      kind: 'sdk',
+      reason: 'malformed',
+      message: `${method}: ${param} inválido (no puede ser vacío, "." ni "..")`,
+      status: 0,
+    },
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -164,10 +183,13 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
     async getServiceClient(
       slug: string,
     ): Promise<Result<{ cliente: ServiceClientPublic }>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null)
+        return invalidParamResult('getServiceClient', 'slug')
       return adminFetch<{ cliente: ServiceClientPublic }>({
         config,
         method: 'GET',
-        pathname: apiPath(ADMIN_ROUTES.getServiceClient, { slug }),
+        pathname: apiPath(ADMIN_ROUTES.getServiceClient, { slug: segment }),
       })
     },
 
@@ -175,37 +197,53 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
       slug: string,
       input: UpdateServiceClientInput,
     ): Promise<Result<UpdateServiceClientResult>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('updateServiceClient', 'slug')
+      }
       return adminFetch<UpdateServiceClientResult>({
         config,
         method: 'PATCH',
-        pathname: apiPath(ADMIN_ROUTES.updateServiceClient, { slug }),
+        pathname: apiPath(ADMIN_ROUTES.updateServiceClient, { slug: segment }),
         body: input,
       })
     },
 
     async deleteServiceClient(slug: string): Promise<Result<void>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('deleteServiceClient', 'slug')
+      }
       return adminFetch<void>({
         config,
         method: 'DELETE',
-        pathname: apiPath(ADMIN_ROUTES.deleteServiceClient, { slug }),
+        pathname: apiPath(ADMIN_ROUTES.deleteServiceClient, { slug: segment }),
       })
     },
 
     async rotateServiceClientSecret(
       slug: string,
     ): Promise<Result<RotateSecretResult>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('rotateServiceClientSecret', 'slug')
+      }
       return adminFetch<RotateSecretResult>({
         config,
         method: 'POST',
-        pathname: apiPath(ADMIN_ROUTES.rotateServiceClientSecret, { slug }),
+        pathname: apiPath(ADMIN_ROUTES.rotateServiceClientSecret, {
+          slug: segment,
+        }),
       })
     },
 
     async restoreUser(userId: string): Promise<Result<RestoreUserResult>> {
+      const segment = encodePathSegment(userId)
+      if (segment === null) return invalidParamResult('restoreUser', 'userId')
       return adminFetch<RestoreUserResult>({
         config,
         method: 'POST',
-        pathname: apiPath(ADMIN_ROUTES.restoreUser, { id: userId }),
+        pathname: apiPath(ADMIN_ROUTES.restoreUser, { id: segment }),
       })
     },
   }

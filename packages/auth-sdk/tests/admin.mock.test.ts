@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createAdminClient } from '../src/admin/client'
+import type { Result } from '../src/types'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -381,6 +382,72 @@ describe('AdminClient', () => {
 // ---------------------------------------------------------------------------
 // T-014: createAdminClient — validación baseUrl (REQ-ADMIN-01..05)
 // ---------------------------------------------------------------------------
+
+describe('AdminClient — params de path (slug / userId)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: {} }),
+    })
+    global.fetch = fetchMock as unknown as typeof fetch
+  })
+
+  const calls: Array<
+    [
+      string,
+      (admin: ReturnType<typeof createAdminClient>, v: string) => unknown,
+    ]
+  > = [
+    ['getServiceClient', (a, v) => a.getServiceClient(v)],
+    ['updateServiceClient', (a, v) => a.updateServiceClient(v, {})],
+    ['deleteServiceClient', (a, v) => a.deleteServiceClient(v)],
+    ['rotateServiceClientSecret', (a, v) => a.rotateServiceClientSecret(v)],
+    ['restoreUser', (a, v) => a.restoreUser(v)],
+  ]
+
+  it.each(calls)(
+    '%s: codifica el param como UN segmento (sin doble codificación)',
+    async (_name, call) => {
+      const admin = createAdminClient(mockConfig)
+      await call(admin, '../x/y?z#w')
+      await call(admin, 'a b')
+      await call(admin, 'a%2Fb')
+
+      const urls = fetchMock.mock.calls.map((c) => (c[0] as string).split('/'))
+      // `/api/v1/admin/<recurso>/<segmento>[/accion]`: el segmento nunca aporta barras.
+      const segmentOf = (url: string[]) => url[url.indexOf('admin') + 2]
+      expect(segmentOf(urls[0]!)).toBe('..%2Fx%2Fy%3Fz%23w')
+      expect(segmentOf(urls[1]!)).toBe('a%20b')
+      // un `%` ya presente se codifica UNA vez (`%25`), no se reinterpreta ni se duplica
+      expect(segmentOf(urls[2]!)).toBe('a%252Fb')
+    },
+  )
+
+  it.each(calls)(
+    '%s: param vacío, "." , ".." o no-string → Result error sdk/malformed sin request',
+    async (name, call) => {
+      const admin = createAdminClient(mockConfig)
+      for (const bad of ['', '.', '..', '%2e', '%2E%2e', undefined, null, 42]) {
+        const result = (await call(
+          admin,
+          bad as unknown as string,
+        )) as Result<unknown>
+        expect(result.ok, String(bad)).toBe(false)
+        if (result.ok) return
+        expect(result.error).toMatchObject({
+          kind: 'sdk',
+          reason: 'malformed',
+          status: 0,
+        })
+        expect(result.error.message).toContain(name)
+      }
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+})
 
 describe('createAdminClient — validación baseUrl', () => {
   const validConfig = { adminPassword: ADMIN_PASSWORD }

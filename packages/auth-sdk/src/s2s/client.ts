@@ -26,6 +26,7 @@ import {
 import { apiPath } from '../api-path'
 import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../parse-error-response'
+import { encodePathSegment } from '../path-segment'
 import type { Result } from '../types'
 import { signS2SHeaders } from './sign'
 import type {
@@ -92,24 +93,6 @@ function buildQueryString(
     }
   }
   return parts.join('&')
-}
-
-/**
- * Valida y codifica un id para usarlo como UN segmento del path. Retorna `null` si el id es
- * vacío, `.` o `..` (crudo o percent-decodificado, `%2e` en cualquier caso): como el
- * cliente firma el pathname normalizado, un id así redirigiría la request firmada a otro
- * endpoint. `encodeURIComponent` solo no basta: no codifica `.`.
- */
-function encodePathSegment(id: string): string | null {
-  const isDotSegment = (value: string) => value === '.' || value === '..'
-  let decoded = id
-  try {
-    decoded = decodeURIComponent(id)
-  } catch {
-    // percent-encoding malformado: no decodifica a nada peligroso; se codifica tal cual.
-  }
-  if (id === '' || isDotSegment(id) || isDotSegment(decoded)) return null
-  return encodeURIComponent(id)
 }
 
 function invalidIdResult(method: string): Result<never> {
