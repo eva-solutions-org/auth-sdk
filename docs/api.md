@@ -742,6 +742,11 @@ const s2s = createS2SClient({
 
 // Obtener usuario por ID
 const user = await s2s.getUser('uuid-del-usuario')
+if (user.ok) {
+  console.log(user.data.phone) // `data` es el perfil directamente, sin envoltorio `{ user }`
+}
+// Usuario inexistente o soft-deleted: user.error con code 'user_not_found' (404);
+// matchError(user.error, 'user_not_found'). isNotFound también es true para un 404 de ruta.
 
 // Lote de usuarios
 const users = await s2s.batchUsers({ ids: ['uuid1', 'uuid2'] })

@@ -27,6 +27,7 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 | 8 | S2S | Nuevo header obligatorio `x-eva-nonce`; canonical de 7 líneas; razón `nonce_malformed`; clave y TTL del `replayCache` cambian |
 | 9 | Login OTP | `get-code` devuelve `challengeId` y `/login` (`LoginSchema`, `http-client.login`, `login.verify`) lo exige |
 | 10 | Rutas del Auth Service | Todas bajo `/api/v1` (login, user, sessions, `/internal/*`, `/admin/*`, webhooks); JWKS y `/health` siguen en la raíz; `AUTH_URL` no cambia |
+| 11 | `S2SGetUserResult` (solo tipos) | Es `ProfileResponse['data']`: el perfil va directo en `result.data`, sin `{ user }`. En runtime ya era así |
 
 ---
 
@@ -246,6 +247,12 @@ await s2s.getUser('u1')
 - Un verificador S2S propio recibe y verifica el pathname `/api/v1/internal/...`.
 - Si llamas al Auth Service sin el SDK, cambia tus paths a `/api/v1/...`.
 - Las rutas de **tu** backend no cambian: lo que montas con `evaAuthRoutes()` (por ejemplo `/auth/login`, `/auth/me`) y lo que consumen los hooks de React (`useAuthData('/sessions')`) son rutas del BFF del consumidor, no del Auth Service, y no se prefijan.
+
+---
+
+## 10. `getUser`: el perfil va en `result.data`
+
+`S2SGetUserResult` pasa de `{ user: perfil }` a `perfil` (`ProfileResponse['data']`). El tipo anterior no coincidía con el runtime: `getUser` ya entregaba el perfil directo, así que el código que leía `result.data.user` no tipaba contra la realidad. Cambia `result.data.user.x` por `result.data.x`. Un usuario inexistente o soft-deleted llega como error con `code: 'user_not_found'` (404); `isNotFound` también es true para un 404 de ruta (`not_found`), así que para detectar un usuario ausente usa `matchError(err, 'user_not_found')`.
 
 ---
 
