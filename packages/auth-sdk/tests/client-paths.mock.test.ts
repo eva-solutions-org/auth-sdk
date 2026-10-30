@@ -109,7 +109,8 @@ describe('client_paths_equal_prefixed_descriptors', () => {
       baseUrl: 'https://auth.example',
     })
     const admin = createAdminClient({
-      adminPassword: 'pw',
+      clientId: 'admin-test',
+      secretHex: 'b'.repeat(64),
       baseUrl: 'https://auth.example',
     })
     await s2s.batchUsers({ ids: ['user-1'] })
@@ -297,7 +298,8 @@ describe('client_paths_equal_prefixed_descriptors: webhooks', () => {
 
 describe('client_paths_equal_prefixed_descriptors: admin', () => {
   const admin = createAdminClient({
-    adminPassword: 'pw',
+    clientId: 'admin-test',
+    secretHex: 'b'.repeat(64),
     baseUrl: 'https://auth.example',
   })
   const SLUG = 'whatsapp-api'
@@ -337,6 +339,16 @@ describe('client_paths_equal_prefixed_descriptors: admin', () => {
       () => admin.rotateServiceClientSecret(SLUG),
     ],
     ['restoreUser', ADMIN_ROUTES.restoreUser, () => admin.restoreUser(USER_ID)],
+    [
+      'republishPendingWebhooks',
+      ADMIN_ROUTES.republishPendingWebhooks,
+      () => admin.republishPendingWebhooks(),
+    ],
+    [
+      'maintenanceCleanup',
+      ADMIN_ROUTES.maintenanceCleanup,
+      () => admin.maintenanceCleanup(),
+    ],
   ] as const
 
   it.each(cases)(

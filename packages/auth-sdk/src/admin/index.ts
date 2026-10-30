@@ -19,6 +19,10 @@ export type {
   UpdateServiceClientResult,
   RotateSecretResult,
   RestoreUserResult,
+  MaintenanceCleanupQuery,
+  MaintenanceCleanupResult,
+  RepublishPendingWebhooksQuery,
+  RepublishPendingWebhooksResult,
 } from './types'
 
 export { ADMIN_ERROR_CODES } from './error-codes'

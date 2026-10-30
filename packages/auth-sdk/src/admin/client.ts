@@ -5,7 +5,8 @@
  * REQ-ADMIN-01, REQ-ADMIN-02, REQ-ADMIN-03, REQ-ADMIN-04, REQ-ADMIN-05 LOCKED.
  * REQ-RESTORE-01 LOCKED: endpoint POST /admin/users/:id/restore.
  *
- * Autenticación: header `X-Admin-Password` con la contraseña global de admin.
+ * Autenticación: firma HMAC S2S (la misma de `createS2SClient`) de un service client con scope
+ * `admin`. Una persona, un client: el API registra el slug que firmó como `actor`.
  *
  * Endpoints:
  *   POST   /admin/service-clients                       → createServiceClient
@@ -15,6 +16,8 @@
  *   DELETE /admin/service-clients/:slug                 → deleteServiceClient (204)
  *   POST   /admin/service-clients/:slug/rotate-secret   → rotateServiceClientSecret
  *   POST   /admin/users/:id/restore                     → restoreUser
+ *   POST   /admin/webhooks/republish-pending            → republishPendingWebhooks
+ *   POST   /admin/maintenance/cleanup                   → maintenanceCleanup
  *
  * Los paths salen de `ADMIN_ROUTES` (contrato compartido) vía `apiPath`; el slug y el id se
  * codifican como UN segmento con `encodePathSegment` (el mismo helper del cliente S2S) antes de
@@ -27,6 +30,7 @@ import { apiPath } from '../api-path'
 import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../parse-error-response'
 import { encodePathSegment } from '../path-segment'
+import { signS2SHeaders } from '../s2s/sign'
 import type { Result } from '../types'
 import type {
   AdminClientConfig,
@@ -37,7 +41,13 @@ import type {
   UpdateServiceClientResult,
   RotateSecretResult,
   RestoreUserResult,
+  MaintenanceCleanupQuery,
+  MaintenanceCleanupResult,
+  RepublishPendingWebhooksQuery,
+  RepublishPendingWebhooksResult,
 } from './types'
+
+const encoder = new TextEncoder()
 
 /**
  * Tipo del cliente Admin retornado por `createAdminClient`.
@@ -57,6 +67,12 @@ export type AdminClient = {
   deleteServiceClient(slug: string): Promise<Result<void>>
   rotateServiceClientSecret(slug: string): Promise<Result<RotateSecretResult>>
   restoreUser(userId: string): Promise<Result<RestoreUserResult>>
+  republishPendingWebhooks(
+    query?: RepublishPendingWebhooksQuery,
+  ): Promise<Result<RepublishPendingWebhooksResult>>
+  maintenanceCleanup(
+    query?: MaintenanceCleanupQuery,
+  ): Promise<Result<MaintenanceCleanupResult>>
 }
 
 // ---------------------------------------------------------------------------
@@ -64,32 +80,53 @@ export type AdminClient = {
 // ---------------------------------------------------------------------------
 
 /**
- * Realiza un fetch autenticado con el header de admin password.
+ * Realiza un fetch autenticado S2S firmando el request con HMAC-SHA-256.
  * Retorna `Result<T>` con la propiedad `data` del body de respuesta.
  */
 async function adminFetch<T>({
   config,
   method,
   pathname,
+  rawQuery = '',
   body,
 }: {
   config: AdminClientConfig
   method: string
   pathname: string
+  rawQuery?: string
   body?: unknown
 }): Promise<Result<T>> {
   try {
+    const bodyBytes: Uint8Array =
+      body !== undefined
+        ? encoder.encode(JSON.stringify(body))
+        : new Uint8Array(0)
+
+    const url = rawQuery
+      ? `${config.baseUrl}${pathname}?${rawQuery}`
+      : `${config.baseUrl}${pathname}`
+
+    // Se firma el pathname y el query de la URL FINAL (incluido el prefijo de `baseUrl`), que es
+    // lo que el verificador lee en `request.url`.
+    const target = new URL(url)
+    const authHeaders = await signS2SHeaders({
+      method,
+      path: target.pathname,
+      rawQuery: target.search.slice(1),
+      bodyBytes,
+      clientId: config.clientId,
+      secretHex: config.secretHex,
+    })
+
     const headers: Record<string, string> = {
       'content-type': 'application/json',
-      'x-admin-password': config.adminPassword,
+      ...authHeaders,
     }
-
-    const url = `${config.baseUrl}${pathname}`
 
     const res = await fetch(url, {
       method,
       headers,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: bodyBytes.length > 0 ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(10_000),
     })
 
@@ -142,13 +179,14 @@ function invalidParamResult(method: string, param: string): Result<never> {
 /**
  * Crea un cliente Admin para provisioning del Auth Service.
  *
- * ADVERTENCIA: solo usar desde backends seguros — la contraseña de admin
- * nunca debe exponerse en el cliente/browser.
+ * ADVERTENCIA: solo usar desde backends o herramientas de operador seguras — el secret del
+ * service client admin nunca debe exponerse en el cliente/browser.
  *
  * @example
  * ```ts
  * const admin = createAdminClient({
- *   adminPassword: process.env.EVA_ADMIN_PASSWORD,
+ *   clientId: process.env.AUTH_ADMIN_SLUG,
+ *   secretHex: process.env.AUTH_ADMIN_SECRET,
  *   baseUrl: 'https://auth.miapp.com',
  * })
  * const result = await admin.createServiceClient({ slug: 'mi-servicio', scopes: ['users:read'] })
@@ -244,6 +282,39 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
         config,
         method: 'POST',
         pathname: apiPath(ADMIN_ROUTES.restoreUser, { id: segment }),
+      })
+    },
+
+    async republishPendingWebhooks(
+      query?: RepublishPendingWebhooksQuery,
+    ): Promise<Result<RepublishPendingWebhooksResult>> {
+      const params = new URLSearchParams()
+      if (query?.older_than_minutes !== undefined) {
+        params.set('older_than_minutes', String(query.older_than_minutes))
+      }
+      if (query?.limit !== undefined) {
+        params.set('limit', String(query.limit))
+      }
+      return adminFetch<RepublishPendingWebhooksResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(ADMIN_ROUTES.republishPendingWebhooks),
+        rawQuery: params.toString(),
+      })
+    },
+
+    async maintenanceCleanup(
+      query?: MaintenanceCleanupQuery,
+    ): Promise<Result<MaintenanceCleanupResult>> {
+      const params = new URLSearchParams()
+      if (query?.limit !== undefined) {
+        params.set('limit', String(query.limit))
+      }
+      return adminFetch<MaintenanceCleanupResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(ADMIN_ROUTES.maintenanceCleanup),
+        rawQuery: params.toString(),
       })
     },
   }

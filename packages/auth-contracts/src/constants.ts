@@ -114,6 +114,7 @@ export const SERVICE_CLIENT_SCOPES = [
   'users:read',
   'webhooks:read',
   'webhooks:write',
+  'admin',
 ] as const
 
 export type ServiceClientScope = (typeof SERVICE_CLIENT_SCOPES)[number]

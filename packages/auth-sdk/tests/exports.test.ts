@@ -366,10 +366,11 @@ describe('S2S_SCOPES export (Batch-14 G3)', () => {
     expect(typeof S2S_SCOPES).toBe('object')
   })
 
-  it('tiene los 3 scopes correctos', () => {
+  it('tiene los 4 scopes correctos', () => {
     expect(S2S_SCOPES.USERS_READ).toBe('users:read')
     expect(S2S_SCOPES.WEBHOOKS_READ).toBe('webhooks:read')
     expect(S2S_SCOPES.WEBHOOKS_WRITE).toBe('webhooks:write')
+    expect(S2S_SCOPES.ADMIN).toBe('admin')
   })
 
   it('sus valores son EXACTAMENTE el catálogo SERVICE_CLIENT_SCOPES del contrato', () => {
@@ -405,8 +406,13 @@ describe('ADMIN_ERROR_CODES export (Batch-14 G4)', () => {
     )
   })
 
+  it('tiene last_admin_client (409 de la guarda del último admin)', () => {
+    expect(ADMIN_ERROR_CODES.last_admin_client).toBe('last_admin_client')
+  })
+
   it('contiene exactamente los codes que emite el API en /admin/service-clients', () => {
     expect(Object.keys(ADMIN_ERROR_CODES).sort()).toEqual([
+      'last_admin_client',
       'service_client_already_exists',
       'service_client_not_found',
       'service_client_secret_rotation_conflict',

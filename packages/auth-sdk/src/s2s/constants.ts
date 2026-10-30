@@ -51,6 +51,7 @@ export const S2S_SCOPES = {
   USERS_READ: 'users:read',
   WEBHOOKS_READ: 'webhooks:read',
   WEBHOOKS_WRITE: 'webhooks:write',
+  ADMIN: 'admin',
 } as const satisfies Record<string, ServiceClientScope>
 
 /** Unión de literales de todos los scopes S2S reconocidos. */

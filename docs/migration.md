@@ -11,7 +11,8 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 5. Si firmas requests S2S a mano (sin `createS2SClient`), cambia a `signS2SHeaders` (sección 7). Si verificas S2S, cada request entrante debe traer `x-eva-nonce`.
 6. Si tu frontend hace el login OTP (`login.getCode` / `login.verify` o `POST /get-code` + `POST /login`), conserva el `challengeId` que devuelve `get-code` y envíalo con el código (sección 8).
 7. Si llamas al Auth Service sin el SDK (fetch directo, proxy, gateway por path), todas sus rutas viven ahora bajo `/api/v1`. `AUTH_URL` no cambia (sección 9).
-8. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
+8. Si usas `createAdminClient`, cambia `adminPassword` por `clientId` y `secretHex` de un service client con scope `admin` (sección 12).
+9. Verifica: arranca tu app y haz una request autenticada; debe responder 200. Si la primera request que necesita el Auth Service responde 500, falta el paso 2.
 
 ## Resumen de breaking changes
 
@@ -28,6 +29,7 @@ La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **u
 | 9 | Login OTP | `get-code` devuelve `challengeId` y `/login` (`LoginSchema`, `http-client.login`, `login.verify`) lo exige |
 | 10 | Rutas del Auth Service | Todas bajo `/api/v1` (login, user, sessions, `/internal/*`, `/admin/*`, webhooks); JWKS y `/health` siguen en la raíz; `AUTH_URL` no cambia |
 | 11 | `S2SGetUserResult` (solo tipos) | Es `ProfileResponse['data']`: el perfil va directo en `result.data`, sin `{ user }`. En runtime ya era así |
+| 13 | `createAdminClient` | `adminPassword` eliminado: firma HMAC S2S con `clientId` + `secretHex` de un client con scope `admin`; nuevo scope `admin` y método `republishPendingWebhooks` (sección 12) |
 | 12 | Cliente admin y entrada de webhooks (endurecimiento) | `slug`/`userId` del admin se validan y codifican (error `malformed` en un `Result`, sin lanzar); los ids S2S rechazan también valores no string; `url` de webhooks solo `http(s)://`, sin espacios ni caracteres de control (el userinfo lo rechaza la API) y `eventCodes: EventCode[]` (secciones 7 y 11) |
 
 ---
@@ -263,6 +265,23 @@ await s2s.getUser('u1')
 `getServiceClient`, `updateServiceClient`, `deleteServiceClient`, `rotateServiceClientSecret` (parámetro `slug`) y `restoreUser` (parámetro `userId`) tratan el valor como un solo segmento de path, igual que los ids del cliente S2S (sección 7). Si no es un string, es vacío, `.` o `..` (crudo o percent-decodificado), devuelven `{ ok: false, error: { kind: 'sdk', reason: 'malformed', status: 0 } }` sin hacer fetch: **no lanzan** ni rechazan la promesa. Cualquier otro valor pasa por `encodeURIComponent` (`a/b` viaja como `a%2Fb`, `a%2Fb` como `a%252Fb`). Los slugs válidos del contrato (`^[a-z][a-z0-9-]{2,63}$`) y los UUID no cambian.
 
 **Qué hacer:** nada si manejas `result.ok === false`. Si pasabas slugs con caracteres especiales esperando que viajaran sin codificar, ahora el Auth Service los recibe codificados.
+
+---
+
+## 12. `createAdminClient`: firma HMAC en lugar de `adminPassword`
+
+El Auth Service ya no acepta `x-admin-password`: `/api/v1/admin/*` exige la firma S2S de un service client con scope `admin`. `AdminClientConfig` pasa de `{ adminPassword, baseUrl }` a `{ clientId, secretHex, baseUrl }`.
+
+```ts
+// Antes
+createAdminClient({ adminPassword: process.env.EVA_ADMIN_PASSWORD!, baseUrl })
+// Ahora
+createAdminClient({ clientId: process.env.AUTH_ADMIN_SLUG!, secretHex: process.env.AUTH_ADMIN_SECRET!, baseUrl })
+```
+
+Además: `SERVICE_CLIENT_SCOPES` y `S2S_SCOPES` suman `admin` (ya se puede crear un client con ese scope por la API), `ADMIN_ERROR_CODES` suma `last_admin_client` (409), y hay un método nuevo, `republishPendingWebhooks`. Despliega este SDK junto con el Auth Service que exige la firma.
+
+**Qué hacer:** crea un client admin (bootstrap del Auth Service), guarda su secret en tu gestor de secretos y reemplaza `adminPassword`. Si comparabas códigos con un `switch` exhaustivo sobre `AdminErrorCode`, agrega `last_admin_client`.
 
 ---
 

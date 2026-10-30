@@ -334,6 +334,7 @@ describe('AdminErrorCode y S2SErrorCode', () => {
       | 'service_client_already_exists'
       | 'service_client_not_found'
       | 'service_client_secret_rotation_conflict'
+      | 'last_admin_client'
     >()
   })
 
@@ -719,8 +720,11 @@ import type {
   WebhookSubscription,
   WebhookSubscriptionWithSecret,
 } from '../src/webhooks/types'
+import type { MaintenanceCleanupResponse as ContractMaintenanceCleanupResponse } from '@eva_solutions/auth-contracts'
 import type {
   CreateServiceClientInput,
+  MaintenanceCleanupQuery,
+  MaintenanceCleanupResult,
   RestoreUserResult,
   RotateSecretResult,
   UpdateServiceClientInput,
@@ -762,6 +766,13 @@ describe('S3 SDK mirrors equal the contract (D-28)', () => {
     expectTypeOf<RotateSecretResult>().toEqualTypeOf<
       ContractRotateServiceClientSecretResponse['data']
     >()
+  })
+
+  it('maintenanceCleanup result equals the contract response and its query takes a number', () => {
+    expectTypeOf<MaintenanceCleanupResult>().toEqualTypeOf<
+      ContractMaintenanceCleanupResponse['data']
+    >()
+    expectTypeOf<MaintenanceCleanupQuery>().toEqualTypeOf<{ limit?: number }>()
   })
 
   it('webhook subscription inputs equal the contract request shapes', () => {

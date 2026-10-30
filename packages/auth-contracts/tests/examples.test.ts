@@ -121,6 +121,8 @@ describe('contract body schemas', () => {
       contract.createSubscriptionRequestSchema,
       contract.updateSubscriptionRequestSchema,
       contract.deliveriesQuerySchema,
+      contract.republishPendingQuerySchema,
+      contract.maintenanceCleanupQuerySchema,
       contract.createServiceClientRequestSchema,
       contract.updateServiceClientRequestSchema,
     ]) {
@@ -583,6 +585,79 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
         subscription_id: UUID.toUpperCase(),
       }).success,
     ).toBe(true)
+
+    // republish-pending query: coerced numbers, defaults 10 minutes / 100 per call, strict
+    expect(contract.republishPendingQuerySchema.parse({})).toEqual({
+      older_than_minutes: 10,
+      limit: 100,
+    })
+    expect(
+      contract.republishPendingQuerySchema.parse({
+        older_than_minutes: '10080',
+        limit: '1',
+      }),
+    ).toEqual({ older_than_minutes: 10080, limit: 1 })
+    for (const query of [
+      { limit: '101' },
+      { limit: '0' },
+      { older_than_minutes: '0' },
+      { older_than_minutes: '10081' },
+      { older_than_minutes: '1.5' },
+      { extra: '1' },
+    ]) {
+      expect(
+        contract.republishPendingQuerySchema.safeParse(query).success,
+      ).toBe(false)
+    }
+    expect(
+      contract.republishPendingResponseSchema.safeParse({
+        data: { republished: 3, hasMore: false },
+      }).success,
+    ).toBe(true)
+    for (const body of [
+      { data: { republished: 1.5, hasMore: false } },
+      { data: { republished: 3 } },
+      { republished: 3, hasMore: false },
+    ]) {
+      expect(
+        contract.republishPendingResponseSchema.safeParse(body).success,
+      ).toBe(false)
+    }
+
+    // maintenance cleanup: coerced limit, default and maximum 100, strict
+    expect(contract.maintenanceCleanupQuerySchema.parse({})).toEqual({
+      limit: 100,
+    })
+    expect(
+      contract.maintenanceCleanupQuerySchema.parse({ limit: '1' }),
+    ).toEqual({ limit: 1 })
+    for (const query of [
+      { limit: '101' },
+      { limit: '0' },
+      { limit: '1.5' },
+      { older_than_minutes: '10' },
+    ]) {
+      expect(
+        contract.maintenanceCleanupQuerySchema.safeParse(query).success,
+        JSON.stringify(query),
+      ).toBe(false)
+    }
+    expect(
+      contract.maintenanceCleanupResponseSchema.safeParse({
+        data: { usersPurged: 2, eventsDeleted: 5, hasMore: false },
+      }).success,
+    ).toBe(true)
+    for (const body of [
+      { data: { usersPurged: 1.5, eventsDeleted: 5, hasMore: false } },
+      { data: { usersPurged: 2, eventsDeleted: 5 } },
+      { data: { usersPurged: 2, hasMore: false } },
+      { usersPurged: 2, eventsDeleted: 5, hasMore: false },
+    ]) {
+      expect(
+        contract.maintenanceCleanupResponseSchema.safeParse(body).success,
+        JSON.stringify(body),
+      ).toBe(false)
+    }
 
     // webhook responses
     expect(

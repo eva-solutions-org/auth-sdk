@@ -10,17 +10,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createAdminClient } from '../src/admin/client'
 import { ADMIN_ERROR_CODES } from '../src/admin/error-codes'
+import { verifyS2SRequest } from '../src/s2s/verify'
 import type { Result } from '../src/types'
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-const ADMIN_PASSWORD = 'super-secret-admin-pwd'
+const ADMIN_SLUG = 'admin-arturo'
+const ADMIN_SECRET_HEX = 'ab'.repeat(32)
 const BASE_URL = 'https://auth.test'
 
 const mockConfig = {
-  adminPassword: ADMIN_PASSWORD,
+  clientId: ADMIN_SLUG,
+  secretHex: ADMIN_SECRET_HEX,
   baseUrl: BASE_URL,
 }
 
@@ -48,9 +51,47 @@ describe('AdminClient', () => {
     global.fetch = fetchMock as unknown as typeof fetch
   })
 
-  // ─── Autenticación: header X-Admin-Password presente ─────────────────────
+  // ─── Autenticación: firma HMAC S2S ───────────────────────────────────────
 
-  it('siempre envía el header X-Admin-Password', async () => {
+  it('firma cada request con HMAC S2S verificable y no envía password', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { clientes: [] } }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    await admin.createServiceClient({ slug: 'mi-servicio', scopes: ['admin'] })
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const headers = options.headers as Record<string, string>
+    expect(headers['x-admin-password']).toBeUndefined()
+    expect(headers['x-eva-client-id']).toBe(ADMIN_SLUG)
+
+    // La firma cubre método, path, query y los bytes exactos del body enviado.
+    const verified = await verifyS2SRequest(
+      new Request(url, {
+        method: options.method,
+        headers,
+        body: options.body as string,
+      }),
+      { secretStore: async () => ADMIN_SECRET_HEX },
+    )
+    expect(verified).toEqual({ ok: true, data: { clientId: ADMIN_SLUG } })
+
+    const tampered = await verifyS2SRequest(
+      new Request(url, {
+        method: options.method,
+        headers,
+        body: JSON.stringify({ slug: 'otro', scopes: ['admin'] }),
+      }),
+      { secretStore: async () => ADMIN_SECRET_HEX },
+    )
+    expect(tampered.ok).toBe(false)
+  })
+
+  it('cada request lleva un nonce distinto', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -59,12 +100,16 @@ describe('AdminClient', () => {
 
     const admin = createAdminClient(mockConfig)
     await admin.listServiceClients()
+    await admin.listServiceClients()
 
-    expect(fetchMock).toHaveBeenCalledOnce()
-    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    expect(
-      (options.headers as Record<string, string>)['x-admin-password'],
-    ).toBe(ADMIN_PASSWORD)
+    const nonces = fetchMock.mock.calls.map(
+      (call) =>
+        ((call as [string, RequestInit])[1].headers as Record<string, string>)[
+          'x-eva-nonce'
+        ],
+    )
+    expect(nonces).toHaveLength(2)
+    expect(nonces[0]).not.toBe(nonces[1])
   })
 
   // ─── createServiceClient (REQ-ADMIN-01) ──────────────────────────────────
@@ -341,6 +386,172 @@ describe('AdminClient', () => {
     expect(result.error.status).toBe(404)
   })
 
+  // ─── last_admin_client (409) ──────────────────────────────────────────────
+
+  it('deleteServiceClient: 409 last_admin_client → EvaApiError comparable con ADMIN_ERROR_CODES', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        error: {
+          code: 'last_admin_client',
+          message: 'Es el último service client admin habilitado',
+        },
+      }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    const result = await admin.deleteServiceClient(ADMIN_SLUG)
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('api')
+    expect(result.error.status).toBe(409)
+    if (result.error.kind !== 'api') return
+    expect(result.error.code).toBe(ADMIN_ERROR_CODES.last_admin_client)
+  })
+
+  // ─── republishPendingWebhooks ─────────────────────────────────────────────
+
+  it('republishPendingWebhooks: POST con query firmado y data { republished, hasMore }', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { republished: 3, hasMore: true } }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    const result = await admin.republishPendingWebhooks({
+      older_than_minutes: 30,
+      limit: 50,
+    })
+
+    expect(result).toEqual({
+      ok: true,
+      data: { republished: 3, hasMore: true },
+    })
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(
+      `${BASE_URL}/api/v1/admin/webhooks/republish-pending?older_than_minutes=30&limit=50`,
+    )
+    expect(options.method).toBe('POST')
+    expect(options.body).toBeUndefined()
+    // El query entra en la firma: el verificador lo lee de la URL.
+    const verified = await verifyS2SRequest(
+      new Request(url, {
+        method: 'POST',
+        headers: options.headers as HeadersInit,
+      }),
+      { secretStore: async () => ADMIN_SECRET_HEX },
+    )
+    expect(verified.ok).toBe(true)
+  })
+
+  it('republishPendingWebhooks: sin query no agrega "?" y deja los defaults al API', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { republished: 0, hasMore: false } }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    await admin.republishPendingWebhooks()
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/webhooks/republish-pending`)
+  })
+
+  it('republishPendingWebhooks: 503 service_unavailable → EvaApiError', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({
+        error: { code: 'service_unavailable', message: 'QStash no disponible' },
+      }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    const result = await admin.republishPendingWebhooks()
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('api')
+    expect(result.error.status).toBe(503)
+    if (result.error.kind !== 'api') return
+    expect(result.error.code).toBe('service_unavailable')
+  })
+
+  // ─── maintenanceCleanup ───────────────────────────────────────────────────
+
+  it('maintenanceCleanup: POST con limit firmado y data { usersPurged, eventsDeleted, hasMore }', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: { usersPurged: 2, eventsDeleted: 7, hasMore: true },
+      }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    const result = await admin.maintenanceCleanup({ limit: 25 })
+
+    expect(result).toEqual({
+      ok: true,
+      data: { usersPurged: 2, eventsDeleted: 7, hasMore: true },
+    })
+
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/maintenance/cleanup?limit=25`)
+    expect(options.method).toBe('POST')
+    expect(options.body).toBeUndefined()
+    // El query entra en la firma: el verificador lo lee de la URL.
+    const verified = await verifyS2SRequest(
+      new Request(url, {
+        method: 'POST',
+        headers: options.headers as HeadersInit,
+      }),
+      { secretStore: async () => ADMIN_SECRET_HEX },
+    )
+    expect(verified.ok).toBe(true)
+  })
+
+  it('maintenanceCleanup: sin query no agrega "?" y deja el default al API', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: { usersPurged: 0, eventsDeleted: 0, hasMore: false },
+      }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    await admin.maintenanceCleanup()
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/maintenance/cleanup`)
+  })
+
+  it('maintenanceCleanup: 403 forbidden → EvaApiError', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({
+        error: { code: 'forbidden', message: 'Sin scope admin' },
+      }),
+    })
+
+    const admin = createAdminClient(mockConfig)
+    const result = await admin.maintenanceCleanup()
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.error.kind).toBe('api')
+    expect(result.error.status).toBe(403)
+    if (result.error.kind !== 'api') return
+    expect(result.error.code).toBe('forbidden')
+  })
+
   // ─── Error de red ─────────────────────────────────────────────────────────
 
   it('error de red (fetch lanza) → Result ok:false EvaSdkError reason:network status:0', async () => {
@@ -382,14 +593,14 @@ describe('AdminClient', () => {
     )
   })
 
-  // ─── Error 401 Unauthorized (contraseña incorrecta) ──────────────────────
+  // ─── Error 401 Unauthorized (firma inválida) ──────────────────────
 
   it('createServiceClient: 401 Unauthorized → EvaApiError code:unauthorized', async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 401,
       json: async () => ({
-        error: { code: 'unauthorized', message: 'Contraseña incorrecta' },
+        error: { code: 'unauthorized', message: 'Acceso no autorizado' },
       }),
     })
 
@@ -476,7 +687,7 @@ describe('AdminClient — params de path (slug / userId)', () => {
 })
 
 describe('createAdminClient — validación baseUrl', () => {
-  const validConfig = { adminPassword: ADMIN_PASSWORD }
+  const validConfig = { clientId: ADMIN_SLUG, secretHex: ADMIN_SECRET_HEX }
 
   it('baseUrl https válido no lanza (REQ-ADMIN-01)', () => {
     expect(() =>

@@ -71,7 +71,7 @@ export const WEBHOOK_ROUTES = {
 } as const satisfies Record<string, RouteDescriptor>
 
 /**
- * Admin routes: service client provisioning and user restore. Relative to {@link API_PREFIX}.
+ * Admin routes: service client provisioning, user restore, webhook delivery republish and maintenance cleanup. Relative to {@link API_PREFIX}.
  */
 export const ADMIN_ROUTES = {
   createServiceClient: { method: 'post', path: '/admin/service-clients' },
@@ -90,6 +90,11 @@ export const ADMIN_ROUTES = {
     path: '/admin/service-clients/{slug}/rotate-secret',
   },
   restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
+  republishPendingWebhooks: {
+    method: 'post',
+    path: '/admin/webhooks/republish-pending',
+  },
+  maintenanceCleanup: { method: 'post', path: '/admin/maintenance/cleanup' },
 } as const satisfies Record<string, RouteDescriptor>
 
 /** Login, refresh and logout routes. Relative to {@link API_PREFIX}. */

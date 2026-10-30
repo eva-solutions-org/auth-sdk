@@ -119,9 +119,9 @@ Retorna `string`.
 | `SDK_ERROR_REASONS` | Enum cerrado de 6 reasons internos del SDK. Solo aplica a `EvaSdkError` (kind: `'sdk'`). |
 | `ACCOUNT_STATES` | Catálogo de 6 estados de cuenta: `no_verificado`, `verificado`, `pendiente_de_verificacion`, `suspendido`, `baneado`, `eliminado`. Úsalo en lugar de magic strings para comparar `stateAccount`. |
 | `WEBHOOK_HEADERS` | Nombres de los headers HTTP que el Auth Service incluye en cada webhook: `SIGNATURE`, `ID`, `TIMESTAMP`. |
-| `ADMIN_ERROR_CODES` | Códigos de error específicos del módulo Admin: `service_client_already_exists`, `service_client_not_found`, `service_client_secret_rotation_conflict`. |
+| `ADMIN_ERROR_CODES` | Códigos de error específicos del módulo Admin: `service_client_already_exists`, `service_client_not_found`, `service_client_secret_rotation_conflict`, `last_admin_client`. |
 | `S2S_ERROR_CODES` | Códigos de error específicos del módulo S2S (usuarios y webhooks): `user_not_found`, `webhook_subscription_duplicate`, `webhook_subscription_not_found`, `webhook_secret_rotation_conflict`, `webhook_url_invalid`, `webhook_event_codes_empty`. |
-| `S2S_SCOPES` | Catálogo de scopes S2S reconocidos: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`. |
+| `S2S_SCOPES` | Catálogo de scopes S2S reconocidos: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`, `ADMIN`. |
 | `S2S_RESPONSE_HEADERS` | Header de respuesta S2S: `SERVER_TIME` (`x-eva-server-time`). |
 | `USERS_BATCH_MAX_IDS` | Número máximo de IDs por llamada a `batchUsers` (100). El cliente valida este límite antes de hacer fetch. |
 
@@ -671,13 +671,16 @@ type WebhookPayload<TData = Record<string, unknown>> = {
 
 ## `@eva_solutions/auth-sdk/admin`
 
-Para operaciones de administración de service clients y restauración de usuarios.
+Para operaciones de administración de service clients, restauración de usuarios y reconciliación de entregas de webhooks.
+
+**Autenticación.** Cada request se firma con HMAC S2S (la misma firma de `createS2SClient`, vía `signS2SHeaders`) con las credenciales de un service client que tenga el scope `admin`. No hay password global ni header `x-admin-password`: una persona, un client; el API registra el slug que firmó como `actor`. Un client sin el scope `admin` recibe 403. El primer client admin se crea con el script de bootstrap del Auth Service (ADR 0007 del API).
 
 ```typescript
 import { createAdminClient } from '@eva_solutions/auth-sdk/admin'
 
 const admin = createAdminClient({
-  adminPassword: process.env.EVA_ADMIN_PASSWORD!,
+  clientId: process.env.AUTH_ADMIN_SLUG!, // service client con scope `admin`
+  secretHex: process.env.AUTH_ADMIN_SECRET!, // su secret en hex (64 chars)
   baseUrl: 'https://auth.miapp.com',
 })
 
@@ -708,6 +711,19 @@ const rotated = await admin.rotateServiceClientSecret('mi-servicio')
 
 // Restaurar usuario eliminado
 const restored = await admin.restoreUser('uuid-del-usuario')
+
+// Republicar en QStash las entregas `pending` viejas (recuperación tras una falla de publicación)
+const republished = await admin.republishPendingWebhooks({ older_than_minutes: 10, limit: 100 })
+if (republished.ok && republished.data.hasMore) {
+  // quedan más entregas pending viejas: vuelve a llamar
+}
+
+// Limpieza on-demand: purga cuentas eliminadas con la ventana de restauración vencida y borra
+// webhook_events sin entregas vivas fuera de la retención
+const cleanup = await admin.maintenanceCleanup({ limit: 100 })
+if (cleanup.ok && cleanup.data.hasMore) {
+  // queda más por limpiar: vuelve a llamar
+}
 ```
 
 ### Métodos del AdminClient
@@ -723,12 +739,14 @@ Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migra
 | `deleteServiceClient(slug)` | DELETE | `/api/v1/admin/service-clients/:slug` | Hard-delete. 204. |
 | `rotateServiceClientSecret(slug)` | POST | `/api/v1/admin/service-clients/:slug/rotate-secret` | Rota secret. One-time. Puede responder `409 service_client_secret_rotation_conflict` (`ADMIN_ERROR_CODES`) si otra rotación concurrente ganó: esa llamada no recibe secret y se puede reintentar. |
 | `restoreUser(userId)` | POST | `/api/v1/admin/users/:id/restore` | Restaura usuario eliminado. |
+| `republishPendingWebhooks(query?)` | POST | `/api/v1/admin/webhooks/republish-pending` | Republica en QStash las entregas `pending` con más de `older_than_minutes` minutos (default 10, máx. 10080) y como máximo `limit` por llamada (default y tope 100). El query va firmado (`older_than_minutes`, `limit`, en snake_case como `listWebhookDeliveries`). Devuelve `{ republished, hasMore }`; con `hasMore: true` vuelve a llamar. Idempotente. 503 `service_unavailable` si QStash no aceptó el lote (las entregas siguen `pending`). |
+| `maintenanceCleanup(query?)` | POST | `/api/v1/admin/maintenance/cleanup` | Limpieza on-demand, sin polling: purga las cuentas `eliminado` cuya ventana de restauración ya venció y borra los `webhook_events` sin entregas vivas que superan la retención. `limit` (1 a 100, default 100) va firmado en el query y acota cada lote. Devuelve `{ usersPurged, eventsDeleted, hasMore }`; con `hasMore: true` vuelve a llamar. |
 
-Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.
+Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`. Borrar, deshabilitar o quitarle el scope `admin` al último service client admin habilitado responde `409 last_admin_client` (`ADMIN_ERROR_CODES.last_admin_client`) y no se aplica.
 
 `slug` y `userId` se validan y se codifican como un solo segmento de path (mismo helper que los ids del cliente S2S): si no son string, o son vacíos, `.` o `..` (crudo o percent-decodificado), el método devuelve `{ ok: false, error: { kind: 'sdk', reason: 'malformed', status: 0 } }` sin hacer la request; no lanza. El resto pasa por `encodeURIComponent` (`a/b` → `a%2Fb`; un `%` existente se codifica una vez: `a%2Fb` → `a%252Fb`).
 
-> **Advertencia**: solo usar desde backends seguros. La contraseña de admin nunca debe exponerse en el cliente/browser.
+> **Advertencia**: solo usar desde backends o herramientas de operador seguras. El secret del service client admin nunca debe exponerse en el cliente/browser.
 
 ---
 
@@ -901,11 +919,11 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema`, `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /api/v1/user` (objeto estricto base, sin `.refine`) |
 | `sessionListResponseSchema` (+ `SessionListResponse`, `Session`) | schema + type | Listado de sesiones |
 | `usersBatchRequestSchema`, `usersBatchResponseSchema` (+ `UsersBatchRequest`, `UsersBatchResponse`) | schema + type | `POST /api/v1/internal/users/batch` |
-| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/api/v1/internal/webhooks/*` y de las 7 de `/api/v1/admin/*` (6 de service-clients más `restoreUser`) |
+| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/api/v1/internal/webhooks/*` y de las 9 de `/api/v1/admin/*` (6 de service-clients, `restoreUser`, `republishPendingWebhooks` y `maintenanceCleanup`) |
 | `EVENT_CODES` (+ type `EventCode`) | constante | Los 11 event codes de los webhooks (clave en mayúsculas, valor `user.created`, ...) |
 | `WEBHOOK_HEADERS`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` | constante | Nombres en minúsculas de los headers del webhook (`SIGNATURE`, `ID`, `TIMESTAMP`) y ventana de la marca de tiempo (`300` s) |
-| `SERVICE_CLIENT_SCOPES` (+ type `ServiceClientScope`), `DELIVERY_STATUSES` | constante | Tupla de scopes (`users:read`, `webhooks:read`, `webhooks:write`) y de estados de entrega |
-| `createSubscriptionRequestSchema`, `updateSubscriptionRequestSchema`, `deliveriesQuerySchema`, `subscriptionSchema`, `subscriptionWithSecretResponseSchema`, `subscriptionResponseSchema`, `subscriptionListResponseSchema`, `rotateSubscriptionSecretResponseSchema`, `deliverySchema`, `deliveryListResponseSchema` (+ tipos) | schema + type | Webhooks: subscriptions y deliveries |
+| `SERVICE_CLIENT_SCOPES` (+ type `ServiceClientScope`), `DELIVERY_STATUSES` | constante | Tupla de scopes (`users:read`, `webhooks:read`, `webhooks:write`, `admin`) y de estados de entrega |
+| `createSubscriptionRequestSchema`, `updateSubscriptionRequestSchema`, `deliveriesQuerySchema`, `republishPendingQuerySchema`, `republishPendingResponseSchema`, `maintenanceCleanupQuerySchema`, `maintenanceCleanupResponseSchema`, `subscriptionSchema`, `subscriptionWithSecretResponseSchema`, `subscriptionResponseSchema`, `subscriptionListResponseSchema`, `rotateSubscriptionSecretResponseSchema`, `deliverySchema`, `deliveryListResponseSchema` (+ tipos) | schema + type | Webhooks: subscriptions y deliveries |
 | `serviceClientSlugSchema`, `createServiceClientRequestSchema`, `updateServiceClientRequestSchema` (base estricto, sin `.refine`), `serviceClientPublicSchema`, `createServiceClientResponseSchema`, `listServiceClientsResponseSchema`, `getServiceClientResponseSchema`, `updateServiceClientResponseSchema`, `rotateServiceClientSecretResponseSchema`, `restoreUserResponseSchema` (+ tipos) | schema + type | Service clients (`/api/v1/admin/service-clients`) y restaurar usuario |
 | `HttpMethod`, `RouteDescriptor` | types | Tipos de los descriptores |
 | `errorResponseSchema`, `ErrorResponse` | schema + type | Cuerpo de error `{ error: { code, message } }` (id OpenAPI `ErrorBody`) |

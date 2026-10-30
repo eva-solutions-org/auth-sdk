@@ -65,6 +65,35 @@ export const deliveriesQuerySchema = z
   })
   .strict()
 
+/**
+ * Query of `POST /admin/webhooks/republish-pending`: pending deliveries older than
+ * `older_than_minutes` (default 10, at most one week) are republished, `limit` per call (default
+ * and maximum 100, one QStash batch). Strict: a misspelled parameter fails instead of being ignored.
+ */
+export const republishPendingQuerySchema = z
+  .object({
+    older_than_minutes: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(60 * 24 * 7)
+      .default(10),
+    limit: z.coerce.number().int().min(1).max(100).default(100),
+  })
+  .strict()
+
+export const republishPendingResponseSchema = z.object({
+  data: z.object({
+    republished: z.number().int().meta({
+      description: 'Entregas republicadas en QStash en esta llamada',
+    }),
+    hasMore: z.boolean().meta({
+      description:
+        'true si quedan más entregas pending viejas: vuelve a llamar',
+    }),
+  }),
+})
+
 export const subscriptionSchema = z.object({
   id: z.string().meta({ description: 'ID de la subscription' }),
   clientId: z.string().meta({ description: 'ID del cliente' }),
@@ -135,6 +164,10 @@ export type UpdateSubscriptionRequest = z.input<
   typeof updateSubscriptionRequestSchema
 >
 export type DeliveriesQuery = z.input<typeof deliveriesQuerySchema>
+export type RepublishPendingQuery = z.input<typeof republishPendingQuerySchema>
+export type RepublishPendingResponse = z.output<
+  typeof republishPendingResponseSchema
+>
 export type Subscription = z.output<typeof subscriptionSchema>
 export type SubscriptionWithSecretResponse = z.output<
   typeof subscriptionWithSecretResponseSchema

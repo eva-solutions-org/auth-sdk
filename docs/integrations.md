@@ -102,6 +102,7 @@ A change to an exposed contract above is not done until the consumers run it. Ch
 
 - [ ] Add a changeset (`pnpm changeset`): `major` for a breaking change, `minor` for an additive one.
 - [ ] Update [migration.md](migration.md) for breaking changes, and [api.md](api.md) / [configuration.md](configuration.md) for changed API or config (link, do not duplicate).
+- [ ] If the Auth Service API adds a scope (`SERVICE_CLIENT_SCOPES`, `S2S_SCOPES`) or a route, add it to the contract and its exact-set tests (`packages/auth-contracts/tests/constants.test.ts`, `packages/auth-sdk/tests/exports.test.ts`).
 - [ ] If the Auth Service API adds an error code on an admin or `/internal/*` route, add it to `ADMIN_ERROR_CODES` / `S2S_ERROR_CODES` (`packages/auth-sdk/src/admin/error-codes.ts`, `packages/auth-sdk/src/s2s/error-codes.ts`) and to the exact-set tests in `tests/exports.test.ts`.
 - [ ] Merge to `main`; the release workflow opens the Version PR (`changeset version`) and, once that PR is merged, publishes. Follow the maintainer steps in [CONTRIBUTING.md](../CONTRIBUTING.md#releasing-maintainers).
 - [ ] Each consumer updates its pinned version and lockfile, following the install method documented in its own repo, and passes `authUrl` if it did not before.
@@ -109,7 +110,7 @@ A change to an exposed contract above is not done until the consumers run it. Ch
 
 ## What the SDK consumes from the Auth Service
 
-The SDK calls the Auth Service at the configured `authUrl`: the JWKS (`/.well-known/jwks.json`) to verify access tokens, the user-facing auth endpoints behind `evaAuthRoutes()` (`/api/v1/login`, `/api/v1/login/get-code`, `/api/v1/login/refresh`, `/api/v1/login/logout`, `/api/v1/user`, `/api/v1/user/empresas`, `/api/v1/sessions`, and `/health` at the root; `packages/auth-sdk/src/http-client.ts`; `login` needs the `challengeId` returned by `login/get-code`, so the SDK 3.0.0 only works against an Auth Service that issues and checks it), and the S2S client's `/api/v1/internal/users/*` and `/api/v1/internal/webhooks/*` endpoints (`packages/auth-sdk/src/s2s/client.ts`, table in [api.md](api.md#eva_solutionsauth-sdks2s)). The Auth Service owns these endpoints, their scopes and their behavior.
+The SDK calls the Auth Service at the configured `authUrl`: the JWKS (`/.well-known/jwks.json`) to verify access tokens, the user-facing auth endpoints behind `evaAuthRoutes()` (`/api/v1/login`, `/api/v1/login/get-code`, `/api/v1/login/refresh`, `/api/v1/login/logout`, `/api/v1/user`, `/api/v1/user/empresas`, `/api/v1/sessions`, and `/health` at the root; `packages/auth-sdk/src/http-client.ts`; `login` needs the `challengeId` returned by `login/get-code`, so the SDK 3.0.0 only works against an Auth Service that issues and checks it), the S2S client's `/api/v1/internal/users/*` and `/api/v1/internal/webhooks/*` endpoints (`packages/auth-sdk/src/s2s/client.ts`, table in [api.md](api.md#eva_solutionsauth-sdks2s)), and the admin client's `/api/v1/admin/*` endpoints (`packages/auth-sdk/src/admin/client.ts`), which the Auth Service authenticates with the HMAC S2S signature of a service client holding the `admin` scope (ADR 0007 of the Auth API; there is no admin password). The Auth Service owns these endpoints, their scopes and their behavior.
 
 ## Verification sources
 

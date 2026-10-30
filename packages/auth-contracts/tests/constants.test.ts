@@ -515,6 +515,7 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
       'users:read',
       'webhooks:read',
       'webhooks:write',
+      'admin',
     ])
     expect(Array.isArray(DELIVERY_STATUSES)).toBe(true)
     expect([...DELIVERY_STATUSES]).toEqual([
@@ -589,9 +590,17 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
         path: '/admin/service-clients/{slug}/rotate-secret',
       },
       restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
+      republishPendingWebhooks: {
+        method: 'post',
+        path: '/admin/webhooks/republish-pending',
+      },
+      maintenanceCleanup: {
+        method: 'post',
+        path: '/admin/maintenance/cleanup',
+      },
     })
     expect(Object.keys(WEBHOOK_ROUTES)).toHaveLength(7)
-    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(7)
+    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(9)
     for (const { path } of [
       ...Object.values(WEBHOOK_ROUTES),
       ...Object.values(ADMIN_ROUTES),

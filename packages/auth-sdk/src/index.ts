@@ -88,6 +88,10 @@ export type {
   UpdateServiceClientResult,
   RotateSecretResult,
   RestoreUserResult,
+  MaintenanceCleanupQuery,
+  MaintenanceCleanupResult,
+  RepublishPendingWebhooksQuery,
+  RepublishPendingWebhooksResult,
   AdminErrorCode,
 } from './admin'
 // Módulo S2S (REQ-EXPORTS-02 — accesible desde raíz)
