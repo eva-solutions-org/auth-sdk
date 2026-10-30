@@ -204,9 +204,9 @@ describe('exports preexistentes — regresión (T-035 no rompió nada)', () => {
     expect(JWT_CONFIG).toBeDefined()
   })
 
-  it('DEFAULT_ERROR_MESSAGES existe y tiene 16 keys', () => {
+  it('DEFAULT_ERROR_MESSAGES existe y tiene 17 keys', () => {
     expect(DEFAULT_ERROR_MESSAGES).toBeDefined()
-    expect(Object.keys(DEFAULT_ERROR_MESSAGES)).toHaveLength(16)
+    expect(Object.keys(DEFAULT_ERROR_MESSAGES)).toHaveLength(17)
   })
 
   it('readTokensFromCookies es función', () => {
@@ -689,6 +689,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'readTokensFromCookies',
     'requireScope',
     's2sAuth',
+    'serviceJwtAuth',
     'setTokenCookies',
   ],
   generic: [
@@ -761,6 +762,9 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'S2S_RESPONSE_HEADERS',
     'S2S_SCOPES',
     'S2S_TIMESTAMP_WINDOW_SECONDS',
+    'SERVICE_JWT_CLOCK_TOLERANCE_SECONDS',
+    'SERVICE_JWT_MAX_LIFETIME_SECONDS',
+    'SERVICE_JWT_TYP',
     'USERS_BATCH_MAX_IDS',
     'buildS2SCanonicalString',
     'createS2SClient',
@@ -768,6 +772,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'signS2SHeaders',
     'signS2SRequest',
     'verifyS2SRequest',
+    'verifyServiceJwt',
   ],
 }
 

@@ -13,8 +13,8 @@ import {
 } from '../src/error-messages'
 
 describe('DEFAULT_ERROR_MESSAGES', () => {
-  it('tiene exactamente 16 keys', () => {
-    expect(Object.keys(DEFAULT_ERROR_MESSAGES)).toHaveLength(16)
+  it('tiene exactamente 17 keys', () => {
+    expect(Object.keys(DEFAULT_ERROR_MESSAGES)).toHaveLength(17)
   })
 
   it('contiene todas las keys requeridas', () => {
@@ -34,6 +34,7 @@ describe('DEFAULT_ERROR_MESSAGES', () => {
       'invalidPhone',
       'invalidUpdateBody',
       'sessionInvalid',
+      'originNotAllowed',
       'internalError',
     ]
     for (const key of requiredKeys) {
@@ -84,6 +85,7 @@ describe('DEFAULT_ERROR_MESSAGES', () => {
       'Cuerpo de actualización vacío',
     )
     expect(DEFAULT_ERROR_MESSAGES.sessionInvalid).toBe('ID de sesión inválido')
+    expect(DEFAULT_ERROR_MESSAGES.originNotAllowed).toBe('Origen no permitido')
   })
 })
 
@@ -154,7 +156,7 @@ describe('resolveErrorMessages', () => {
     expect(result.authRequired).toBe('X')
     expect(result.tokenInvalid).toBe(DEFAULT_ERROR_MESSAGES.tokenInvalid)
     expect(result.loginFailed).toBe(DEFAULT_ERROR_MESSAGES.loginFailed)
-    expect(Object.keys(result)).toHaveLength(16)
+    expect(Object.keys(result)).toHaveLength(17)
   })
 })
 

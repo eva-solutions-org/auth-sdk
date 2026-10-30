@@ -265,18 +265,21 @@ const validProfile = {
 const SESSION_ID = '550e8400-e29b-41d4-a716-446655440000'
 
 describe('users, sessions and internal users schemas accept and reject (REQ-CONTRACT-11)', () => {
-  it('users_batch_cap_constant_100_schema_has_no_max_and_no_drizzle', () => {
+  it('users_batch_cap_constant_100_schema_enforces_it_and_no_drizzle', () => {
     expect(contract.USERS_BATCH_MAX_IDS).toBe(100)
 
-    // D-04: the cap is enforced where it applies (API env/controller, SDK client), not by the
-    // schema, because a `maxItems` would change the published OpenAPI document.
-    const ids101 = Array.from({ length: 101 }, (_, i) => `id-${i}`)
+    // The schema carries the cap as the hard upper bound (the API env can only lower it).
+    const idsAt = (n: number) => Array.from({ length: n }, (_, i) => `id-${i}`)
     expect(
-      contract.usersBatchRequestSchema.safeParse({ ids: ids101 }).success,
+      contract.usersBatchRequestSchema.safeParse({ ids: idsAt(100) }).success,
     ).toBe(true)
     expect(
-      JSON.stringify(z.toJSONSchema(contract.usersBatchRequestSchema)),
-    ).not.toContain('maxItems')
+      contract.usersBatchRequestSchema.safeParse({ ids: idsAt(101) }).success,
+    ).toBe(false)
+    expect(
+      z.toJSONSchema(contract.usersBatchRequestSchema, { io: 'input' })
+        .properties?.ids,
+    ).toMatchObject({ maxItems: 100 })
 
     const usersSource = readFileSync(join(SRC_DIR, 'users.ts'), 'utf8')
     expect(usersSource).not.toMatch(/drizzle/i)
@@ -556,6 +559,26 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
       }).success,
       'duplicates pass the contract on purpose: the API refines them',
     ).toBe(true)
+    // the list is bounded: 32 entries pass, 33 do not
+    const eventCodesAt = (n: number) =>
+      Array.from({ length: n }, () => 'user.created' as const)
+    expect(
+      contract.createSubscriptionRequestSchema.safeParse({
+        url: HOOK,
+        eventCodes: eventCodesAt(32),
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.createSubscriptionRequestSchema.safeParse({
+        url: HOOK,
+        eventCodes: eventCodesAt(33),
+      }).success,
+    ).toBe(false)
+    expect(
+      contract.updateSubscriptionRequestSchema.safeParse({
+        eventCodes: eventCodesAt(33),
+      }).success,
+    ).toBe(false)
 
     // deliveries query: coerced numbers, defaults 50/0, status enum, uuid filters
     expect(contract.deliveriesQuerySchema.parse({})).toEqual({
@@ -732,6 +755,26 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
       contract.createServiceClientRequestSchema.parse({ slug: 'whatsapp-api' })
         .scopes,
     ).toEqual([])
+    // request arrays are bounded: 16 entries pass (repeats included), 17 do not
+    const scopesAt = (n: number) =>
+      Array.from({ length: n }, () => 'users:read' as const)
+    expect(
+      contract.createServiceClientRequestSchema.safeParse({
+        slug: 'whatsapp-api',
+        scopes: scopesAt(16),
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.createServiceClientRequestSchema.safeParse({
+        slug: 'whatsapp-api',
+        scopes: scopesAt(17),
+      }).success,
+    ).toBe(false)
+    expect(
+      contract.updateServiceClientRequestSchema.safeParse({
+        scopes: scopesAt(17),
+      }).success,
+    ).toBe(false)
     for (const body of [
       { slug: 'whatsapp-api', scopes: ['admin:all'] },
       { slug: 'whatsapp-api', name: '' },

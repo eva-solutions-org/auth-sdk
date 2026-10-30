@@ -37,6 +37,8 @@ export interface EvaErrorMessages {
   invalidUpdateBody: string
   /** sessionId malformado en /sessions/:id. */
   sessionInvalid: string
+  /** Mutación con `Origin` fuera de los orígenes permitidos (403). */
+  originNotAllowed: string
   // === Generic ===
   /** Error interno (500) cuando se expone al cliente. */
   internalError: string
@@ -63,6 +65,7 @@ export const DEFAULT_ERROR_MESSAGES: Readonly<EvaErrorMessages> = Object.freeze(
     invalidPhone: 'Teléfono inválido',
     invalidUpdateBody: 'Cuerpo de actualización vacío',
     sessionInvalid: 'ID de sesión inválido',
+    originNotAllowed: 'Origen no permitido',
     internalError: 'Error interno',
   },
 )

@@ -16,10 +16,12 @@ export const serviceClientSlugSchema = z
 
 /**
  * Scopes without repeats. Duplicates are removed (first order kept) instead of rejected: repeating
- * a scope does not change the permissions granted.
+ * a scope does not change the permissions granted. The input list is bounded (repeats included)
+ * so a request cannot carry an arbitrarily long array.
  */
 const scopesSchema = z
   .array(z.enum(SERVICE_CLIENT_SCOPES))
+  .max(16)
   .transform((scopes) => [...new Set(scopes)])
 
 export const createServiceClientRequestSchema = z

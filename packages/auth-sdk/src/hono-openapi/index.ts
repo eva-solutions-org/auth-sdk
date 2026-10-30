@@ -310,6 +310,9 @@ export function evaAuthOpenAPIRoutes(
     defaultHook: (result, c) => sdkGuards.get(c)?.onInvalid(result, c),
   })
 
+  // CSRF por Origin: antes que cualquier otra guarda o validador.
+  app.use('*', h.originGuard)
+
   // get-code/login: el validador del body responde el 400 antes que el handler;
   // la guarda aporta no-store y el JSON malformado en el wire de la variante plana.
   for (const [path, guard] of [

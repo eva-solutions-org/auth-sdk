@@ -7,6 +7,8 @@ export function evaAuthRoutes(opts: EvaAuthRoutesOptions = {}): Hono {
   const app = new Hono()
   const h = buildAuthHandlers(opts)
 
+  app.use('*', h.originGuard)
+
   app.post('/get-code', h.getCode)
   app.post('/login', h.login)
   app.post('/refresh', h.refresh)

@@ -24,6 +24,14 @@ import type { SdkErrorReason } from './error-codes'
 
 export interface AuthHandlerOptions {
   errorMessages?: Partial<EvaErrorMessages>
+  /**
+   * Orígenes extra (`https://app.example.com`, sin path) desde los que se aceptan las mutaciones
+   * con cookies, además del propio host de la request. Un `Origin` fuera de esa lista responde 403.
+   * Acepta cualquier origen serializado `esquema://host[:puerto]` (también `tauri://localhost`,
+   * `capacitor://localhost`) por coincidencia exacta. Lanza al construir si una entrada no lo es
+   * (p. ej. `'*'` o `null`).
+   */
+  allowedOrigins?: readonly string[]
 }
 
 /**
@@ -38,6 +46,8 @@ export interface OpenAPIBodyGuard {
 }
 
 export interface AuthHandlers {
+  /** Middleware CSRF: rechaza con 403 las mutaciones cuyo `Origin` no está permitido. */
+  originGuard: MiddlewareHandler
   openApiGuards: { getCode: OpenAPIBodyGuard; login: OpenAPIBodyGuard }
   getCode: (c: Context) => Promise<Response>
   login: (c: Context) => Promise<Response>
@@ -90,6 +100,70 @@ function errorResponse(
   return c.json({ error: evaError.message }, safeStatus)
 }
 
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+
+/**
+ * Origen serializado de un esquema que no es http(s) (`tauri://localhost`, `capacitor://localhost`):
+ * `esquema://host[:puerto]` sin userinfo, path, query ni fragmento (una `/` final se tolera).
+ */
+const CUSTOM_SCHEME_ORIGIN = /^([a-z][a-z0-9+.-]*):\/\/([^\s/?#@\\]+)\/?$/i
+
+/**
+ * `new URL(...).origin` de un esquema no especial es `"null"`, así que http(s) se normaliza con el
+ * parser y el resto se compara por su forma serializada en minúsculas (la que manda el navegador).
+ */
+function normalizeAllowedOrigins(origins: readonly string[]): Set<string> {
+  const normalized = new Set<string>()
+  for (const entry of origins) {
+    let url: URL | undefined
+    try {
+      url = new URL(entry)
+    } catch {
+      // cae al throw de abajo
+    }
+    const custom =
+      url !== undefined && !/^https?:$/.test(url.protocol)
+        ? CUSTOM_SCHEME_ORIGIN.exec(entry)
+        : null
+    if (
+      url === undefined ||
+      (custom === null && !/^https?:$/.test(url.protocol))
+    ) {
+      throw new Error(
+        `[eva-auth-sdk] allowedOrigins inválido: ${JSON.stringify(entry)} (se espera un origen serializado esquema://host[:puerto], p. ej. https://app.example.com o tauri://localhost)`,
+      )
+    }
+    normalized.add(
+      custom === null
+        ? url.origin
+        : `${(custom[1] as string).toLowerCase()}://${(custom[2] as string).toLowerCase()}`,
+    )
+  }
+  return normalized
+}
+
+/**
+ * Mismo origen = mismo host:puerto que la request; el esquema no cuenta porque tras un proxy que
+ * termina TLS el servidor ve `http://` mientras el navegador manda `https://`.
+ */
+function isOriginAllowed(
+  origin: string,
+  requestUrl: string,
+  allowed: ReadonlySet<string>,
+): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(origin)
+  } catch {
+    return false // `Origin: null` (iframes sandbox, redirects entre orígenes) y basura
+  }
+  return (
+    allowed.has(parsed.origin) ||
+    allowed.has(origin.toLowerCase()) ||
+    parsed.host === new URL(requestUrl).host
+  )
+}
+
 function sdkError(
   reason: SdkErrorReason,
   message: string,
@@ -110,6 +184,8 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
   if (opts.errorMessages !== undefined) {
     validateErrorMessagesInput(opts.errorMessages)
   }
+
+  const allowedOrigins = normalizeAllowedOrigins(opts.allowedOrigins ?? [])
 
   const client = createHttpClient()
 
@@ -138,7 +214,30 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
     },
   })
 
+  // Sin `Origin` (curl, servidores) se deja pasar: todo navegador lo manda en las mutaciones.
+  const originGuard: MiddlewareHandler = async (c, next) => {
+    const origin = c.req.header('origin')
+    if (
+      SAFE_METHODS.has(c.req.method) ||
+      origin === undefined ||
+      isOriginAllowed(origin, c.req.url, allowedOrigins)
+    ) {
+      return next()
+    }
+    return errorResponse(
+      c,
+      {
+        kind: 'api',
+        code: 'forbidden',
+        message: messages().originNotAllowed,
+        status: 403,
+      },
+      403,
+    )
+  }
+
   return {
+    originGuard,
     openApiGuards: {
       getCode: bodyGuard(() => messages().invalidPhone),
       login: bodyGuard(() => messages().loginFailed),

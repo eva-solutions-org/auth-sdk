@@ -52,3 +52,18 @@ export type {
   S2SVerifyResult,
   S2SVerifyOptions,
 } from './types'
+
+// Service JWT verify (Auth Service -> this service)
+export {
+  verifyServiceJwt,
+  SERVICE_JWT_TYP,
+  SERVICE_JWT_MAX_LIFETIME_SECONDS,
+  SERVICE_JWT_CLOCK_TOLERANCE_SECONDS,
+} from './service-jwt'
+export type {
+  ServiceJwtVerifyOptions,
+  ServiceJwtVerifyResult,
+  ServiceJwtVerifyError,
+  ServiceJwtVerifyReason,
+  ServiceJwtClaims,
+} from './service-jwt'

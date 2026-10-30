@@ -531,6 +531,7 @@ local (por llamada) > global (configureEvaAuth) > defaults en español
 | `invalidPhone` | `Teléfono inválido` |
 | `invalidUpdateBody` | `Cuerpo de actualización vacío` |
 | `sessionInvalid` | `ID de sesión inválido` |
+| `originNotAllowed` | `Origen no permitido` |
 | `internalError` | `Error interno` |
 
 El placeholder `{0}` en `verifyFailedAfterRefresh` es reemplazado en runtime con el mensaje del error de verificación.

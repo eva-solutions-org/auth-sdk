@@ -11,6 +11,8 @@
 import { createMiddleware } from 'hono/factory'
 import { cloneRawRequest } from 'hono/request'
 import { verifyS2SRequest } from '../s2s/verify'
+import { verifyServiceJwt } from '../s2s/service-jwt'
+import type { ServiceJwtVerifyOptions } from '../s2s/service-jwt'
 import type { S2SVerifyOptions } from '../s2s/types'
 
 // ---------------------------------------------------------------------------
@@ -277,4 +279,78 @@ export function requireScope(
 
     await next()
   })
+}
+
+// ---------------------------------------------------------------------------
+// JWT de servicio (Auth Service -> este servicio)
+// ---------------------------------------------------------------------------
+
+/** Options for `serviceJwtAuth`: those of `verifyServiceJwt` (the middleware provides the request). */
+export type ServiceJwtAuthOptions = ServiceJwtVerifyOptions
+
+/**
+ * Hono context variables set by `serviceJwtAuth`.
+ */
+export type ServiceJwtAuthVariables = {
+  serviceJwtId: string
+  serviceJwtScopes: readonly string[]
+}
+
+/**
+ * Hono middleware that verifies inbound requests signed by the Auth Service with a service JWT
+ * (ES256, `typ: 'svc+jwt'`, `aud` of this service, `scope`, `jti`, `bsha`). Counterpart of
+ * `s2sAuth` for the Auth -> service direction; see `verifyServiceJwt` for the token contract.
+ *
+ * On **success**: sets `c.var.serviceJwtId` and `c.var.serviceJwtScopes`, then calls `next()`.
+ * On **failure**: HTTP 401 `{ error: { code: <ServiceJwtVerifyReason>, message } }`, or HTTP 403
+ * with code `insufficient_scope` when the token is valid but lacks `requiredScope`.
+ *
+ * The request is cloned before reading the body (`cloneRawRequest`), so route handlers can still
+ * read it. JWKS/config failures are not rejections: they propagate and Hono answers 500.
+ *
+ * @example
+ * ```ts
+ * app.use(
+ *   '/v1/internal/messages/*',
+ *   serviceJwtAuth({
+ *     audience: 'whatsapp-api',
+ *     requiredScope: 'messages:send',
+ *     replayCache: { setIfAbsent: (key, ttl) => store.setNx(key, ttl) },
+ *   }),
+ * )
+ * ```
+ */
+export function serviceJwtAuth(
+  opts: ServiceJwtAuthOptions,
+): ReturnType<typeof createMiddleware<{ Variables: ServiceJwtAuthVariables }>> {
+  return createMiddleware<{ Variables: ServiceJwtAuthVariables }>(
+    async (c, next) => {
+      const clonedRequest = await cloneRawRequest(c.req)
+      const result = await verifyServiceJwt(clonedRequest, opts)
+
+      if (!result.ok) {
+        if (result.error.reason === 'scope_insufficient') {
+          return c.json(
+            {
+              error: {
+                code: 'insufficient_scope',
+                message: result.error.message,
+              },
+            },
+            403,
+          )
+        }
+        return c.json(
+          {
+            error: { code: result.error.reason, message: result.error.message },
+          },
+          401,
+        )
+      }
+
+      c.set('serviceJwtId', result.data.jti)
+      c.set('serviceJwtScopes', result.data.scopes)
+      await next()
+    },
+  )
 }

@@ -35,8 +35,9 @@ const webhookUrlSchema = z
   .max(2048)
 
 // Closed catalog of event codes. Duplicates are not rejected here: that needs a refinement, which
-// the API applies on top of this schema.
-const eventCodesSchema = z.array(z.enum(EVENT_CODES)).min(1)
+// the API applies on top of this schema. The list is bounded (repeats included) so a request cannot
+// carry an arbitrarily long array.
+const eventCodesSchema = z.array(z.enum(EVENT_CODES)).min(1).max(32)
 
 export const createSubscriptionRequestSchema = z
   .object({

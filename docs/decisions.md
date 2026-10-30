@@ -775,3 +775,30 @@ La firma S2S cubría método, path, query, timestamp, clientId y hash del body. 
 - `S2SVerifyReason` gana `nonce_malformed`; los mensajes por defecto y `messages` la cubren.
 - Las claves del replayCache cambian de forma y su TTL sube de 120 s a 241 s: el store necesita retener claves más tiempo.
 - Cualquier verificador independiente (por ejemplo en el Auth Service) debe adoptar el canonical de 7 líneas desde este SDK.
+
+## ADR-019: JWT de servicio ES256 para las llamadas del Auth Service
+
+**Fecha**: 2026-10-30
+**Estado**: Aceptada
+
+### Contexto
+
+El Auth Service llama a otros servicios (Whatsapp-api) y hoy firma esas llamadas con HMAC (el sentido de `verifyS2SRequest` es el contrario: servicio hacia Auth). Eso obliga a compartir un secreto simétrico por cada receptor. El Auth Service ya publica un JWKS ES256, que los receptores consumen con `getJwksKeyFn`.
+
+### Decisión
+
+1. `verifyServiceJwt` (subpath `./s2s`) y `serviceJwtAuth` (subpath `./hono`) verifican un JWT ES256 contra el JWKS remoto, con `iss: 'auth-service'`, `aud` del receptor, `typ: 'svc+jwt'`, `scope`, `jti` y `bsha` (SHA-256 base64url del body crudo). Contrato completo en [api.md](api.md#verificación-de-jwt-de-servicio-verifyservicejwt--servicejwtauth).
+2. Como comparte emisor y JWKS con los access tokens, el `typ` y la `aud` propia lo separan de ellos; configurar la `aud` de usuario lanza.
+3. `replayCache` es **obligatorio** (en `verifyS2SRequest` es opcional): el token vive hasta 60 s y la llamada tiene efectos (enviar un mensaje).
+4. `verify.ts` (HMAC) no cambia: ADR-018 y sus decisiones siguen vigentes.
+
+### Alternativas consideradas
+
+- **Seguir con HMAC en ambos sentidos**: descartada. Un secreto compartido por cada receptor que hay que provisionar y rotar; el JWKS ya existe.
+- **Reutilizar el access token con otra `aud` y sin `typ`**: descartada. Un solo chequeo (`aud`) separaría dos usos con distinta autoridad; el `typ` y el `scope` lo hacen explícito.
+- **`replayCache` opcional como en HMAC**: descartada; un default inseguro silencioso.
+
+### Consecuencias
+
+- Los receptores necesitan `configureEvaAuth({ authUrl })` y un `replayCache` atómico.
+- El emisor (Auth Service) debe producir exactamente el formato de claims del contrato; el SDK no incluye el firmante.

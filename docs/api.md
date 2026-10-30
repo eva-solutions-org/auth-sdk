@@ -83,7 +83,7 @@ Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza
 | `ActivityState` | Estado de actividad |
 | `PrivacyState` | Estado de privacidad |
 | `ReservedJwtClaim` | Tipo union: `typeof RESERVED_JWT_CLAIMS[number]` |
-| `EvaErrorMessages` | Interface con las 16 keys de mensajes de error del SDK |
+| `EvaErrorMessages` | Interface con las 17 keys de mensajes de error del SDK |
 | `ConfigureEvaAuthOptions` | Opciones de `configureEvaAuth()`: `authUrl?`, `cookieDomain?`, `errorMessages?` y `errorWire?` |
 
 ### Error utilities
@@ -131,7 +131,7 @@ Retorna `string`.
 |--------|------|-------------|
 | `readTokensFromCookies` | función | Lee tokens desde un string de cookies; retorna `{ accessToken?, refreshToken? }` |
 | `DEFAULT_ERROR_MESSAGES` | constante | Objeto frozen con los 16 defaults en español |
-| `EvaErrorMessages` | type | Interface de los 16 keys de mensajes de error |
+| `EvaErrorMessages` | type | Interface de los 17 keys de mensajes de error |
 | `ERROR_CODES` | constante | Catálogo de 12 codes core del Auth Service |
 | `SDK_ERROR_REASONS` | constante | 6 reasons del SDK como `as const` |
 | `getMessage` | función | Helper `getMessage(err: EvaError): string` |
@@ -213,6 +213,16 @@ Retorna `Hono`.
 | Opción | Tipo | Descripción |
 |--------|------|-------------|
 | `errorMessages` | `Partial<EvaErrorMessages>` | Override local de mensajes de error |
+| `allowedOrigins` | `readonly string[]` | Orígenes extra (`https://app.example.com`, `tauri://localhost`; sin path) desde los que se aceptan las mutaciones con cookies. Ver [CSRF por Origin](#csrf-por-origin) |
+
+#### CSRF por Origin
+
+Las cookies son `SameSite=Lax`, que no cubre a un sitio del mismo *site* pero de otro origen (por ejemplo un subdominio comprometido). Por eso `evaAuthRoutes` y `evaAuthOpenAPIRoutes` verifican `Origin` en toda mutación (`POST`, `PATCH`, `PUT`, `DELETE`); `GET`, `HEAD` y `OPTIONS` no se verifican.
+
+- **Mismo origen por defecto**: pasa si el host (host:puerto) de `Origin` es el de la request. El esquema no cuenta, porque tras un proxy que termina TLS el servidor ve `http://` y el navegador manda `https://`.
+- **`allowedOrigins`**: orígenes adicionales aceptados (el front en otro subdominio o puerto). Coincidencia exacta de origen (esquema, host y puerto; sin comodines ni subdominios). Acepta cualquier origen serializado `esquema://host[:puerto]`, no solo `http(s)`: un front de escritorio o móvil manda `tauri://localhost` o `capacitor://localhost` y debe listarse así. Una entrada que no sea un origen serializado (por ejemplo `'*'`, `null`, o con path, userinfo o puerto inválido) lanza al construir las rutas. Si tu front vive en otro origen (por ejemplo `http://localhost:5173` contra un API en `:3000`), debes listarlo.
+- **Sin `Origin`** (curl, servidores): pasa; todo navegador lo manda en las mutaciones, así que la ausencia indica un cliente que no es navegador.
+- **Rechazo**: HTTP 403 con el wire de error configurado y `code: 'forbidden'`, sin llegar al handler. El mensaje es la key `originNotAllowed` de `errorMessages`. `Origin: null` también se rechaza.
 
 #### Endpoints
 
@@ -292,7 +302,7 @@ Además de sus propias funciones, el entry point `/hono` re-exporta los siguient
 | `COOKIE_MAX_AGE` | `constants.ts` | TTL de las cookies |
 | `HEADERS` | `constants.ts` | Nombres de headers custom del protocolo |
 | `DEFAULT_ERROR_MESSAGES` | `error-messages.ts` | Defaults de mensajes de error |
-| `EvaErrorMessages` | `error-messages.ts` | Type de los 16 keys |
+| `EvaErrorMessages` | `error-messages.ts` | Type de los 17 keys |
 | `EvaAuthRoutesOptions` | `hono/auth-routes.ts` | Opciones de `evaAuthRoutes()` |
 | `getAuthUrl` | `config.ts` | URL del Auth Service configurada con `configureEvaAuth({ authUrl })`; lanza un error de configuración (`EvaAuthConfigError`) si no se configuró |
 | `getCookieDomain` | `config.ts` | Cookie domain configurado |
@@ -418,7 +428,7 @@ Retorna `string[]`.
 | `COOKIE_MAX_AGE` | `constants.ts` | TTL de las cookies |
 | `HEADERS` | `constants.ts` | Nombres de headers custom del protocolo |
 | `DEFAULT_ERROR_MESSAGES` | `error-messages.ts` | Defaults de mensajes de error |
-| `EvaErrorMessages` | `error-messages.ts` | Type de los 16 keys |
+| `EvaErrorMessages` | `error-messages.ts` | Type de los 17 keys |
 | `getAuthUrl` | `config.ts` | URL del Auth Service configurada con `configureEvaAuth({ authUrl })`; lanza un error de configuración (`EvaAuthConfigError`) si no se configuró |
 | `getCookieDomain` | `config.ts` | Cookie domain configurado |
 
@@ -874,6 +884,85 @@ Un query malformado sigue el mismo camino que una firma inválida (consulta `sec
 
 **`replayCache`**: `setIfAbsent(key, ttlSeconds)` debe ser atómico (por ejemplo Redis `SET key 1 NX EX ttl`). La clave que arma el SDK es `${clientId}:${nonce}` y el TTL es `2 * timestampWindowSeconds + 1` (241 s con el default): la hora se trunca a segundos y la ventana es inclusiva (±W), así que un request firmado sigue siendo aceptable durante 2W + 1 segundos y la clave debe sobrevivirlo. Compártelo entre todas las instancias que comparten el par clientId/secreto. El chequeo ocurre después de verificar el HMAC.
 
+### Verificación de JWT de servicio (`verifyServiceJwt` / `serviceJwtAuth`)
+
+Sentido inverso al HMAC: el Auth Service llama a otro servicio (por ejemplo Whatsapp-api) firmando con un JWT ES256 de vida corta. El receptor lo verifica contra el JWKS del Auth Service. `verifyServiceJwt` vive en `@eva_solutions/auth-sdk/s2s` y `serviceJwtAuth` (Hono) en `@eva_solutions/auth-sdk/hono`. No toca `verifyS2SRequest`: el HMAC sigue igual (ver [ADR-018](decisions.md#adr-018-nonce-obligatorio-en-las-firmas-s2s-x-eva-nonce) y [ADR-019](decisions.md#adr-019-jwt-de-servicio-es256-para-las-llamadas-del-auth-service)).
+
+```ts
+import { Hono } from 'hono'
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
+import { serviceJwtAuth, type ServiceJwtAuthVariables } from '@eva_solutions/auth-sdk/hono'
+
+configureEvaAuth({ authUrl: process.env.AUTH_URL! }) // el JWKS sale de aquí
+
+const app = new Hono<{ Variables: ServiceJwtAuthVariables }>()
+app.use(
+  '/v1/internal/messages/*',
+  serviceJwtAuth({
+    audience: 'whatsapp-api',
+    requiredScope: 'messages:send',
+    replayCache: { setIfAbsent: (key, ttlSeconds) => store.setNx(key, ttlSeconds) },
+  }),
+)
+```
+
+**Firma exacta:**
+
+```ts
+function verifyServiceJwt(request: Request, opts: ServiceJwtVerifyOptions): Promise<ServiceJwtVerifyResult>
+function serviceJwtAuth(opts: ServiceJwtAuthOptions): MiddlewareHandler // ServiceJwtAuthOptions = ServiceJwtVerifyOptions
+```
+
+**Formato del token** (lo emite el Auth Service):
+
+| Parte | Valor |
+|-------|-------|
+| Header `alg` | `ES256` (cualquier otro se rechaza) |
+| Header `typ` | `svc+jwt` (`SERVICE_JWT_TYP`). Un access token de usuario no lo lleva |
+| Header `kid` | Clave del JWKS (`/.well-known/jwks.json`) |
+| `iss` | `auth-service` |
+| `aud` | La audiencia del receptor (por ejemplo `whatsapp-api`). Nunca `proyecto-global`, la de los access tokens |
+| `iat`, `exp` | Obligatorios; `exp - iat` ≤ `maxLifetimeSeconds` (default 60); `iat` no puede estar en el futuro más allá de `clockToleranceSeconds` (default 5) |
+| `jti` | Obligatorio, string de 1 a 128 caracteres, único por token |
+| `scope` | String con scopes separados por espacio; debe incluir `requiredScope` |
+| `bsha` | SHA-256 del body **crudo** en base64url sin padding. Body vacío: `47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU` |
+
+El token viaja en `Authorization: Bearer <jwt>`.
+
+**`ServiceJwtVerifyOptions`:**
+
+| Opción | Tipo | Descripción |
+|--------|------|-------------|
+| `audience` | `string` | Obligatoria. Lanza `TypeError` si es vacía o `proyecto-global` |
+| `requiredScope` | `string` | Obligatoria |
+| `replayCache` | `{ setIfAbsent(key, ttlSeconds): Promise<boolean> }` | **Obligatoria** (a diferencia de `verifyS2SRequest`, donde es opcional): un token capturado se podría reenviar hasta su `exp`. Misma semántica atómica que la de S2S. Clave `svcjwt:${jti}`, TTL = vida restante + tolerancia + 1 s |
+| `jwks` | `JWTVerifyGetKey` | Resolutor de claves. Por defecto `getJwksKeyFn()` (JWKS remoto, requiere `configureEvaAuth({ authUrl })`). Inyectable para tests |
+| `maxLifetimeSeconds` | `number` | Default `SERVICE_JWT_MAX_LIFETIME_SECONDS` (60) |
+| `clockToleranceSeconds` | `number` | Default `SERVICE_JWT_CLOCK_TOLERANCE_SECONDS` (5) |
+| `messages` | `Partial<Record<ServiceJwtVerifyReason, string>>` | Override de mensajes |
+
+**Resultado:** `{ ok: true, data: { jti, scopes } }` o `{ ok: false, error: { reason, message } }`.
+
+| `reason` | Cuándo |
+|----------|--------|
+| `token_missing` | Sin `Authorization: Bearer <jwt>` |
+| `token_malformed` | No es un JWS/JWT bien formado |
+| `token_expired` | `exp` pasado más la tolerancia |
+| `signature_invalid` | Firma inválida, `kid` desconocido o `alg` distinto de ES256 |
+| `claims_invalid` | `typ`, `iss` o `aud` incorrectos; `iat`/`exp` ausentes o fuera de rango; vida mayor al máximo |
+| `jti_missing` | `jti` ausente, vacío, no string o de más de 128 caracteres |
+| `scope_insufficient` | `scope` no incluye `requiredScope` |
+| `body_hash_mismatch` | `bsha` ausente o distinto del SHA-256 del body recibido |
+| `replay_detected` | El `jti` ya fue visto |
+
+Orden: firma y claims estándar → rangos de `iat`/`exp` → `jti` → `scope` → `bsha` → `replayCache`. El `jti` se registra al final para que un token con el body equivocado no lo gaste.
+
+**Middleware `serviceJwtAuth`:** clona la request antes de leer el body (`cloneRawRequest`), así que el handler aún puede leerlo. En éxito setea `c.var.serviceJwtId` y `c.var.serviceJwtScopes`. En fallo responde 401 `{ error: { code: <reason>, message } }`, salvo `scope_insufficient`, que responde 403 con `code: 'insufficient_scope'`.
+
+**Un access token de usuario no pasa.** Comparte emisor y JWKS con el token de servicio, así que lo separan cuatro chequeos independientes: `typ`, `aud`, `scope` y `bsha`. Sin el `typ: 'svc+jwt'` o con `aud: 'proyecto-global'` el token se rechaza con `claims_invalid` antes de consultar el `replayCache`. A la inversa, `verifyAccessToken` rechaza un JWT de servicio por su `aud`.
+
+**Errores que no son rechazos:** si falta `authUrl` (`EvaAuthConfigError`) o el JWKS no se puede descargar, `verifyServiceJwt` lanza y el middleware responde 500: es infraestructura, no un token inválido, y un 401 haría que el emisor lo tratara como una credencial rechazada.
+
 ### Métodos del S2SClient
 
 Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migration.md#9-rutas-del-auth-service-bajo-apiv1)).
@@ -915,7 +1004,7 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `USER_ROUTES`, `SESSION_ROUTES`, `INTERNAL_USER_ROUTES` | constante | Descriptores `{ method, path }` de usuario (`get`, `update`, `deactivate`, `listCompanies`), sesiones (`list`, `deleteOne`, `deleteAll`) y `/api/v1/internal/users` (`get`, `batch`) |
 | `ACCOUNT_STATES` | constante | Objeto con los 6 estados de cuenta (clave igual a valor); también se re-exporta desde `@eva_solutions/auth-sdk` |
 | `ACTIVITY_STATES`, `PRIVACY_STATES` | constante | Tuplas `as const` de los estados de actividad y de privacidad |
-| `USERS_BATCH_MAX_IDS` | constante | `100`: tope de ids de `POST /api/v1/internal/users/batch`. El schema del batch no lleva `.max`; el tope lo aplican el SDK y la API |
+| `USERS_BATCH_MAX_IDS` | constante | `100`: tope de ids de `POST /api/v1/internal/users/batch`. El schema del batch lo lleva como `.max(100)` (`maxItems` en el OpenAPI); el cliente del SDK lo valida antes del fetch y la API puede bajarlo con su env |
 | `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema`, `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /api/v1/user` (objeto estricto base, sin `.refine`) |
 | `sessionListResponseSchema` (+ `SessionListResponse`, `Session`) | schema + type | Listado de sesiones |
 | `usersBatchRequestSchema`, `usersBatchResponseSchema` (+ `UsersBatchRequest`, `UsersBatchResponse`) | schema + type | `POST /api/v1/internal/users/batch` |
@@ -1057,7 +1146,7 @@ Timeout de **30 segundos**. Distingue errores:
 | `COOKIE_MAX_AGE` | `constants.ts` | TTL de las cookies |
 | `HEADERS` | `constants.ts` | Nombres de headers custom del protocolo |
 | `DEFAULT_ERROR_MESSAGES` | `error-messages.ts` | Defaults de mensajes de error |
-| `EvaErrorMessages` | `error-messages.ts` | Type de los 16 keys |
+| `EvaErrorMessages` | `error-messages.ts` | Type de los 17 keys |
 
 ---
 

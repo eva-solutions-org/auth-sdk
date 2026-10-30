@@ -11,6 +11,7 @@
 
 - Tokens **nunca** accesibles por JavaScript (HttpOnly)
 - `SameSite=Lax`: POST desde sitios externos bloqueados
+- **CSRF por `Origin`** en las mutaciones de `evaAuthRoutes`/`evaAuthOpenAPIRoutes`: `SameSite=Lax` no frena a otro origen del mismo *site* (subdominios). Mismo host por defecto, orígenes extra en `allowedOrigins`; ver [api.md](api.md#csrf-por-origin)
 - Valores decodificados con `decodeURIComponent()` en parsing, con fallback al valor raw si el encoding es inválido (previene crasheo por cookies malformadas)
 - Cookies se limpian **solo después de confirmar éxito** en el Auth Service
 
@@ -70,6 +71,29 @@ El SDK es dueño del algoritmo de firma S2S (canonical de 7 líneas, ver [api.md
 - **Query malformado falla cerrado**: un query con percent-encoding inválido (`?a=%ZZ`) se rechaza con `signature_invalid` por el mismo camino que una firma inválida (secreto y HMAC incluidos, `replayCache` intacto); nunca llega a 500. Un secreto no hex devuelto por `secretStore` es un error de configuración y se lanza de forma explícita, sin incluir el secreto en el mensaje.
 - **Vector de paridad (KAT)**: `packages/auth-sdk/tests/s2s-nonce.mock.test.ts` (test `KAT: canonical y firma literales`) trae un canonical y una firma literales calculados de forma independiente con `node:crypto`. Cualquier otro repo que verifique o firme S2S por su cuenta debe reproducirlos.
 - Decisión y alternativas: [ADR-018](decisions.md#adr-018-nonce-obligatorio-en-las-firmas-s2s-x-eva-nonce).
+
+---
+
+## Admin: firma HMAC de un service client con scope `admin`
+
+`createAdminClient` firma cada request con `signS2SHeaders` (mismas reglas que la sección anterior: nonce por request, timestamp, canonical de 7 líneas con el query y los bytes exactos del body) con el `clientId` y el `secretHex` de un service client que tenga el scope `admin`. Puntos de seguridad:
+
+- **Sin credencial global ni secreto estático en el viaje**: ya no existe `adminPassword` ni el header `x-admin-password`; el secret no viaja, solo la firma. Una persona, un client: se revoca deshabilitando o borrando su client, y el API registra el slug que firmó.
+- **Anti-replay**: lo aplica el Auth Service con su `replayCache`; el SDK solo garantiza un nonce nuevo por llamada.
+- **Último admin**: el API responde `409 last_admin_client` ante una operación que dejaría al sistema sin un client admin habilitado (`ADMIN_ERROR_CODES.last_admin_client`).
+- **Solo backend u operador**: el secret del client admin da control total sobre los service clients; nunca va al navegador ni a un repositorio. `baseUrl` sigue exigiendo https (o loopback).
+
+---
+
+## JWT de servicio: Auth Service hacia otros servicios
+
+`verifyServiceJwt` / `serviceJwtAuth` verifican las llamadas que el Auth Service firma con un JWT ES256 (contrato en [api.md](api.md#verificación-de-jwt-de-servicio-verifyservicejwt--servicejwtauth)). Puntos de seguridad:
+
+- **No se confunde con un access token de usuario**: el JWKS y el `iss` son los mismos, así que la separación la hacen `typ: 'svc+jwt'` en el header, una `aud` propia del receptor (configurar `proyecto-global` lanza), el claim `scope` y el hash del body `bsha`. Cada chequeo tiene su test que lo rompe por separado.
+- **Vida corta y un solo uso**: `exp - iat` ≤ 60 s por defecto, tolerancia de reloj de 5 s, `jti` obligatorio y `replayCache` obligatorio (atómico y compartido entre instancias). El `jti` se registra después de verificar el body.
+- **El token queda atado al body** (`bsha`), pero no al método ni al path: lo que limita su alcance es el `scope`, la audiencia y el uso único.
+- **Solo ES256**: `algorithms` fijo; un `alg` distinto se rechaza aunque el JWKS tenga una clave válida de otro algoritmo.
+- **Fallos de infraestructura no son rechazos**: JWKS inalcanzable o `authUrl` sin configurar lanzan (500), no devuelven 401.
 
 ---
 

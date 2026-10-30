@@ -520,7 +520,7 @@ import { evaAuthOpenAPIRoutes } from '../src/hono-openapi/index'
 import { OpenAPIHono } from '@hono/zod-openapi'
 
 describe('EvaErrorMessages type', () => {
-  it('tiene exactamente las 16 keys requeridas como string', () => {
+  it('tiene exactamente las 17 keys requeridas como string', () => {
     expectTypeOf<EvaErrorMessages['authRequired']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['tokenInvalid']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['tokenExpired']>().toEqualTypeOf<string>()
@@ -546,6 +546,7 @@ describe('EvaErrorMessages type', () => {
       EvaErrorMessages['invalidUpdateBody']
     >().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['sessionInvalid']>().toEqualTypeOf<string>()
+    expectTypeOf<EvaErrorMessages['originNotAllowed']>().toEqualTypeOf<string>()
     expectTypeOf<EvaErrorMessages['internalError']>().toEqualTypeOf<string>()
   })
 })

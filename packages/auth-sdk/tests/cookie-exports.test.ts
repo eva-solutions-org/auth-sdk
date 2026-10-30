@@ -89,7 +89,7 @@ describe('DEFAULT_ERROR_MESSAGES re-exports', () => {
     expect(reactDEFAULT).toBe(rootDEFAULT)
   })
 
-  it('tiene todas las 16 keys', () => {
-    expect(Object.keys(rootDEFAULT)).toHaveLength(16)
+  it('tiene todas las 17 keys', () => {
+    expect(Object.keys(rootDEFAULT)).toHaveLength(17)
   })
 })
