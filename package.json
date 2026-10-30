@@ -19,8 +19,8 @@
     "version": "changeset version"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0",
+    "@changesets/cli": "^2.31.1",
     "oxfmt": "0.44.0",
-    "oxlint": "^1.65.0"
+    "oxlint": "^1.90.0"
   }
 }

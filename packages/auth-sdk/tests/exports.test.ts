@@ -598,7 +598,7 @@ describe('package manifest (workspace S0: REQ-WS-09, REQ-SDK-11)', () => {
   })
 
   it('zod_is_dependency', () => {
-    expect(manifest.dependencies.zod).toBe('^4.4.3')
+    expect(manifest.dependencies.zod).toBe('^4.6.7')
   })
 })
 

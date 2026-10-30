@@ -129,7 +129,7 @@ El repo es un workspace pnpm con dos paquetes: `packages/auth-sdk` (el SDK publi
 - El SDK depende del contrato como `devDependency` (`workspace:*`) y lo **inlinea** en el build (`deps.alwaysBundle` en `packages/auth-sdk/tsdown.config.ts`, tanto el JS como los `.d.ts`). Se expone como el subpath `@eva_solutions/auth-sdk/contracts` (ESM y CJS). El tarball del SDK es autocontenido: nada en `dist/` referencia `@eva_solutions/auth-contracts`, y lo vigila CI.
 - El SDK consume el contrato desde su `dist` construido, no desde las fuentes: los scripts raíz `type-check` y `test:run` corren antes `build:contracts`. Un `pnpm -r type-check` pelado en un árbol limpio falla con "cannot find module".
 - El contrato se compila con `unbundle: true` (un archivo `dist` por módulo fuente) y `"sideEffects": false`, para que el bundler del SDK descarte los módulos del contrato que un entry no usa.
-- `zod` es peer del contrato (`^4.4.3`) y dependency del SDK (`^4.4.3`). Los schemas inlineados importan `zod` desde la resolución del consumidor, por lo que el consumidor debe tener **una sola copia** en su lock.
+- `zod` es peer del contrato (`^4.6.7`) y dependency del SDK (`^4.6.7`). Los schemas inlineados importan `zod` desde la resolución del consumidor, por lo que el consumidor debe tener **una sola copia** en su lock.
 
 ### Prefijo `/api/v1`
 
