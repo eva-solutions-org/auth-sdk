@@ -15,7 +15,6 @@ import {
   ACTIVITY_STATES,
   DELIVERY_STATUSES,
   ERROR_CODES,
-  EVENT_CODES,
   HEADERS,
   INTERNAL_HEADERS,
   PRIVACY_STATES,
@@ -23,8 +22,8 @@ import {
   WEBHOOK_HEADERS,
   WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
   type CoreErrorCode,
-  type EventCode,
 } from '../src/constants'
+import { EVENT_CODES, type EventCode } from '../src/event-codes'
 import { SERVICE_AUDIENCE_SCOPES, type ServiceScope } from '../src/catalog'
 import {
   ADMIN_ROUTES,
@@ -500,13 +499,25 @@ const TODAY_EVENT_CODES = {
   EMPRESA_MEMBER_ADDED: 'empresa.member_added',
   EMPRESA_MEMBER_REMOVED: 'empresa.member_removed',
   EMPRESA_BRANCH_CREATED: 'empresa.branch_created',
+  EMPRESA_UPDATED: 'empresa.updated',
+  EMPRESA_DEACTIVATED: 'empresa.deactivated',
+  EMPRESA_REACTIVATED: 'empresa.reactivated',
+  EMPRESA_MEMBER_ROLE_CHANGED: 'empresa.member_role_changed',
+  EMPRESA_BRANCH_UPDATED: 'empresa.branch_updated',
+  EMPRESA_BRANCH_DEACTIVATED: 'empresa.branch_deactivated',
+  EMPRESA_PRODUCT_CHANGED: 'empresa.product_changed',
+  GRUPO_UPDATED: 'grupo.updated',
+  GRUPO_MEMBER_ADDED: 'grupo.member_added',
+  GRUPO_MEMBER_REMOVED: 'grupo.member_removed',
+  AUTORIZACION_GRANTED: 'autorizacion.granted',
+  AUTORIZACION_REVOKED: 'autorizacion.revoked',
 }
 
 describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CONTRACT-12)', () => {
   it('s3_constants_equal_today', () => {
     expect({ ...EVENT_CODES }).toEqual(TODAY_EVENT_CODES)
     expect(Object.keys(EVENT_CODES)).toEqual(Object.keys(TODAY_EVENT_CODES))
-    expect(Object.keys(EVENT_CODES)).toHaveLength(15)
+    expect(Object.keys(EVENT_CODES)).toHaveLength(27)
     // Webhook headers as the SDK receiver reads them (lowercase names; the API sends mixed case).
     expect({ ...WEBHOOK_HEADERS }).toEqual({
       SIGNATURE: 'x-eva-webhook-signature',
@@ -521,6 +532,14 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
       'webhooks:write',
       'empresas:leer',
       'empresas:escribir',
+      'tokens:exchange',
+      'contrataciones:pedir',
+      'contrataciones:escribir',
+      'contrataciones:leer',
+      'empresas:baja',
+      'autorizaciones:escribir',
+      'autorizaciones:leer',
+      'directorio:leer',
     ])
     expect(Array.isArray(DELIVERY_STATUSES)).toBe(true)
     expect([...DELIVERY_STATUSES]).toEqual([
@@ -607,9 +626,42 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
         method: 'delete',
         path: '/admin/service-clients/{slug}/grants/{audience}',
       },
+      listServiceClientDelegations: {
+        method: 'get',
+        path: '/admin/service-clients/{slug}/delegations',
+      },
+      setServiceClientDelegation: {
+        method: 'put',
+        path: '/admin/service-clients/{slug}/delegations',
+      },
+      deleteServiceClientDelegation: {
+        method: 'delete',
+        path: '/admin/service-clients/{slug}/delegations/{audience}',
+      },
       listProductos: { method: 'get', path: '/admin/productos' },
       createProducto: { method: 'post', path: '/admin/productos' },
       updateProducto: { method: 'patch', path: '/admin/productos/{slug}' },
+      getProductoPermisosAutorizables: {
+        method: 'get',
+        path: '/admin/productos/{slug}/permisos-autorizables',
+      },
+      setProductoPermisosAutorizables: {
+        method: 'put',
+        path: '/admin/productos/{slug}/permisos-autorizables',
+      },
+      reassignEmpresaTitular: {
+        method: 'post',
+        path: '/admin/empresas/{id}/titular',
+      },
+      bajaEmpresa: { method: 'post', path: '/admin/empresas/{id}/baja' },
+      reactivarEmpresa: {
+        method: 'post',
+        path: '/admin/empresas/{id}/reactivar',
+      },
+      setContratacion: {
+        method: 'put',
+        path: '/admin/empresas/{id}/productos/{producto}',
+      },
       restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
       republishPendingWebhooks: {
         method: 'post',
@@ -621,7 +673,7 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
       },
     })
     expect(Object.keys(WEBHOOK_ROUTES)).toHaveLength(7)
-    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(15)
+    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(24)
     for (const { path } of [
       ...Object.values(WEBHOOK_ROUTES),
       ...Object.values(ADMIN_ROUTES),
@@ -670,7 +722,14 @@ describe('contract export surface (REQ-CONTRACT-13)', () => {
 
 // REQ-CONTRACT-15 (D-35): constants.ts and routes.ts are PURE. The SDK `react` entry imports their
 // VALUES; a zod or schema-module import would drag `.meta()` side effects into that closure.
-const PURE_MODULES = ['catalog', 'constants', 'routes', 'tokens']
+const PURE_MODULES = [
+  'catalog',
+  'constants',
+  'empresa-vocab',
+  'event-codes',
+  'routes',
+  'tokens',
+]
 
 const importSpecifiers = (source: string): string[] =>
   [...source.matchAll(/(?:\bfrom|\bimport)\s+['"]([^'"]+)['"]/g)].map(

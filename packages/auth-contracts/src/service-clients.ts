@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { productoSlugSchema } from './auth'
 import { SERVICE_AUDIENCE_SCOPES, SERVICE_AUDIENCES } from './catalog'
 
 /**
@@ -57,10 +58,24 @@ export const serviceClientGrantSchema = z
   })
   .meta({ id: 'ServiceClientGrant' })
 
+/**
+ * Identity of a backend: the product it belongs to (FK to `productos`) and the service audience it
+ * IS. Both are set by the admin and may be absent. Product slugs and audiences never coincide.
+ * `null` clears the value on update.
+ */
+const productoOfClientSchema = productoSlugSchema.meta({
+  description: 'Producto al que pertenece el backend',
+})
+const audienciaOfClientSchema = z.enum(SERVICE_AUDIENCES).meta({
+  description: 'Servicio que ES el backend (audiencia del catálogo, única)',
+})
+
 export const createServiceClientRequestSchema = z
   .object({
     slug: serviceClientSlugSchema,
     name: z.string().min(1).max(100).optional(),
+    producto: productoOfClientSchema.optional(),
+    audiencia: audienciaOfClientSchema.optional(),
     esAdmin: z.boolean().optional().default(false).meta({
       description:
         'Marca de administrador de Auth: autoriza la superficie /admin firmada',
@@ -74,6 +89,8 @@ export const updateServiceClientRequestSchema = z
     enabled: z.boolean().optional(),
     esAdmin: z.boolean().optional(),
     name: z.string().min(1).max(100).optional(),
+    producto: productoOfClientSchema.nullable().optional(),
+    audiencia: audienciaOfClientSchema.nullable().optional(),
   })
   .strict()
 
@@ -85,6 +102,8 @@ export const serviceClientPublicSchema = z
     name: z.string(),
     enabled: z.boolean(),
     esAdmin: z.boolean(),
+    producto: z.string().nullable(),
+    audiencia: z.enum(SERVICE_AUDIENCES).nullable(),
     grants: z.array(serviceClientGrantSchema),
     lastUsedAt: z.union([z.string(), z.null()]),
     createdAt: z.string(),
@@ -100,6 +119,8 @@ export const createServiceClientResponseSchema = z
       slug: z.string(),
       name: z.string(),
       esAdmin: z.boolean(),
+      producto: z.string().nullable(),
+      audiencia: z.enum(SERVICE_AUDIENCES).nullable(),
       enabled: z.literal(true),
       secret: z.string(),
       warning: z.string(),

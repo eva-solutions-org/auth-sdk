@@ -74,30 +74,6 @@ export const PRIVACY_STATES = ['publico', 'amigos', 'invisible'] as const
 export const USERS_BATCH_MAX_IDS = 100
 
 /**
- * Event codes of the webhooks the service emits. Each key is the upper-case form of its value
- * (`user.created` -> `USER_CREATED`); the catalog is closed and the API owns what triggers each one.
- */
-export const EVENT_CODES = {
-  USER_CREATED: 'user.created',
-  USER_VERIFIED: 'user.verified',
-  USER_LOGIN_SUCCESS: 'user.login_success',
-  USER_LOGIN_FAILED: 'user.login_failed',
-  SESSION_CREATED: 'session.created',
-  SESSION_DELETED: 'session.deleted',
-  SESSION_DELETED_ALL: 'session.deleted_all',
-  USER_PROFILE_UPDATED: 'user.profile_updated',
-  USER_DELETED: 'user.deleted',
-  USER_RESTORED: 'user.restored',
-  USER_HARD_DELETED: 'user.hard_deleted',
-  EMPRESA_CREATED: 'empresa.created',
-  EMPRESA_MEMBER_ADDED: 'empresa.member_added',
-  EMPRESA_MEMBER_REMOVED: 'empresa.member_removed',
-  EMPRESA_BRANCH_CREATED: 'empresa.branch_created',
-} as const
-
-export type EventCode = (typeof EVENT_CODES)[keyof typeof EVENT_CODES]
-
-/**
  * Names of the headers a webhook receiver reads (lower case, as receivers see them): the signature,
  * the event id and the timestamp. Names only, never values.
  */

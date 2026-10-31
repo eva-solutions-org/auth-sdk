@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ACTIVITY_STATES, PRIVACY_STATES } from './constants'
+import { EMPRESA_ROLES } from './empresa-vocab'
 import { sucursalSchema } from './empresas'
 
 /**
@@ -29,31 +30,63 @@ export const profileResponseSchema = z.object({
   data: publicProfileSchema,
 })
 
-/** Companies the user belongs to. */
+/** Group a company belongs to (grouping only: it grants no access). */
+export const companyGroupSchema = z.object({
+  id: z.string().meta({ description: 'ID del grupo' }),
+  nombre: z.string().meta({ description: 'Nombre del grupo' }),
+})
+
+const companyIdentityFields = {
+  id: z.string().meta({ description: 'ID de la empresa' }),
+  ruc: z.string().meta({ description: 'RUC de la empresa' }),
+  razonSocial: z.string().meta({ description: 'Razón social' }),
+  slug: z.string().meta({ description: 'Slug identificador' }),
+  rol: z.enum(EMPRESA_ROLES).meta({
+    description:
+      'Rol de la persona en la empresa (para mostrar u ocultar pantallas)',
+  }),
+  grupo: companyGroupSchema
+    .nullable()
+    .meta({ description: 'Grupo de la empresa, si tiene' }),
+}
+
+/** Company the user belongs to that has the product of the token contracted. */
+export const contractedCompanySchema = z.object({
+  ...companyIdentityFields,
+  contratado: z.literal(true),
+  direccion: z
+    .string()
+    .nullable()
+    .meta({ description: 'Dirección de la empresa' }),
+  celular: z.string().nullable().meta({ description: 'Celular de contacto' }),
+  email: z.string().nullable().meta({ description: 'Email de contacto' }),
+  img: z.string().nullable().meta({ description: 'URL de imagen/logo' }),
+  sucursales: z
+    .array(sucursalSchema)
+    .meta({ description: 'Sucursales de la empresa' }),
+})
+
+/**
+ * Company the user HOLDS (`titular`) that has not contracted the product of the token: no contact
+ * data and no branches, only what is needed to ask for the contract.
+ */
+export const uncontractedCompanySchema = z.object({
+  ...companyIdentityFields,
+  contratado: z.literal(false),
+})
+
+/** Company of the user: with the product contracted (full data) or not (holder only, trimmed). */
+export const companySchema = z.discriminatedUnion('contratado', [
+  contractedCompanySchema,
+  uncontractedCompanySchema,
+])
+
+/**
+ * Companies the user belongs to: the active ones that have the product of the token contracted,
+ * plus those the user holds without it (`contratado: false`).
+ */
 export const companyListResponseSchema = z.object({
-  data: z
-    .array(
-      z.object({
-        id: z.string().meta({ description: 'ID de la empresa' }),
-        ruc: z.string().meta({ description: 'RUC de la empresa' }),
-        razonSocial: z.string().meta({ description: 'Razón social' }),
-        slug: z.string().meta({ description: 'Slug identificador' }),
-        direccion: z
-          .string()
-          .nullable()
-          .meta({ description: 'Dirección de la empresa' }),
-        celular: z
-          .string()
-          .nullable()
-          .meta({ description: 'Celular de contacto' }),
-        email: z.string().nullable().meta({ description: 'Email de contacto' }),
-        img: z.string().nullable().meta({ description: 'URL de imagen/logo' }),
-        sucursales: z
-          .array(sucursalSchema)
-          .meta({ description: 'Sucursales de la empresa' }),
-      }),
-    )
-    .meta({ description: 'Lista de empresas' }),
+  data: z.array(companySchema).meta({ description: 'Lista de empresas' }),
 })
 
 /** Update body: strict BASE object, every field optional. */
@@ -124,4 +157,6 @@ export type PublicProfile = z.output<typeof publicProfileSchema>
 export type ProfileResponse = z.output<typeof profileResponseSchema>
 export type CompanyListResponse = z.output<typeof companyListResponseSchema>
 export type Company = CompanyListResponse['data'][number]
+export type ContractedCompany = z.output<typeof contractedCompanySchema>
+export type UncontractedCompany = z.output<typeof uncontractedCompanySchema>
 export type UpdateUserRequest = z.input<typeof updateUserRequestSchema>

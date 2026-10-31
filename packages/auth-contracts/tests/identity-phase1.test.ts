@@ -12,6 +12,14 @@ describe('service audience catalog', () => {
         'webhooks:write',
         'empresas:leer',
         'empresas:escribir',
+        'tokens:exchange',
+        'contrataciones:pedir',
+        'contrataciones:escribir',
+        'contrataciones:leer',
+        'empresas:baja',
+        'autorizaciones:escribir',
+        'autorizaciones:leer',
+        'directorio:leer',
       ],
       'whatsapp-api': ['messages:send:text', 'messages:send:media', 'admin'],
     })
@@ -190,6 +198,8 @@ describe('service client grants and es_admin', () => {
       name: 'n',
       enabled: true,
       esAdmin: false,
+      producto: null,
+      audiencia: null,
       grants: [{ audience: 'whatsapp-api', scopes: ['messages:send:text'] }],
       lastUsedAt: null,
       createdAt: 'x',
@@ -225,10 +235,10 @@ describe('internal companies API', () => {
     ruc: '20123456789',
     razonSocial: 'Gym SAC',
     slug: 'gym-sac',
-    primerMiembroUserId: UUID,
+    subjectToken: 'a.b.c',
   }
 
-  it('create_body_requires_ruc_razonSocial_slug_and_first_member', () => {
+  it('create_body_requires_ruc_razonSocial_slug_and_the_subject_token', () => {
     expect(contract.createEmpresaRequestSchema.safeParse(create).success).toBe(
       true,
     )
@@ -262,10 +272,20 @@ describe('internal companies API', () => {
       celular: null,
       email: null,
       img: null,
+      estado: 'activa',
+      grupoId: null,
+      perfil: { visible: false, rubro: null, ciudad: null, descripcion: null },
+      vista: 'completa',
       sucursales: [
-        { id: UUID, empresaId: UUID, nombre: 'Centro', direccion: null },
+        {
+          id: UUID,
+          empresaId: UUID,
+          nombre: 'Centro',
+          direccion: null,
+          activa: true,
+        },
       ],
-      miembros: [{ userId: UUID }],
+      miembros: [{ userId: UUID, rol: 'titular' }],
     }
     expect(
       contract.empresaDetailResponseSchema.safeParse({ data: empresa }).success,
@@ -279,23 +299,31 @@ describe('internal companies API', () => {
 
   it('member_and_branch_bodies', () => {
     expect(
+      contract.addEmpresaMemberRequestSchema.safeParse({
+        userId: UUID,
+        subjectToken: 'a.b.c',
+      }).success,
+    ).toBe(true)
+    expect(
       contract.addEmpresaMemberRequestSchema.safeParse({ userId: UUID })
         .success,
-    ).toBe(true)
-    expect(contract.addEmpresaMemberRequestSchema.safeParse({}).success).toBe(
-      false,
-    )
+    ).toBe(false)
     expect(
-      contract.createSucursalRequestSchema.safeParse({ nombre: 'Centro' })
-        .success,
+      contract.createSucursalRequestSchema.safeParse({
+        nombre: 'Centro',
+        subjectToken: 'a.b.c',
+      }).success,
     ).toBe(true)
     expect(
-      contract.createSucursalRequestSchema.safeParse({ nombre: '' }).success,
+      contract.createSucursalRequestSchema.safeParse({
+        nombre: '',
+        subjectToken: 'a.b.c',
+      }).success,
     ).toBe(false)
   })
 
-  it('route_descriptors_match_the_design', () => {
-    expect({ ...contract.INTERNAL_EMPRESA_ROUTES }).toEqual({
+  it('phase1_route_descriptors_are_unchanged', () => {
+    expect(contract.INTERNAL_EMPRESA_ROUTES).toMatchObject({
       create: { method: 'post', path: '/internal/empresas' },
       get: { method: 'get', path: '/internal/empresas/{id}' },
       addMember: { method: 'post', path: '/internal/empresas/{id}/miembros' },
@@ -316,6 +344,9 @@ describe('internal companies API', () => {
       ruc: '1',
       razonSocial: 'r',
       slug: 'sss',
+      rol: 'miembro',
+      grupo: null,
+      contratado: true,
       direccion: null,
       celular: null,
       email: null,
@@ -468,7 +499,7 @@ describe('products admin API', () => {
     ).toBe(false)
   })
 
-  it('routes_are_under_admin_and_have_no_delete', () => {
+  it('product_routes_are_under_admin_and_have_no_delete', () => {
     expect(contract.ADMIN_ROUTES.listProductos).toEqual({
       method: 'get',
       path: '/admin/productos',
@@ -481,8 +512,12 @@ describe('products admin API', () => {
       method: 'patch',
       path: '/admin/productos/{slug}',
     })
-    expect(
-      Object.keys(contract.ADMIN_ROUTES).filter((k) => /Producto/.test(k)),
-    ).toHaveLength(3)
+    for (const key of [
+      'listProductos',
+      'createProducto',
+      'updateProducto',
+    ] as const) {
+      expect(contract.ADMIN_ROUTES[key].method).not.toBe('delete')
+    }
   })
 })

@@ -46,16 +46,99 @@ export const INTERNAL_TOKEN_ROUTES = {
   issue: { method: 'post', path: '/internal/token' },
 } as const satisfies Record<string, RouteDescriptor>
 
-/** Companies and branches, service-to-service. Relative to {@link API_PREFIX}. */
+/**
+ * Token exchange (RFC 8693). Authenticated with the Bearer service token of the actor
+ * (`aud: auth-api`, permission `tokens:exchange`), not with the signed request. Relative to
+ * {@link API_PREFIX}.
+ */
+export const INTERNAL_TOKEN_EXCHANGE_ROUTES = {
+  exchange: { method: 'post', path: '/internal/token-exchange' },
+} as const satisfies Record<string, RouteDescriptor>
+
+/**
+ * Companies, branches, members, contracts and authorizations, service-to-service (Bearer service
+ * token plus, where a person acts, the `subjectToken`). Relative to {@link API_PREFIX}.
+ */
 export const INTERNAL_EMPRESA_ROUTES = {
   create: { method: 'post', path: '/internal/empresas' },
+  list: { method: 'get', path: '/internal/empresas' },
   get: { method: 'get', path: '/internal/empresas/{id}' },
+  update: { method: 'patch', path: '/internal/empresas/{id}' },
+  baja: { method: 'post', path: '/internal/empresas/{id}/baja' },
+  reactivar: { method: 'post', path: '/internal/empresas/{id}/reactivar' },
   addMember: { method: 'post', path: '/internal/empresas/{id}/miembros' },
+  updateMember: {
+    method: 'patch',
+    path: '/internal/empresas/{id}/miembros/{userId}',
+  },
   removeMember: {
     method: 'delete',
     path: '/internal/empresas/{id}/miembros/{userId}',
   },
   createBranch: { method: 'post', path: '/internal/empresas/{id}/sucursales' },
+  updateBranch: {
+    method: 'patch',
+    path: '/internal/empresas/{id}/sucursales/{sucursalId}',
+  },
+  deactivateBranch: {
+    method: 'delete',
+    path: '/internal/empresas/{id}/sucursales/{sucursalId}',
+  },
+  requestContratacion: {
+    method: 'post',
+    path: '/internal/empresas/{id}/productos',
+  },
+  cancelContratacion: {
+    method: 'delete',
+    path: '/internal/empresas/{id}/productos',
+  },
+  getContratacion: {
+    method: 'get',
+    path: '/internal/empresas/{id}/productos/{producto}',
+  },
+  setContratacion: {
+    method: 'put',
+    path: '/internal/empresas/{id}/productos/{producto}',
+  },
+  createAutorizacion: {
+    method: 'post',
+    path: '/internal/empresas/{id}/autorizaciones',
+  },
+  listAutorizaciones: {
+    method: 'get',
+    path: '/internal/empresas/{id}/autorizaciones',
+  },
+  deleteAutorizacion: {
+    method: 'delete',
+    path: '/internal/empresas/{id}/autorizaciones/{autorizacionId}',
+  },
+} as const satisfies Record<string, RouteDescriptor>
+
+/** Groups of companies, service-to-service. Relative to {@link API_PREFIX}. */
+export const INTERNAL_GRUPO_ROUTES = {
+  create: { method: 'post', path: '/internal/grupos' },
+  rename: { method: 'patch', path: '/internal/grupos/{id}' },
+  addEmpresa: { method: 'post', path: '/internal/grupos/{id}/empresas' },
+  removeEmpresa: {
+    method: 'delete',
+    path: '/internal/grupos/{id}/empresas/{empresaId}',
+  },
+} as const satisfies Record<string, RouteDescriptor>
+
+/**
+ * Authorization check, service-to-service: only for actors with no product whose audience owns the
+ * permission. Relative to {@link API_PREFIX}.
+ */
+export const INTERNAL_AUTORIZACION_ROUTES = {
+  verificar: { method: 'get', path: '/internal/autorizaciones/verificar' },
+} as const satisfies Record<string, RouteDescriptor>
+
+/**
+ * Directory of companies: users with the access token of any enabled product, and services with
+ * `directorio:leer`. Relative to {@link API_PREFIX}.
+ */
+export const DIRECTORIO_ROUTES = {
+  search: { method: 'get', path: '/directorio' },
 } as const satisfies Record<string, RouteDescriptor>
 
 /**
@@ -91,7 +174,7 @@ export const WEBHOOK_ROUTES = {
 } as const satisfies Record<string, RouteDescriptor>
 
 /**
- * Admin routes: service client provisioning, user restore, webhook delivery republish and maintenance cleanup. Relative to {@link API_PREFIX}.
+ * Admin routes: service client provisioning (grants, delegations), products, company holder/baja/contract operations, user restore, webhook delivery republish and maintenance cleanup. Relative to {@link API_PREFIX}.
  */
 export const ADMIN_ROUTES = {
   createServiceClient: { method: 'post', path: '/admin/service-clients' },
@@ -121,9 +204,39 @@ export const ADMIN_ROUTES = {
     method: 'delete',
     path: '/admin/service-clients/{slug}/grants/{audience}',
   },
+  listServiceClientDelegations: {
+    method: 'get',
+    path: '/admin/service-clients/{slug}/delegations',
+  },
+  setServiceClientDelegation: {
+    method: 'put',
+    path: '/admin/service-clients/{slug}/delegations',
+  },
+  deleteServiceClientDelegation: {
+    method: 'delete',
+    path: '/admin/service-clients/{slug}/delegations/{audience}',
+  },
   listProductos: { method: 'get', path: '/admin/productos' },
   createProducto: { method: 'post', path: '/admin/productos' },
   updateProducto: { method: 'patch', path: '/admin/productos/{slug}' },
+  getProductoPermisosAutorizables: {
+    method: 'get',
+    path: '/admin/productos/{slug}/permisos-autorizables',
+  },
+  setProductoPermisosAutorizables: {
+    method: 'put',
+    path: '/admin/productos/{slug}/permisos-autorizables',
+  },
+  reassignEmpresaTitular: {
+    method: 'post',
+    path: '/admin/empresas/{id}/titular',
+  },
+  bajaEmpresa: { method: 'post', path: '/admin/empresas/{id}/baja' },
+  reactivarEmpresa: { method: 'post', path: '/admin/empresas/{id}/reactivar' },
+  setContratacion: {
+    method: 'put',
+    path: '/admin/empresas/{id}/productos/{producto}',
+  },
   restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
   republishPendingWebhooks: {
     method: 'post',

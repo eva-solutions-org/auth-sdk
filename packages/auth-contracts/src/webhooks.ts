@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { DELIVERY_STATUSES, EVENT_CODES } from './constants'
+import { DELIVERY_STATUSES } from './constants'
+import { EVENT_CODES } from './event-codes'
 
 /**
  * SCHEMA module: webhook subscriptions and their deliveries. Request bodies are strict BASE
