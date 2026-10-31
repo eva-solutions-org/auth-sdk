@@ -554,7 +554,7 @@ Ver [ADR-012](decisions.md#adr-012-sistema-i18n-de-mensajes-de-error) para el ra
 
 ## Variante OpenAPI
 
-El SDK ofrece una variante de las rutas de auth compatible con **OpenAPI 3.1** a través del entry point `@eva_solutions/auth-sdk/hono-openapi`. Retorna un `OpenAPIHono` con 11 endpoints documentados.
+El SDK ofrece una variante de las rutas de auth compatible con **OpenAPI 3.1** a través del entry point `@eva_solutions/auth-sdk/hono-openapi`. Retorna un `OpenAPIHono` con 12 endpoints documentados.
 
 > **Importante**: `evaAuthOpenAPIRoutes()` retorna un `OpenAPIHono`. Para que la documentación se genere correctamente en `/doc`, el app padre también debe ser `OpenAPIHono`. Si se monta sobre un `Hono` plain, los handlers funcionan pero la ruta `/doc` no estará disponible.
 
@@ -618,6 +618,7 @@ npm install @hono/zod-openapi
 | `PATCH` | `/me` | Actualizar perfil del usuario |
 | `DELETE` | `/me` | Eliminar cuenta del usuario |
 | `GET` | `/me/empresas` | Obtener empresas del usuario |
+| `POST` | `/empresa-activa` | Cambiar la empresa activa (`{ empresaId \| null }`); reescribe solo la cookie de access |
 | `GET` | `/sessions` | Listar sesiones activas |
 | `DELETE` | `/sessions/:sessionId` | Eliminar una sesión específica |
 | `DELETE` | `/sessions` | Cerrar todas las sesiones |

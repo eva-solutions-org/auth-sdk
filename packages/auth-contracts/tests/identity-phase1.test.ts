@@ -412,3 +412,77 @@ describe('empresa webhook events', () => {
     ).toBe(true)
   })
 })
+
+describe('products admin API', () => {
+  it('create_body_takes_slug_nombre_and_an_optional_enabled_defaulting_to_true', () => {
+    expect(
+      contract.createProductoRequestSchema.parse({
+        slug: 'gym-panel',
+        nombre: 'Gym',
+      }),
+    ).toEqual({ slug: 'gym-panel', nombre: 'Gym', enabled: true })
+    expect(
+      contract.createProductoRequestSchema.parse({
+        slug: 'gym-panel',
+        nombre: 'Gym',
+        enabled: false,
+      }).enabled,
+    ).toBe(false)
+  })
+
+  it('create_body_rejects_a_bad_slug_a_missing_nombre_and_extras', () => {
+    const parse = (body: unknown) =>
+      contract.createProductoRequestSchema.safeParse(body).success
+    expect(parse({ slug: 'Gym Panel', nombre: 'Gym' })).toBe(false)
+    expect(parse({ slug: 'ab', nombre: 'Gym' })).toBe(false)
+    expect(parse({ slug: 'gym-panel' })).toBe(false)
+    expect(parse({ slug: 'gym-panel', nombre: '' })).toBe(false)
+    expect(parse({ slug: 'gym-panel', nombre: 'Gym', extra: 1 })).toBe(false)
+  })
+
+  it('update_body_is_the_strict_base_with_optional_nombre_and_enabled', () => {
+    const parse = (body: unknown) =>
+      contract.updateProductoRequestSchema.safeParse(body).success
+    expect(parse({ nombre: 'Gym' })).toBe(true)
+    expect(parse({ enabled: false })).toBe(true)
+    // the "at least one field" rule is the API's (no refinement in the contract)
+    expect(parse({})).toBe(true)
+    expect(parse({ slug: 'other' })).toBe(false)
+    expect(parse({ nombre: '' })).toBe(false)
+  })
+
+  it('responses_carry_the_producto_or_the_list', () => {
+    const producto = { slug: 'gym-panel', nombre: 'Gym', enabled: true }
+    expect(
+      contract.listProductosResponseSchema.safeParse({
+        data: { productos: [producto] },
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.productoResponseSchema.safeParse({ data: { producto } }).success,
+    ).toBe(true)
+    expect(
+      contract.productoResponseSchema.safeParse({
+        data: { producto: { slug: 'x' } },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('routes_are_under_admin_and_have_no_delete', () => {
+    expect(contract.ADMIN_ROUTES.listProductos).toEqual({
+      method: 'get',
+      path: '/admin/productos',
+    })
+    expect(contract.ADMIN_ROUTES.createProducto).toEqual({
+      method: 'post',
+      path: '/admin/productos',
+    })
+    expect(contract.ADMIN_ROUTES.updateProducto).toEqual({
+      method: 'patch',
+      path: '/admin/productos/{slug}',
+    })
+    expect(
+      Object.keys(contract.ADMIN_ROUTES).filter((k) => /Producto/.test(k)),
+    ).toHaveLength(3)
+  })
+})

@@ -33,6 +33,14 @@ export const LoginSchema = z.object({
 })
 
 /**
+ * Cuerpo de POST /empresa-activa: el id de la empresa que queda activa o `null` para ninguna.
+ * El campo es obligatorio (un body `{}` es inválido): `null` es una decisión, no un faltante.
+ */
+export const ActiveEmpresaSchema = z.object({
+  empresaId: z.string().min(1).nullable(),
+})
+
+/**
  * Schema para PATCH /me — record no vacío.
  * Validación extra con .refine() para rechazar body vacío.
  */
@@ -65,4 +73,5 @@ export const RefreshResponseSchema = loginResponseSchema
 
 export type GetCodeInput = z.infer<typeof GetCodeSchema>
 export type LoginInput = z.infer<typeof LoginSchema>
+export type ActiveEmpresaInput = z.infer<typeof ActiveEmpresaSchema>
 export type UpdateUserInput = z.infer<typeof UpdateUserSchema>

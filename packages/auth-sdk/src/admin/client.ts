@@ -19,6 +19,9 @@
  *   GET    /admin/service-clients/:slug/grants          → listServiceClientGrants
  *   PUT    /admin/service-clients/:slug/grants          → setServiceClientGrant
  *   DELETE /admin/service-clients/:slug/grants/:audience → deleteServiceClientGrant (204)
+ *   GET    /admin/productos                             → listProductos
+ *   POST   /admin/productos                             → createProducto (201)
+ *   PATCH  /admin/productos/:slug                       → updateProducto
  *   POST   /admin/users/:id/restore                     → restoreUser
  *   POST   /admin/webhooks/republish-pending            → republishPendingWebhooks
  *   POST   /admin/maintenance/cleanup                   → maintenanceCleanup
@@ -40,8 +43,12 @@ import type {
   AdminClientConfig,
   ServiceClientPublic,
   CreateServiceClientInput,
+  CreateProductoInput,
   CreateServiceClientResult,
+  ListProductosResult,
   ListServiceClientGrantsResult,
+  ProductoResult,
+  UpdateProductoInput,
   ServiceClientGrant,
   SetServiceClientGrantInput,
   UpdateServiceClientInput,
@@ -85,6 +92,15 @@ export type AdminClient = {
     slug: string,
     audience: string,
   ): Promise<Result<void>>
+  /** Lista los productos (la audiencia del access token de usuario). */
+  listProductos(): Promise<Result<ListProductosResult>>
+  /** Crea un producto (201). 409 si el slug existe; 400 si es una audiencia de servicio. */
+  createProducto(input: CreateProductoInput): Promise<Result<ProductoResult>>
+  /** Actualiza `nombre` o `enabled`. 404 si no existe; 400 con body vacío. No hay delete: se deshabilita. */
+  updateProducto(
+    slug: string,
+    input: UpdateProductoInput,
+  ): Promise<Result<ProductoResult>>
   restoreUser(userId: string): Promise<Result<RestoreUserResult>>
   republishPendingWebhooks(
     query?: RepublishPendingWebhooksQuery,
@@ -347,6 +363,39 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
           slug: segment,
           audience: audienceSegment,
         }),
+      })
+    },
+
+    async listProductos(): Promise<Result<ListProductosResult>> {
+      return adminFetch<ListProductosResult>({
+        config,
+        method: 'GET',
+        pathname: apiPath(ADMIN_ROUTES.listProductos),
+      })
+    },
+
+    async createProducto(
+      input: CreateProductoInput,
+    ): Promise<Result<ProductoResult>> {
+      return adminFetch<ProductoResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(ADMIN_ROUTES.createProducto),
+        body: input,
+      })
+    },
+
+    async updateProducto(
+      slug: string,
+      input: UpdateProductoInput,
+    ): Promise<Result<ProductoResult>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) return invalidParamResult('updateProducto', 'slug')
+      return adminFetch<ProductoResult>({
+        config,
+        method: 'PATCH',
+        pathname: apiPath(ADMIN_ROUTES.updateProducto, { slug: segment }),
+        body: input,
       })
     },
 

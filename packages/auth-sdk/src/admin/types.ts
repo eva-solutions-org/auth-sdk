@@ -5,8 +5,10 @@
  */
 
 import type {
+  CreateProductoRequest,
   CreateServiceClientRequest,
   CreateServiceClientResponse,
+  ListProductosResponse,
   ListServiceClientGrantsResponse,
   MaintenanceCleanupResponse,
   RepublishPendingResponse,
@@ -14,6 +16,8 @@ import type {
   ServiceClientGrant as ContractServiceClientGrant,
   ServiceClientPublic as ContractServiceClientPublic,
   SetServiceClientGrantRequest,
+  ProductoResponse,
+  UpdateProductoRequest,
   UpdateServiceClientRequest,
   UpdateServiceClientResponse,
 } from '@eva_solutions/auth-contracts'
@@ -47,6 +51,18 @@ export type ServiceClientPublic = ContractServiceClientPublic
  * concesiones: se asignan con `setServiceClientGrant`. `auth-service` es un slug reservado.
  */
 export type CreateServiceClientInput = CreateServiceClientRequest
+
+/** Input para crear un producto (alias del request del contrato). `enabled` por defecto es `true`. */
+export type CreateProductoInput = CreateProductoRequest
+
+/** Input para actualizar un producto (patch parcial; alias del request del contrato). */
+export type UpdateProductoInput = UpdateProductoRequest
+
+/** Resultado de `listProductos`: `{ productos }`. */
+export type ListProductosResult = ListProductosResponse['data']
+
+/** Resultado de crear o actualizar un producto: `{ producto }`. */
+export type ProductoResult = ProductoResponse['data']
 
 /** Concesión de un service client sobre una audiencia: los permisos que puede pedir en su token. */
 export type ServiceClientGrant = ContractServiceClientGrant

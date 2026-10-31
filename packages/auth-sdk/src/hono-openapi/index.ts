@@ -35,6 +35,7 @@ import {
   type OpenAPIBodyGuard,
 } from '../auth-handlers'
 import {
+  ActiveEmpresaSchema,
   GetCodeSchema,
   GetCodeResponseSchema,
   LoginSchema,
@@ -223,6 +224,53 @@ const getEmpresasRoute = createRoute({
   },
 })
 
+const setActiveEmpresaRoute = createRoute({
+  method: 'post',
+  path: '/empresa-activa',
+  tags,
+  summary: 'Cambiar la empresa activa de la sesión',
+  request: {
+    body: {
+      content: { 'application/json': { schema: ActiveEmpresaSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description:
+        'Empresa activa cambiada — access token nuevo seteado en su cookie (el refresh no rota)',
+      content: {
+        'application/json': { schema: z.object({ data: z.unknown() }) },
+      },
+    },
+    400: {
+      description: 'Body inválido',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    401: {
+      description: 'Access token ausente o inválido',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    403: {
+      description:
+        'La persona no pertenece a la empresa, o el Origin no está permitido',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    429: {
+      description: 'Auth limitó los pedidos',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    502: {
+      description: 'Auth respondió 200 sin reemitir el access token',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+    503: {
+      description: 'Auth no disponible',
+      content: { 'application/json': { schema: ErrorResponseSchema } },
+    },
+  },
+})
+
 const getSessionsRoute = createRoute({
   method: 'get',
   path: '/sessions',
@@ -287,7 +335,7 @@ const deleteAllSessionsRoute = createRoute({
 // === Factory ===
 
 /**
- * Retorna una instancia `OpenAPIHono` con los 11 endpoints de auth declarados
+ * Retorna una instancia `OpenAPIHono` con los 12 endpoints de auth declarados
  * con schemas Zod 4 para generación automática de documentación OpenAPI 3.1.
  *
  * ⚠ IMPORTANTE: montar en un parent `OpenAPIHono` (no `Hono` plano).
@@ -356,6 +404,10 @@ export function evaAuthOpenAPIRoutes(
   app.openapi(
     getEmpresasRoute,
     h.getEmpresas as unknown as RouteHandler<typeof getEmpresasRoute>,
+  )
+  app.openapi(
+    setActiveEmpresaRoute,
+    h.setActiveEmpresa as unknown as RouteHandler<typeof setActiveEmpresaRoute>,
   )
   app.openapi(
     getSessionsRoute,

@@ -17,6 +17,7 @@ export function evaAuthRoutes(opts: EvaAuthRoutesOptions = {}): Hono {
   app.patch('/me', h.updateMe)
   app.delete('/me', h.deleteMe)
   app.get('/empresas', h.getEmpresas)
+  app.post('/empresa-activa', h.setActiveEmpresa)
   app.get('/sessions', h.getSessions)
   app.delete('/sessions/:id', h.deleteSession)
   app.delete('/sessions', h.deleteAllSessions)

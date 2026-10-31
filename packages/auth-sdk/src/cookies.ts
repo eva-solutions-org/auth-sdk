@@ -91,6 +91,18 @@ export function setTokenCookies(tokens: TokenPair): string[] {
   ]
 }
 
+/**
+ * Set-Cookie de SOLO el access token (el refresh no se toca). Lo usa el cambio de empresa activa:
+ * Auth reemite únicamente el access token y el refresh no rota.
+ */
+export function setAccessTokenCookie(accessToken: string): string {
+  return serializeCookie(
+    getCookieNames().ACCESS_TOKEN,
+    accessToken,
+    COOKIE_MAX_AGE.ACCESS_TOKEN,
+  )
+}
+
 export function clearTokenCookies(): string[] {
   const names = getCookieNames()
   return [

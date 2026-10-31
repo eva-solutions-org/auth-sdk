@@ -121,6 +121,9 @@ export const ADMIN_ROUTES = {
     method: 'delete',
     path: '/admin/service-clients/{slug}/grants/{audience}',
   },
+  listProductos: { method: 'get', path: '/admin/productos' },
+  createProducto: { method: 'post', path: '/admin/productos' },
+  updateProducto: { method: 'patch', path: '/admin/productos/{slug}' },
   restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
   republishPendingWebhooks: {
     method: 'post',

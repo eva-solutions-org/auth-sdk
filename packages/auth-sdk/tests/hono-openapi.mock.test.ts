@@ -1,6 +1,6 @@
 /**
  * T-42: Tests de evaAuthOpenAPIRoutes — smoke OpenAPI doc + cross-variant HTTP parity.
- * - Verifica que /doc genera OpenAPI 3.1 válido con los 11 endpoints y tag 'Auth'
+ * - Verifica que /doc genera OpenAPI 3.1 válido con los 12 endpoints y tag 'Auth'
  * - Verifica que el comportamiento HTTP es idéntico al de evaAuthRoutes() (parametrizado)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -109,7 +109,7 @@ describe('evaAuthOpenAPIRoutes — OpenAPI doc smoke', () => {
     expect(doc['info']).toMatchObject({ title: 'Test API' })
   })
 
-  it('doc incluye los 11 endpoints bajo /auth', async () => {
+  it('doc incluye los 12 endpoints bajo /auth', async () => {
     const res = await openApiApp.fetch(new Request('http://localhost/doc'))
     const doc = (await res.json()) as Record<string, unknown>
     const paths = Object.keys(doc['paths'] as Record<string, unknown>)
@@ -121,7 +121,24 @@ describe('evaAuthOpenAPIRoutes — OpenAPI doc smoke', () => {
     expect(paths).toContain('/auth/empresas')
     expect(paths).toContain('/auth/sessions')
     expect(paths).toContain('/auth/sessions/{id}')
-    expect(paths.filter((p) => p.startsWith('/auth'))).toHaveLength(8) // paths únicos (me y sessions tienen múltiples métodos)
+    expect(paths.filter((p) => p.startsWith('/auth'))).toHaveLength(9) // paths únicos (me y sessions tienen múltiples métodos)
+  })
+
+  it('doc declara las respuestas que /empresa-activa propaga de Auth', async () => {
+    const res = await openApiApp.fetch(new Request('http://localhost/doc'))
+    const doc = (await res.json()) as {
+      paths: Record<string, { post?: { responses: Record<string, unknown> } }>
+    }
+    const responses = doc.paths['/auth/empresa-activa']?.post?.responses
+    expect(Object.keys(responses ?? {}).sort()).toEqual([
+      '200',
+      '400',
+      '401',
+      '403',
+      '429',
+      '502',
+      '503',
+    ])
   })
 
   it('doc incluye tag Auth en los endpoints', async () => {

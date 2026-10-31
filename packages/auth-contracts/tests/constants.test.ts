@@ -607,6 +607,9 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
         method: 'delete',
         path: '/admin/service-clients/{slug}/grants/{audience}',
       },
+      listProductos: { method: 'get', path: '/admin/productos' },
+      createProducto: { method: 'post', path: '/admin/productos' },
+      updateProducto: { method: 'patch', path: '/admin/productos/{slug}' },
       restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
       republishPendingWebhooks: {
         method: 'post',
@@ -618,7 +621,7 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
       },
     })
     expect(Object.keys(WEBHOOK_ROUTES)).toHaveLength(7)
-    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(12)
+    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(15)
     for (const { path } of [
       ...Object.values(WEBHOOK_ROUTES),
       ...Object.values(ADMIN_ROUTES),

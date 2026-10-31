@@ -14,21 +14,24 @@ vi.mock('../src/config', () => ({
   getErrorWire: vi.fn().mockReturnValue('api'),
 }))
 
-const { mockGetCode, mockGetUser } = vi.hoisted(() => ({
+const { mockGetCode, mockGetUser, mockSetActiveEmpresa } = vi.hoisted(() => ({
   mockGetCode: vi.fn(),
   mockGetUser: vi.fn(),
+  mockSetActiveEmpresa: vi.fn(),
 }))
 
 vi.mock('../src/http-client', () => ({
   createHttpClient: vi.fn().mockReturnValue({
     getCode: mockGetCode,
     getUser: mockGetUser,
+    setActiveEmpresa: mockSetActiveEmpresa,
   }),
 }))
 
 vi.mock('../src/cookies', () => ({
   readTokensFromCookies: vi.fn().mockReturnValue({}),
   setTokenCookies: vi.fn().mockReturnValue([]),
+  setAccessTokenCookie: vi.fn().mockReturnValue('access-cookie'),
   clearTokenCookies: vi.fn().mockReturnValue([]),
 }))
 
@@ -71,6 +74,20 @@ describe.each([
       error: { code: 'forbidden', message: 'Origen no permitido' },
     })
     expect(mockGetCode).not.toHaveBeenCalled()
+  })
+
+  it('origin_foraneo_en_empresa_activa_responde_403_sin_llamar_a_Auth', async () => {
+    const res = await build().request(`${SAME_ORIGIN}/empresa-activa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: EVIL_ORIGIN },
+      body: JSON.stringify({ empresaId: null }),
+    })
+
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({
+      error: { code: 'forbidden', message: 'Origen no permitido' },
+    })
+    expect(mockSetActiveEmpresa).not.toHaveBeenCalled()
   })
 
   it('origin_del_mismo_host_pasa_al_handler', async () => {

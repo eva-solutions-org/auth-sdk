@@ -815,14 +815,20 @@ describe('AdminClient grants', () => {
     })
   })
 
-  it('setServiceClientGrant does not compile admin for auth-api', () => {
+  it('setServiceClientGrant does not compile admin for auth-api', async () => {
+    // The call is awaited: a dangling request would hit the next test's fetch mock.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: {} }),
+    })
     const admin = createAdminClient({
       clientId: ADMIN_SLUG,
       secretHex: ADMIN_SECRET_HEX,
       baseUrl: BASE_URL,
     })
     // @ts-expect-error - `admin` is not a permission of `auth-api`
-    void admin.setServiceClientGrant('x', {
+    await admin.setServiceClientGrant('x', {
       audience: 'auth-api',
       scopes: ['admin'],
     })
@@ -873,4 +879,135 @@ describe('AdminClient grants', () => {
       expect(fetchMock).not.toHaveBeenCalled()
     },
   )
+})
+
+describe('AdminClient productos', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+  })
+
+  const admin = () =>
+    createAdminClient({
+      clientId: ADMIN_SLUG,
+      secretHex: ADMIN_SECRET_HEX,
+      baseUrl: BASE_URL,
+    })
+  const producto = { slug: 'gym-panel', nombre: 'Gym', enabled: true }
+  const lastRequest = () => {
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    return { url, init }
+  }
+
+  it('listProductos gets the list, HMAC signed', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { productos: [producto] } }),
+    })
+
+    const result = await admin().listProductos()
+
+    expect(result).toEqual({ ok: true, data: { productos: [producto] } })
+    const { url, init } = lastRequest()
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/productos`)
+    expect(init.method).toBe('GET')
+    const verified = await verifyS2SRequest(
+      new Request(url, {
+        method: init.method,
+        headers: init.headers as Record<string, string>,
+      }),
+      { secretStore: async () => ADMIN_SECRET_HEX },
+    )
+    expect(verified.ok).toBe(true)
+  })
+
+  it('createProducto posts the body and returns the 201 product', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ data: { producto } }),
+    })
+
+    const result = await admin().createProducto({
+      slug: 'gym-panel',
+      nombre: 'Gym',
+    })
+
+    expect(result).toEqual({ ok: true, data: { producto } })
+    const { url, init } = lastRequest()
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/productos`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({
+      slug: 'gym-panel',
+      nombre: 'Gym',
+    })
+  })
+
+  it('createProducto surfaces the 409 for an existing slug', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: { code: 'conflict', message: 'exists' } }),
+    })
+
+    const result = await admin().createProducto({
+      slug: 'gym-panel',
+      nombre: 'G',
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { status: 409, code: 'conflict' },
+    })
+  })
+
+  it('updateProducto patches by slug', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: { producto: { ...producto, enabled: false } },
+      }),
+    })
+
+    const result = await admin().updateProducto('gym-panel', { enabled: false })
+
+    expect(result.ok).toBe(true)
+    const { url, init } = lastRequest()
+    expect(url).toBe(`${BASE_URL}/api/v1/admin/productos/gym-panel`)
+    expect(init.method).toBe('PATCH')
+    expect(JSON.parse(init.body as string)).toEqual({ enabled: false })
+  })
+
+  it('updateProducto surfaces the 404 for an unknown slug', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: { code: 'not_found', message: 'no' } }),
+    })
+
+    const result = await admin().updateProducto('nope-panel', { nombre: 'X' })
+
+    expect(result).toMatchObject({ ok: false, error: { status: 404 } })
+  })
+
+  it.each(['', '.', '..'])(
+    'updateProducto rejects the slug %j without a request',
+    async (bad) => {
+      const result = await admin().updateProducto(bad, { nombre: 'X' })
+
+      expect(result).toMatchObject({
+        ok: false,
+        error: { kind: 'sdk', reason: 'malformed' },
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
+  it('has no delete method: a product is disabled', () => {
+    expect('deleteProducto' in admin()).toBe(false)
+  })
 })

@@ -1,5 +1,5 @@
 /**
- * Factory de handlers de auth — fuente única de verdad para los 11 endpoints.
+ * Factory de handlers de auth — fuente única de verdad para los 12 endpoints.
  * Compartido entre evaAuthRoutes() (Hono plano) y evaAuthOpenAPIRoutes() (OpenAPIHono).
  * Decisión M2: resolución de messages() por-request (closure evalúa global cada vez).
  */
@@ -8,6 +8,7 @@ import { createHttpClient } from './http-client'
 import {
   readTokensFromCookies,
   setTokenCookies,
+  setAccessTokenCookie,
   clearTokenCookies,
 } from './cookies'
 import { deduplicateRefresh } from './refresh-dedup'
@@ -18,7 +19,12 @@ import {
   getErrorWire,
   validateErrorMessagesInput,
 } from './config'
-import { GetCodeSchema, LoginSchema, UpdateUserSchema } from './schemas'
+import {
+  ActiveEmpresaSchema,
+  GetCodeSchema,
+  LoginSchema,
+  UpdateUserSchema,
+} from './schemas'
 import type { EvaError, EvaSdkError } from './types'
 import type { SdkErrorReason } from './error-codes'
 
@@ -57,6 +63,7 @@ export interface AuthHandlers {
   updateMe: (c: Context) => Promise<Response>
   deleteMe: (c: Context) => Promise<Response>
   getEmpresas: (c: Context) => Promise<Response>
+  setActiveEmpresa: (c: Context) => Promise<Response>
   getSessions: (c: Context) => Promise<Response>
   deleteSession: (c: Context) => Promise<Response>
   deleteAllSessions: (c: Context) => Promise<Response>
@@ -173,7 +180,7 @@ function sdkError(
 }
 
 /**
- * Construye los 11 handlers de auth con las opciones provistas.
+ * Construye los 12 handlers de auth con las opciones provistas.
  * Validación temprana de errorMessages si se proveen (lanza si key inválida o valor no-string).
  *
  * Decisión M2 (ADR-012): messages() se resuelve por-request (closure evalúa
@@ -425,6 +432,64 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
       const result = await client.getUserEmpresas({ accessToken })
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
+    },
+
+    // POST /empresa-activa
+    setActiveEmpresa: async (c: Context): Promise<Response> => {
+      // Lleva un access token nuevo en una cookie: nunca cacheable.
+      c.header('Cache-Control', 'no-store')
+      const cookieHeader = c.req.header('cookie') || null
+      const { accessToken } = readTokensFromCookies(cookieHeader)
+      if (!accessToken)
+        return errorResponse(
+          c,
+          sdkError('auth_required', messages().tokenNotFound, 401),
+          401,
+        )
+      let raw: unknown
+      try {
+        raw = await c.req.json()
+      } catch {
+        return errorResponse(
+          c,
+          sdkError('malformed', messages().invalidJsonBody, 400),
+          400,
+        )
+      }
+      const parsed = ActiveEmpresaSchema.safeParse(raw)
+      if (!parsed.success) {
+        return errorResponse(
+          c,
+          sdkError(
+            'malformed',
+            'empresaId inválido: debe ser el id de una empresa o null',
+            400,
+          ),
+          400,
+        )
+      }
+      const result = await client.setActiveEmpresa({
+        accessToken,
+        empresaId: parsed.data.empresaId,
+      })
+      if (!result.ok) return errorResponse(c, result.error, result.error.status)
+      // Auth reemite SOLO el access token; sin él la sesión seguiría con la empresa vieja y no hay
+      // nada que reescribir: es una respuesta inválida de Auth, no un éxito.
+      if (!result.data.accessToken) {
+        return errorResponse(
+          c,
+          sdkError(
+            'malformed',
+            'Respuesta de Auth sin access token reemitido',
+            502,
+          ),
+          502,
+        )
+      }
+      c.header('Set-Cookie', setAccessTokenCookie(result.data.accessToken), {
+        append: true,
+      })
+      return c.json({ data: { empresaId: result.data.empresaId } })
     },
 
     // GET /sessions
