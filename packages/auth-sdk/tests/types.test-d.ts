@@ -266,7 +266,7 @@ describe('WebhookPayload y EventCode (REQ-WH-08)', () => {
     assertType<EventCode>(EVENT_CODES.SESSION_CREATED)
   })
 
-  it('EventCode es la unión de los 15 event codes del catálogo', () => {
+  it('EventCode es la unión de los 27 event codes del catálogo', () => {
     expectTypeOf<EventCode>().toEqualTypeOf<
       | 'user.created'
       | 'user.verified'
@@ -283,6 +283,18 @@ describe('WebhookPayload y EventCode (REQ-WH-08)', () => {
       | 'empresa.member_added'
       | 'empresa.member_removed'
       | 'empresa.branch_created'
+      | 'empresa.updated'
+      | 'empresa.deactivated'
+      | 'empresa.reactivated'
+      | 'empresa.member_role_changed'
+      | 'empresa.branch_updated'
+      | 'empresa.branch_deactivated'
+      | 'empresa.product_changed'
+      | 'grupo.updated'
+      | 'grupo.member_added'
+      | 'grupo.member_removed'
+      | 'autorizacion.granted'
+      | 'autorizacion.revoked'
     >()
   })
 
@@ -312,6 +324,8 @@ describe('Admin types (REQ-ADMIN-06)', () => {
       name: 'My Service',
       enabled: true,
       esAdmin: false,
+      producto: null,
+      audiencia: null,
       grants: [{ audience: 'auth-api', scopes: ['users:read'] }],
       lastUsedAt: null,
       createdAt: '2024-01-01T00:00:00Z',
@@ -332,6 +346,8 @@ describe('Admin types (REQ-ADMIN-06)', () => {
       slug: 'my-service',
       name: 'My Service',
       esAdmin: false,
+      producto: null,
+      audiencia: null,
       enabled: true,
       secret: 'abc123hex',
       warning: 'Store the secret now',

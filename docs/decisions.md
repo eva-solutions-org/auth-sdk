@@ -836,3 +836,42 @@ Hasta ahora el SDK tenía un solo tipo de clave y de audiencia: el access token 
 - Los consumidores de usuario configuran `product`; los servicios receptores usan `serviceTokenAuth`; los servicios que llaman a Auth o a otros servicios usan `createServiceTokenProvider`.
 - Revocar una concesión no afecta a los tokens ya emitidos (hasta 300 s). Para cortar de inmediato, deshabilitar el client.
 - El presupuesto ESM del cierre de `react` sube de 11 272 a 11 800 B.
+
+## ADR-021: Identidad fase 2: roles de empresa, delegación (token exchange), contratación, directorio, autorizaciones y grupos
+
+**Fecha**: 2026-10-31
+**Estado**: Aceptada (parte del SDK y del contrato del diseño `identidad-fase2`, revisión 3, del repo de Ecosistema; la implementa después Auth - API)
+
+### Contexto
+
+La fase 1 dejó tokens de servicio, token de usuario por producto y una API interna de empresas sin roles. Falta que un servicio llame a otro en nombre de una persona, que la empresa tenga roles y productos contratados, y que existan directorio, autorizaciones entre empresas y grupos. Nada está en producción: se permiten cambios incompatibles, también sobre la API de empresas de la fase 1.
+
+### Decisión
+
+1. **Token delegado (RFC 8693).** Tercer tipo de token: `typ: dlg-at+jwt`, firmado con clave de servicio (`kid` `svc-`), una sola `aud` (servicio destino, nunca `auth-api`), `act` (cadena de 1 a 3 actores), `empresa` / `producto` / `sid` obligatorios e inmutables, 120 s. Se pide con `exchangeToken` sobre el proveedor de tokens (Bearer de servicio `aud: auth-api` con `tokens:exchange`, sin HMAC en el camino caliente). `verifyDelegatedToken` / `delegatedTokenAuth` exigen `typ` + `kid`; **ningún verificador acepta el tipo de otro** (test cruzado 3 tipos × 2 prefijos × 3 verificadores). Un delegado sin empresa se rechaza.
+2. **Catálogos separados.** `auth-api` suma `tokens:exchange`, `contrataciones:pedir` (concedible a productos: pedir o cancelar la propia), `contrataciones:escribir` (solo facturación) y `leer`, `empresas:baja`, `autorizaciones:escribir|leer` y `directorio:leer`. `DELEGABLE_AUDIENCE_SCOPES` fija lo que una arista puede llevar (sin `auth-api`, sin `admin`). `INTER_EMPRESA_PERMISSIONS` es un catálogo **aparte** de permisos entre empresas (no se confunde "el client puede X" con "la empresa B puede X sobre A"), por servicio dueño de los datos.
+3. **Un único mecanismo ante Auth.** Toda acción de una persona sobre una empresa = token de servicio del producto + el access token de la persona (`subjectToken`, en el body; en el header `x-eva-subject-token` solo en el `GET` de autorizaciones). La empresa sale de la ruta; el rol lo lee Auth de la base (no viaja en los tokens). Los tokens delegados no hablan con Auth.
+4. **Contrato de la API interna adaptada**: `POST/PATCH/GET` de empresas, miembros con rol y salida propia, sucursales con `PATCH` y baja lógica, `GET` con vista `completa` o `recortada`, contratación (`pendiente_pago` propia, cancelar, `GET .../productos/{producto}`), baja y reactivar (`empresas:baja`), grupos, `GET /directorio`, autorizaciones con `verificar`, y del lado admin delegaciones, permisos autorizables, producto/audiencia de los clients, titular, baja/reactivar y contratación a mano. Eventos nuevos con payload de solo ids.
+5. **Caché del exchange por isolate** (hasta 30 s antes del `exp`) con llave = audiencia + scope + huella SHA-256 del `subjectToken` completo. **Desvío deliberado de la llave del diseño** (`sid`, `sub`, `empresa`, `audience`, `scope` y, en re-exchange, `jti`): esos claims salen de un token que el SDK no verificó, y una llave basada en ellos dejaba que un token falsificado que repitiera los claims de otra persona leyera su token delegado. La huella los contiene a todos (incluido el `jti`) y solo pierde el reuso entre dos access tokens distintos de la misma sesión, que no compra nada con una vida de 120 s.
+6. **`checkAutorizacion`** guarda el resultado 30 s por cliente S2S (también las negativas, no los errores). Declarado: una revocación o una baja tardan como máximo eso en notarse.
+7. `ServiceTokenProvider` = `ServiceTokenSource` (`getToken`, `invalidate`; lo que consumen los clientes) + `exchangeToken`. `S2SClientConfig.tokenProvider` es un `ServiceTokenSource`, así un proveedor hecho a mano sigue valiendo.
+8. Los event codes pasan a un módulo puro propio (`event-codes.ts`) y el vocabulario de empresas a `empresa-vocab.ts`: el catálogo de eventos crece con cada fase y `react` no lo usa, así que sale del cierre (que baja en lugar de subir).
+
+### Alternativas consideradas
+
+- **Tokens delegados también ante Auth**: descartada. Cualquier servicio intermedio de una cadena podría ejercer el rol de la persona; con el access token de la persona en el body, solo el backend del producto que la autenticó lo puede hacer.
+- **El rol dentro del token**: descartada. Un cambio de rol no regiría hasta que venciera el token; Auth lo lee en cada operación.
+- **`subjectToken` en un header para todo**: descartada para los verbos con body (el diseño lo fija en el body); un `GET` no tiene body, y la URL no es lugar para un token (se registra en logs).
+- **Llave de caché por claims** (diseño): descartada por la razón del punto 5.
+
+### Consecuencias
+
+- Cambio incompatible: versión mayor. Guía en [migration.md](migration.md#14-identidad-fase-2-roles-de-empresa-delegación-contratación-directorio-autorizaciones-y-grupos).
+- `addEmpresaMember`, `removeEmpresaMember`, `createSucursal` y `createEmpresa` cambian de firma (llevan `subjectToken`; `createEmpresa` pierde `primerMiembroUserId`).
+- El servicio destino de un token delegado no ve los roles del producto: el producto que actúa es responsable de haber comprobado el permiso de la persona antes de pedir el token. El token delegado no está atado al emisor (sin DPoP): quien lo robe lo usa hasta 120 s ante su `aud`.
+- **Desvíos y supuestos declarados** respecto del diseño:
+  - El directorio incluye `razonSocial` (sin nombre la entrada no sirve), además de los campos de perfil.
+  - `prueba` está en `CONTRATACION_ESTADOS_FACTURACION` para poder extender pruebas.
+  - `whatsapp:mensajes:leer` es un **placeholder** hasta el primer permiso real entre empresas.
+  - `requiere_scope_origen` debe pertenecer a la audiencia del actor (el token de entrada se emitió para ella); el contrato solo lo acota al catálogo delegable y **lo valida Auth - API**.
+  - Un fallo del token de la persona responde `403 subject_token_invalid`, no `401`, para no disparar el descarte del token de servicio; `contrataciones:pedir` se separa de `contrataciones:escribir`; los eventos de la fase 1 también tienen payload de solo ids; `jti` es obligatorio en el delegado y su `client_id` debe igualar al de `act`.

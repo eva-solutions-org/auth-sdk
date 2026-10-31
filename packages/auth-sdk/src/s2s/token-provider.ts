@@ -8,12 +8,18 @@
  */
 
 import {
+  ACCESS_TOKEN_TYPE,
+  INTERNAL_TOKEN_EXCHANGE_ROUTES,
   INTERNAL_TOKEN_ROUTES,
+  TOKEN_EXCHANGE_GRANT_TYPE,
+  isDelegableAudience,
+  isDelegableScope,
   isScopeOfAudience,
   isServiceAudience,
 } from '@eva_solutions/auth-contracts'
 import { apiPath } from '../api-path'
 import { validateHttpsUrl } from '../config'
+import type { Result } from '../types'
 import { signS2SHeaders } from './sign'
 
 /** Cuánto antes del vencimiento se renueva el token, en milisegundos. */
@@ -42,7 +48,12 @@ export type ServiceTokenProviderConfig = {
   scope?: string
 }
 
-export type ServiceTokenProvider = {
+/**
+ * What the clients that call a service need from a provider: a token and a way to drop a rejected
+ * one. `createServiceTokenProvider` returns more ({@link ServiceTokenProvider}); a hand-made source
+ * (tests, another credential flow) only needs these two.
+ */
+export type ServiceTokenSource = {
   /**
    * Devuelve un token vigente: el guardado mientras falten más de 30 s para su vencimiento, o uno
    * nuevo. Los pedidos simultáneos comparten una sola llamada al Auth Service.
@@ -58,6 +69,49 @@ export type ServiceTokenProvider = {
    * Sin argumento descarta el token guardado, sea cual sea.
    */
   invalidate(rejectedToken?: string): void
+}
+
+/** Input of {@link ServiceTokenProvider.exchangeToken}. */
+export type ExchangeTokenInput = {
+  /**
+   * Token to exchange: the access token of the user (`aud` = product of this actor) or a delegated
+   * token (`aud` = audience of this actor, for a re-exchange). Pass one your service has ALREADY
+   * verified (`verifyAccessToken`, `verifyDelegatedToken` or the middleware): the SDK does not.
+   */
+  subjectToken: string
+  /** Destination service of the delegated token: one audience with a delegation edge from this client. Never `auth-api`. */
+  audience: string
+  /** Permissions asked for, separated by space. If absent, everything delegable on that edge. */
+  scope?: string
+}
+
+/** A delegated token (`typ: dlg-at+jwt`) and the permissions it carries. */
+export type DelegatedTokenGrant = {
+  accessToken: string
+  /** Permissions issued, separated by space (they can be fewer than asked for). */
+  scope: string
+}
+
+/**
+ * Provider of service tokens for ONE (audience, scope), plus the token exchange of the same client.
+ */
+export type ServiceTokenProvider = ServiceTokenSource & {
+  /**
+   * Exchanges a subject token for a delegated one (RFC 8693) so this service can call another one
+   * on behalf of the user. Authenticates with its own service token (`aud: auth-api`, permission
+   * `tokens:exchange`), which it obtains and renews by itself whatever the audience of this
+   * provider is.
+   *
+   * Caches the delegated token in this isolate until 30 s before its `exp` (it lives 120 s). The
+   * key is the audience, the scope and a fingerprint of the WHOLE subject token: a token with other
+   * claims (another session, user or company), or the same re-exchanged from another token of the
+   * chain (other `jti`), never reuses an entry. Errors are not cached.
+   *
+   * Returns a Result: `invalid_grant` (session closed, user or company out, product not contracted,
+   * depth or cycle) is a normal answer, not an exception. The failures of Auth keep their RFC code
+   * in `error.code` (`invalid_grant`, `invalid_target`, `invalid_scope`, `invalid_client`, ...).
+   */
+  exchangeToken(input: ExchangeTokenInput): Promise<Result<DelegatedTokenGrant>>
 }
 
 /** El Auth Service rechazó el pedido de token. `code` es el `error` de RFC 6749 (`invalid_client`, …). */
@@ -158,6 +212,68 @@ async function requestToken(
   }
 }
 
+/** Entries the exchange cache keeps per provider before it drops expired ones and then the oldest. */
+const EXCHANGE_CACHE_MAX_ENTRIES = 500
+
+type CachedGrant = { grant: DelegatedTokenGrant; renewAtMs: number }
+
+const malformed = (message: string): Result<never> => ({
+  ok: false,
+  error: { kind: 'sdk', reason: 'malformed', message, status: 0 },
+})
+
+/** SHA-256 of the subject token as hex: the cache never keys on claims nobody verified here. */
+async function fingerprint(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(value))
+  return Array.from(new Uint8Array(digest), (b) =>
+    b.toString(16).padStart(2, '0'),
+  ).join('')
+}
+
+/** Validates the exchange input locally (a bad audience or scope is a sure `invalid_target` / `invalid_scope`). */
+function validateExchangeInput(
+  input: ExchangeTokenInput,
+): Result<never> | null {
+  if (typeof input.subjectToken !== 'string' || input.subjectToken === '') {
+    return malformed('exchangeToken: subjectToken requerido')
+  }
+  if (!isDelegableAudience(input.audience)) {
+    return malformed(
+      `exchangeToken: "${String(input.audience)}" no es una audiencia delegable del catálogo (auth-api nunca lo es)`,
+    )
+  }
+  for (const scope of input.scope?.split(' ').filter(Boolean) ?? []) {
+    if (!isDelegableScope(input.audience, scope)) {
+      return malformed(
+        `exchangeToken: "${scope}" no es un permiso delegable de la audiencia "${input.audience}"`,
+      )
+    }
+  }
+  return null
+}
+
+function postExchange(
+  url: URL,
+  bearer: string,
+  input: ExchangeTokenInput,
+): Promise<Response> {
+  return fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${bearer}`,
+    },
+    body: JSON.stringify({
+      grant_type: TOKEN_EXCHANGE_GRANT_TYPE,
+      subject_token: input.subjectToken,
+      subject_token_type: ACCESS_TOKEN_TYPE,
+      audience: input.audience,
+      ...(input.scope !== undefined && { scope: input.scope }),
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  })
+}
+
 /**
  * Crea un proveedor de tokens de servicio.
  *
@@ -210,6 +326,183 @@ export function createServiceTokenProvider(
   let cached: CachedToken | undefined
   let inFlight: Promise<string> | undefined
 
+  // Token exchange: authenticates with a service token of its own (`aud: auth-api`, permission
+  // `tokens:exchange`), whatever the audience of this provider is. Created on first use.
+  const exchangeUrl = new URL(
+    `${config.authUrl.replace(/\/$/, '')}${apiPath(INTERNAL_TOKEN_EXCHANGE_ROUTES.exchange)}`,
+  )
+  let exchangeBearer: ServiceTokenSource | undefined
+  const exchangeCache = new Map<string, CachedGrant>()
+
+  const rememberGrant = (key: string, entry: CachedGrant): void => {
+    if (exchangeCache.size >= EXCHANGE_CACHE_MAX_ENTRIES) {
+      const now = Date.now()
+      for (const [k, v] of exchangeCache) {
+        if (now >= v.renewAtMs) exchangeCache.delete(k)
+      }
+      if (exchangeCache.size >= EXCHANGE_CACHE_MAX_ENTRIES) {
+        const oldest = exchangeCache.keys().next().value
+        if (oldest !== undefined) exchangeCache.delete(oldest)
+      }
+    }
+    exchangeCache.set(key, entry)
+  }
+
+  // Pedidos en curso por llave: dos llamadas simultáneas iguales hacen UN pedido (como `getToken`).
+  const exchangeInFlight = new Map<
+    string,
+    Promise<Result<DelegatedTokenGrant>>
+  >()
+
+  const requestExchange = async (
+    input: ExchangeTokenInput,
+    key: string,
+  ): Promise<Result<DelegatedTokenGrant>> => {
+    try {
+      exchangeBearer ??= createServiceTokenProvider({
+        authUrl: config.authUrl,
+        clientId: config.clientId,
+        secretHex: config.secretHex,
+        audience: 'auth-api',
+        scope: 'tokens:exchange',
+      })
+      // As in the S2S client: a 401 means the Bearer was not good (revoked, client disabled);
+      // drop it and try ONCE more with a fresh one.
+      const requestedAtMs = Date.now()
+      let bearer = await exchangeBearer.getToken()
+      let res = await postExchange(exchangeUrl, bearer, input)
+      if (res.status === 401) {
+        exchangeBearer.invalidate(bearer)
+        bearer = await exchangeBearer.getToken()
+        res = await postExchange(exchangeUrl, bearer, input)
+      }
+      const json = (await res.json().catch(() => null)) as Record<
+        string,
+        unknown
+      > | null
+
+      if (!res.ok) {
+        const code =
+          typeof json?.error === 'string'
+            ? json.error
+            : res.status === 429
+              ? 'temporarily_unavailable'
+              : 'server_error'
+        return {
+          ok: false,
+          error: {
+            kind: 'api',
+            code,
+            message:
+              typeof json?.error_description === 'string'
+                ? json.error_description
+                : code,
+            status: res.status,
+          },
+        }
+      }
+      const accessToken = json?.access_token
+      const expiresIn = json?.expires_in
+      const scope = json?.scope
+      if (
+        typeof accessToken !== 'string' ||
+        accessToken === '' ||
+        typeof expiresIn !== 'number' ||
+        !(expiresIn > 0) ||
+        typeof scope !== 'string' ||
+        json?.issued_token_type !== ACCESS_TOKEN_TYPE ||
+        json?.token_type !== 'Bearer'
+      ) {
+        return {
+          ok: false,
+          error: {
+            kind: 'api',
+            code: 'server_error',
+            message: 'Respuesta de token exchange inválida',
+            status: res.status,
+          },
+        }
+      }
+      const grant: DelegatedTokenGrant = { accessToken, scope }
+      rememberGrant(key, {
+        grant,
+        renewAtMs:
+          requestedAtMs + expiresIn * 1000 - SERVICE_TOKEN_RENEW_MARGIN_MS,
+      })
+      return { ok: true, data: grant }
+    } catch (err) {
+      // Auth refused the Bearer request itself (bad signature, disabled client, no grant).
+      if (err instanceof ServiceTokenRequestError) {
+        return {
+          ok: false,
+          error: {
+            kind: 'api',
+            code: err.code,
+            message: err.message,
+            status: err.status,
+          },
+        }
+      }
+      return {
+        ok: false,
+        error: {
+          kind: 'sdk',
+          reason: 'network',
+          message: err instanceof Error ? err.message : 'Network error',
+          status: 0,
+        },
+      }
+    }
+  }
+
+  const exchangeToken = async (
+    input: ExchangeTokenInput,
+  ): Promise<Result<DelegatedTokenGrant>> => {
+    const invalid = validateExchangeInput(input)
+    if (invalid !== null) return invalid
+
+    const scopeKey = (input.scope ?? '')
+      .split(' ')
+      .filter(Boolean)
+      .sort()
+      .join(' ')
+    const key = `${await fingerprint(input.subjectToken)}|${input.audience}|${scopeKey}`
+    const hit = exchangeCache.get(key)
+    if (hit !== undefined) {
+      if (Date.now() < hit.renewAtMs) return { ok: true, data: hit.grant }
+      exchangeCache.delete(key)
+    }
+    const pending = exchangeInFlight.get(key)
+    if (pending !== undefined) {
+      // Como en `getToken`: si la request que inició el pedido terminó sin esperarlo, Workers lo
+      // cancela y su promesa NUNCA se resuelve (`.finally` tampoco corre). Quien se une espera
+      // como máximo lo que dura un pedido más el margen; luego suelta la entrada (si sigue siendo
+      // esa) y hace el suyo.
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          if (exchangeInFlight.get(key) === pending)
+            exchangeInFlight.delete(key)
+          exchangeToken(input).then(resolve, reject)
+        }, REQUEST_TIMEOUT_MS + JOIN_GRACE_MS)
+        pending.then(
+          (result) => {
+            clearTimeout(timer)
+            resolve(result)
+          },
+          (err: unknown) => {
+            clearTimeout(timer)
+            reject(err)
+          },
+        )
+      })
+    }
+    const started = requestExchange(input, key).finally(() => {
+      if (exchangeInFlight.get(key) === started) exchangeInFlight.delete(key)
+    })
+    exchangeInFlight.set(key, started)
+    return started
+  }
+
   // Un pedido en curso lo comparten las requests del mismo isolate. En Cloudflare Workers, si la
   // request que lo inició termina sin esperarlo (por ejemplo `provider.getToken()` sin `await` ni
   // `waitUntil`), el runtime cancela su subrequest y esa promesa NUNCA se resuelve: quien se
@@ -261,6 +554,7 @@ export function createServiceTokenProvider(
         cached = undefined
       }
     },
+    exchangeToken,
   }
   return provider
 }

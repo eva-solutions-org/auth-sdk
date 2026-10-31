@@ -19,6 +19,7 @@ export {
 } from './sign'
 
 export {
+  AUTORIZACION_CACHE_TTL_MS,
   S2S_TIMESTAMP_WINDOW_SECONDS,
   USERS_BATCH_MAX_IDS,
   S2S_SCOPES,
@@ -38,12 +39,41 @@ export type {
   CreateWebhookSubscriptionInput,
   UpdateWebhookSubscriptionInput,
   ListWebhookDeliveriesQuery,
+  AddEmpresaMemberInput,
+  AddGrupoEmpresaInput,
+  AutorizacionResult,
+  CheckAutorizacionInput,
+  CheckAutorizacionResult,
+  ContratacionResult,
+  ContratadoResult,
+  CreateAutorizacionInput,
   CreateEmpresaInput,
+  CreateGrupoInput,
   CreateSucursalInput,
-  EmpresaResult,
+  DeactivateSucursalInput,
+  DeleteAutorizacionInput,
+  DirectorioResult,
   EmpresaDetailResult,
+  EmpresaEstadoResult,
   EmpresaMemberResult,
+  EmpresaRecortadaResult,
+  EmpresaResult,
+  GetEmpresaResult,
+  GrupoResult,
+  ListAutorizacionesInput,
+  ListAutorizacionesResult,
+  ListEmpresasInput,
+  ListEmpresasResult,
+  RemoveEmpresaMemberInput,
+  RemoveGrupoEmpresaInput,
+  RenameGrupoInput,
+  SearchDirectorioInput,
+  SetContratacionInput,
+  SubjectTokenInput,
   SucursalResult,
+  UpdateEmpresaInput,
+  UpdateEmpresaMemberInput,
+  UpdateSucursalInput,
   WebhookSubscription,
   WebhookSubscriptionWithSecret,
   WebhookDelivery,
@@ -66,8 +96,11 @@ export {
   SERVICE_TOKEN_RENEW_MARGIN_MS,
 } from './token-provider'
 export type {
+  DelegatedTokenGrant,
+  ExchangeTokenInput,
   ServiceTokenProvider,
   ServiceTokenProviderConfig,
+  ServiceTokenSource,
 } from './token-provider'
 export {
   verifyServiceToken,
@@ -81,3 +114,14 @@ export type {
   ServiceTokenClaims,
   ServiceTokenScopeRequirement,
 } from './service-token'
+
+// Token delegado (token exchange): verificar
+export { verifyDelegatedToken } from './delegated-token'
+export type {
+  DelegatedActor,
+  DelegatedTokenClaims,
+  DelegatedTokenVerifyError,
+  DelegatedTokenVerifyOptions,
+  DelegatedTokenVerifyReason,
+  DelegatedTokenVerifyResult,
+} from './delegated-token'

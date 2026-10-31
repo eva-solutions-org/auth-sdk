@@ -371,11 +371,19 @@ describe('S2S_SCOPES export (Batch-14 G3)', () => {
     expect(typeof S2S_SCOPES).toBe('object')
   })
 
-  it('tiene los 5 permisos de auth-api y ya no tiene admin', () => {
+  it('tiene los 13 permisos de auth-api y ya no tiene admin', () => {
     expect(S2S_SCOPES.USERS_READ).toBe('users:read')
     expect(S2S_SCOPES.WEBHOOKS_READ).toBe('webhooks:read')
     expect(S2S_SCOPES.WEBHOOKS_WRITE).toBe('webhooks:write')
     expect(S2S_SCOPES.EMPRESAS_LEER).toBe('empresas:leer')
+    expect(S2S_SCOPES.TOKENS_EXCHANGE).toBe('tokens:exchange')
+    expect(S2S_SCOPES.CONTRATACIONES_PEDIR).toBe('contrataciones:pedir')
+    expect(S2S_SCOPES.CONTRATACIONES_ESCRIBIR).toBe('contrataciones:escribir')
+    expect(S2S_SCOPES.CONTRATACIONES_LEER).toBe('contrataciones:leer')
+    expect(S2S_SCOPES.EMPRESAS_BAJA).toBe('empresas:baja')
+    expect(S2S_SCOPES.AUTORIZACIONES_ESCRIBIR).toBe('autorizaciones:escribir')
+    expect(S2S_SCOPES.AUTORIZACIONES_LEER).toBe('autorizaciones:leer')
+    expect(S2S_SCOPES.DIRECTORIO_LEER).toBe('directorio:leer')
     expect(S2S_SCOPES.EMPRESAS_ESCRIBIR).toBe('empresas:escribir')
     expect('ADMIN' in S2S_SCOPES).toBe(false)
   })
@@ -649,6 +657,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'createEvaAuth',
     'createHttpClient',
     'createS2SClient',
+    'AUTORIZACION_CACHE_TTL_MS',
     'createServiceTokenProvider',
     'generateS2SNonce',
     'getAuthUrl',
@@ -681,6 +690,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'signS2SRequest',
     'verifyAccessToken',
     'verifyS2SRequest',
+    'verifyDelegatedToken',
     'verifyServiceToken',
     'verifyWebhookSignature',
   ],
@@ -691,6 +701,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'HEADERS',
     'clearTokenCookies',
     'configureEvaAuth',
+    'delegatedTokenAuth',
     'evaAuth',
     'evaAuthRoutes',
     'getAuthUrl',
@@ -769,6 +780,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
   ],
   admin: ['ADMIN_ERROR_CODES', 'createAdminClient'],
   s2s: [
+    'AUTORIZACION_CACHE_TTL_MS',
     'EMPTY_BODY_SHA256_HEX',
     'S2S_ERROR_CODES',
     'S2S_RESPONSE_HEADERS',
@@ -785,6 +797,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'signS2SHeaders',
     'signS2SRequest',
     'verifyS2SRequest',
+    'verifyDelegatedToken',
     'verifyServiceToken',
   ],
 }
@@ -915,7 +928,7 @@ describe('S3 constants come from the contract (REQ-SDK-04, REQ-SDK-09)', () => {
     expect(WEBHOOK_TIMESTAMP_WINDOW_SECONDS).toBe(
       contract.WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
     )
-    expect(Object.keys(EVENT_CODES)).toHaveLength(15)
+    expect(Object.keys(EVENT_CODES)).toHaveLength(27)
   })
 
   it('S2S_SCOPES stays an SDK object whose values are the contract scope catalog (D-27)', async () => {

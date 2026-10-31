@@ -28,7 +28,7 @@ Crea un cliente HTTP tipado contra el Auth Service.
 const client = createHttpClient()
 ```
 
-Retorna `EvaHttpClient`.
+Retorna `EvaHttpClient`. Además de login, sesiones y empresas del usuario, trae `getDirectorio({ accessToken, q?, rubro?, ciudad?, cursor? })` (`GET /api/v1/directorio`): busca en el directorio de empresas con el access token de **cualquier producto habilitado** (Auth limita los pedidos por usuario). Devuelve `{ empresas: [{ id, razonSocial, rubro, ciudad, descripcion, img }], nextCursor }` (solo empresas activas que optaron por aparecer, 50 por página; la siguiente página se pide con `cursor: nextCursor`).
 
 ---
 
@@ -137,13 +137,15 @@ Retorna `string`.
 | `SDK_ERROR_REASONS` | constante | 6 reasons del SDK como `as const` |
 | `getMessage` | función | Helper `getMessage(err: EvaError): string` |
 | `verifyWebhookSignature` | función | Verifica firma HMAC-SHA256 de webhooks |
-| `EVENT_CODES` | constante | 15 event codes del Auth Service (11 de usuario/sesión y `empresa.created`, `empresa.member_added`, `empresa.member_removed`, `empresa.branch_created`) |
+| `EVENT_CODES` | constante | 27 event codes del Auth Service (11 de usuario/sesión, los 4 de empresas de la fase 1 y los 12 de la fase 2: `empresa.updated`, `deactivated`, `reactivated`, `member_role_changed`, `branch_updated`, `branch_deactivated`, `product_changed`, `grupo.updated`, `member_added`, `member_removed`, `autorizacion.granted`, `revoked`) |
 | `WEBHOOK_HEADERS` | constante | Headers de webhooks entrantes (SIGNATURE, ID, TIMESTAMP) |
 | `createAdminClient` | función | Factory del cliente Admin |
 | `ADMIN_ERROR_CODES` | constante | Error codes específicos del módulo Admin |
 | `createS2SClient` | función | Factory del cliente S2S (Bearer con un `ServiceTokenProvider`) |
 | `createServiceTokenProvider` | función | Pide, guarda y renueva el token de servicio (client credentials) |
 | `verifyServiceToken` | función | Verifica un token de servicio recibido como Bearer |
+| `verifyDelegatedToken` | función | Verifica un token delegado (token exchange) recibido como Bearer |
+| `AUTORIZACION_CACHE_TTL_MS` | constante | Vida del caché de `checkAutorizacion` (30 s) |
 | `ServiceTokenRequestError` | clase | Error del pedido de token (`code` RFC 6749, `status`) |
 | `signS2SHeaders` | función | Genera los 4 headers S2S (client id, timestamp, nonce, firma) |
 | `generateS2SNonce` | función | Genera un nonce S2S (32 hex en minúsculas) |
@@ -721,6 +723,27 @@ await admin.setServiceClientGrant('mi-servicio', { audience: 'whatsapp-api', sco
 const grants = await admin.listServiceClientGrants('mi-servicio')
 await admin.deleteServiceClientGrant('mi-servicio', 'whatsapp-api') // 204
 
+// Identidad de un backend: el producto al que pertenece y el servicio que ES (los fija el admin)
+await admin.updateServiceClient('ventas-backend', { producto: 'ventas', audiencia: 'whatsapp-api' })
+
+// Aristas de delegación (token exchange): hacia qué audiencia puede delegar y con qué permisos
+await admin.setServiceClientDelegation('ventas-backend', {
+  audience: 'whatsapp-api',                 // `auth-api` no compila: Auth nunca es destino
+  scopes: ['messages:send:text'],           // `admin` no compila: nunca es delegable
+  requiere_scope_origen: ['messages:send:media'], // opcional: habilita el re-exchange (ver abajo)
+})
+const edges = await admin.listServiceClientDelegations('ventas-backend')
+await admin.deleteServiceClientDelegation('ventas-backend', 'whatsapp-api') // 204
+
+// Permisos entre empresas que un producto puede conceder en nombre de sus empresas
+await admin.setProductoPermisosAutorizables('ventas', { permisos: ['whatsapp:mensajes:leer'] })
+
+// Empresas: reasignar titular (disputa de RUC o empresa sin titular), baja/reactivar y contratación a mano
+await admin.reassignEmpresaTitular('empresa-id', { userId: 'u2', titularAnterior: 'miembro' })
+await admin.bajaEmpresa('empresa-id')
+await admin.reactivarEmpresa('empresa-id')
+await admin.setContratacion('empresa-id', 'ventas', { estado: 'activo', hasta: null })
+
 // Listar
 const list = await admin.listServiceClients()
 
@@ -762,11 +785,19 @@ Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migra
 | `createServiceClient(input)` | POST | `/api/v1/admin/service-clients` | Crea client. Secret one-time. |
 | `listServiceClients()` | GET | `/api/v1/admin/service-clients` | Lista todos. |
 | `getServiceClient(slug)` | GET | `/api/v1/admin/service-clients/:slug` | Detalle por slug. |
-| `updateServiceClient(slug, input)` | PATCH | `/api/v1/admin/service-clients/:slug` | Parche parcial. |
+| `updateServiceClient(slug, input)` | PATCH | `/api/v1/admin/service-clients/:slug` | Parche parcial (`enabled`, `esAdmin`, `name`, y la identidad del backend: `producto` y `audiencia`, `null` las quita). Disjuntas por construcción: el slug de un producto nunca es una audiencia. |
 | `deleteServiceClient(slug)` | DELETE | `/api/v1/admin/service-clients/:slug` | Hard-delete. 204. |
 | `listServiceClientGrants(slug)` | GET | `/api/v1/admin/service-clients/:slug/grants` | Concesiones del client: `{ grants: [{ audience, scopes }] }`. |
 | `setServiceClientGrant(slug, input)` | PUT | `/api/v1/admin/service-clients/:slug/grants` | Crea o reemplaza la concesión de una audiencia. `input` es `{ audience, scopes }` y los `scopes` deben ser de esa audiencia (el tipo y el schema lo imponen). |
 | `deleteServiceClientGrant(slug, audience)` | DELETE | `/api/v1/admin/service-clients/:slug/grants/:audience` | Quita la concesión. 204. |
+| `listServiceClientDelegations(slug)` | GET | `/api/v1/admin/service-clients/:slug/delegations` | Aristas de delegación del client: `{ delegations: [{ audience, scopes, requiere_scope_origen }] }`. |
+| `setServiceClientDelegation(slug, input)` | PUT | `/api/v1/admin/service-clients/:slug/delegations` | Crea o reemplaza la arista hacia una audiencia. `audience` solo puede ser una audiencia delegable (hoy `whatsapp-api`; **`auth-api` nunca**) y `scopes` / `requiere_scope_origen` solo permisos delegables (**`admin` nunca**): el tipo y el schema lo imponen. `requiere_scope_origen` vacío o ausente = la arista no admite re-exchange. |
+| `deleteServiceClientDelegation(slug, audience)` | DELETE | `/api/v1/admin/service-clients/:slug/delegations/:audience` | Quita la arista. 204. |
+| `getProductoPermisosAutorizables(slug)` | GET | `/api/v1/admin/productos/:slug/permisos-autorizables` | `{ producto, permisos }`: los permisos entre empresas que el producto puede conceder. |
+| `setProductoPermisosAutorizables(slug, input)` | PUT | `/api/v1/admin/productos/:slug/permisos-autorizables` | Reemplaza la lista completa (`{ permisos }`, solo permisos del catálogo entre empresas; vacía = ninguno). |
+| `reassignEmpresaTitular(empresaId, input)` | POST | `/api/v1/admin/empresas/:id/titular` | La persona `userId` pasa a titular; el titular anterior queda `miembro` (por defecto) o `fuera` (`titularAnterior`). |
+| `bajaEmpresa(empresaId)` / `reactivarEmpresa(empresaId)` | POST | `/api/v1/admin/empresas/:id/baja` · `/reactivar` | Baja y reactivación por el admin de Auth (sin persona). Respuesta `{ id, estado }`. |
+| `setContratacion(empresaId, producto, input)` | PUT | `/api/v1/admin/empresas/:id/productos/:producto` | Escribe `estado` (`prueba`, `activo`, `suspendido`, `cancelado`) y `hasta` de la contratación. Hasta que exista facturación, así se activa a mano. |
 | `listProductos()` | GET | `/api/v1/admin/productos` | Lista los productos: `{ productos: [{ slug, nombre, enabled }] }`. |
 | `createProducto(input)` | POST | `/api/v1/admin/productos` | Crea un producto (`{ slug, nombre, enabled? }`, `enabled` por defecto `true`). 201 `{ producto }`; `409 conflict` si el slug existe; `400` si el slug no cumple el formato o es una audiencia de servicio. |
 | `updateProducto(slug, input)` | PATCH | `/api/v1/admin/productos/:slug` | Cambia `nombre` o `enabled` (200 `{ producto }`); `404` si no existe; `400` con body vacío. No hay delete: se deshabilita. Un producto deshabilitado cierra el refresh de sus sesiones. |
@@ -845,7 +876,11 @@ La entrada de `createWebhookSubscription` y `updateWebhookSubscription` sigue el
 ```ts
 function createServiceTokenProvider(config: {
   authUrl: string; clientId: string; secretHex: string; audience: string; scope?: string
-}): { getToken(): Promise<string>; invalidate(rejectedToken?: string): void }
+}): {
+  getToken(): Promise<string>
+  invalidate(rejectedToken?: string): void
+  exchangeToken(input: { subjectToken: string; audience: string; scope?: string }): Promise<Result<{ accessToken: string; scope: string }>>
+}
 ```
 
 - Hace `POST /api/v1/internal/token` con `{ audience, scope? }`, firmado con HMAC S2S. La respuesta es la de RFC 6749 §5.1 (`access_token`, `token_type: 'Bearer'`, `expires_in`, `scope`), sin envoltorio `data`.
@@ -854,6 +889,56 @@ function createServiceTokenProvider(config: {
 - `invalidate(rejectedToken)` descarta el token guardado **solo si sigue siendo ese** y nunca descarta un pedido en curso. Con N respuestas 401 simultáneas del mismo token, la primera descarta y las demás comparten el pedido de renovación: UN pedido a `/internal/token`, no N (`createS2SClient` pasa el token rechazado). Sin argumento descarta el guardado.
 - **Cloudflare Workers**: las requests del mismo isolate comparten el pedido en curso (probado en workerd con miniflare: 3 requests simultáneas → 1 pedido; la request que lo inició cancelada por el cliente → las demás siguen recibiendo el token). Si la request que inició el pedido termina **sin esperarlo** (`getToken()` sin `await` ni `waitUntil`), el runtime cancela su subrequest y la promesa nunca se resuelve: quien se unió espera como máximo la duración de un pedido más 1 s de margen (11 s) y luego hace el suyo. Espera siempre `getToken()` dentro de la request.
 - Si Auth rechaza el pedido, `getToken()` rechaza con `ServiceTokenRequestError { code, status }`; `code` es el `error` de RFC 6749/8707: `invalid_client` (401: firma inválida o client deshabilitado), `invalid_target` (400: audiencia desconocida o sin concesión), `invalid_scope` (400), `invalid_request`, `temporarily_unavailable` (503: la caché de replay no responde; la ruta falla cerrado; también el `429` del límite por client, aunque Auth no mande cuerpo RFC: el error trae `retryAfterSeconds` si hubo `Retry-After`). El proveedor valida su configuración al crearse: audiencia del catálogo, permisos de esa audiencia y `secretHex` hex (`TypeError`). `createS2SClient` lo devuelve como `Result` `{ kind: 'api', code, status }`.
+
+### Llamar en nombre de un usuario: `exchangeToken`
+
+`provider.exchangeToken({ subjectToken, audience, scope? })` cambia un token de la persona por un **token delegado** (`typ: dlg-at+jwt`, RFC 8693, 120 s) para que este servicio llame a OTRO servicio en su nombre. Va sobre el mismo proveedor porque usa la identidad del mismo service client.
+
+```ts
+// En el backend de Ventas, con el access token de la persona YA verificado por evaAuth
+const grant = await tokenProvider.exchangeToken({
+  subjectToken: accessToken,   // at+jwt con aud = producto de Ventas, o un token delegado (re-exchange)
+  audience: 'whatsapp-api',    // un servicio al que este client tiene una arista; nunca 'auth-api'
+  scope: 'messages:send:text', // opcional: si falta, todo lo delegable en esa arista
+})
+if (!grant.ok) return handle(grant.error) // grant.error.code: 'invalid_grant', 'invalid_target', 'invalid_scope', ...
+await fetch(url, { headers: { authorization: `Bearer ${grant.data.accessToken}` } })
+```
+
+- **Autenticación propia.** El pedido a `POST /api/v1/internal/token-exchange` va con un token de servicio `aud: auth-api` y permiso `tokens:exchange` que el proveedor obtiene y renueva solo, sea cual sea la audiencia del proveedor. El client necesita esa concesión (`setServiceClientGrant`).
+- **Resultado, no excepción.** `invalid_grant` (sesión cerrada, usuario o empresa fuera, producto no contratado, profundidad o ciclo) es una respuesta normal: llega como `{ ok: false, error: { kind: 'api', code, message, status } }` con el `error` RFC en `code`. Una audiencia o permiso que no está en el catálogo delegable (`auth-api`, `admin`, un typo) se rechaza localmente con `reason: 'malformed'`, sin pedido.
+- **Caché por isolate.** El token delegado se guarda hasta 30 s antes de su `exp` (90 s útiles de 120). La llave es la audiencia, el scope (sin importar el orden) y una **huella SHA-256 del `subjectToken` completo**. Eso cubre la llave del diseño (`sid`, `sub`, `empresa`, `audience`, `scope`) y el `jti` del token de entrada en un re-exchange: un token de entrada distinto, aunque diga lo mismo, nunca reutiliza una entrada; un token falsificado que repita los claims de otra persona tampoco puede leerla. Los errores no se guardan. El caché está acotado (500 entradas por proveedor).
+- **El SDK no verifica el `subjectToken`:** pásalo ya verificado (`verifyAccessToken`, el middleware, `verifyDelegatedToken`). Auth lo verifica de todas formas.
+
+### Verificación de token delegado (`verifyDelegatedToken` / `delegatedTokenAuth`)
+
+El servicio destino (por ejemplo Whatsapp-api cuando lo llama Ventas en nombre de alguien) verifica el Bearer delegado. `verifyDelegatedToken` vive en `@eva_solutions/auth-sdk/s2s` y `delegatedTokenAuth` (Hono) en `@eva_solutions/auth-sdk/hono`.
+
+```ts
+import { delegatedTokenAuth, type DelegatedTokenAuthVariables } from '@eva_solutions/auth-sdk/hono'
+
+const app = new Hono<{ Variables: DelegatedTokenAuthVariables }>()
+app.use('/v1/on-behalf/*', delegatedTokenAuth({ audience: 'whatsapp-api', requiredScope: 'messages:send:text' }))
+app.post('/v1/on-behalf/text', (c) => {
+  c.var.userId      // `sub`: la persona
+  c.var.empresaId   // `empresa`: obligatoria e inmutable en la cadena
+  c.var.producto    // producto de origen
+  c.var.sessionId   // `sid`: sesión de origen
+  c.var.actorChain  // [{ serviceClientId, serviceClientSlug }, ...] del último actor al primero
+  c.var.scopes
+})
+```
+
+```ts
+function verifyDelegatedToken(token: string, opts: DelegatedTokenVerifyOptions): Promise<DelegatedTokenVerifyResult>
+function delegatedTokenAuth(opts: DelegatedTokenAuthOptions): MiddlewareHandler
+```
+
+Exige `typ: dlg-at+jwt`, `kid` `svc-`, `iss: auth-service`, **una** `aud` (la del receptor; `auth-api` lanza `TypeError`), `sub`, `client_id`, una cadena `act` de 1 a 3 niveles, **`empresa`, `producto` y `sid` obligatorios** (un delegado sin empresa se rechaza con `claims_invalid`), `jti` obligatorio, `client_id` igual al `client_id` de `act`, `exp - iat` ≤ 120 s y el permiso pedido (`requiredScope`, `anyScope` o `scopeCheck: 'deferred'`; `admin` nunca es delegable y lanza `TypeError`). Los motivos de rechazo son los de `verifyServiceToken`; el middleware responde 401 `{ error: { code, message } }` y 403 `insufficient_scope`. `requireScope` no aplica a este middleware (lee los scopes de `s2sAuth` / `serviceTokenAuth`): con `scopeCheck: 'deferred'` revisa `c.var.scopes`.
+
+**Ningún verificador acepta el tipo de otro.** Los tres tokens comparten el JWKS y se separan por `typ` y por prefijo de `kid`: `verifyAccessToken` (`at+jwt`, `usr-`), `verifyServiceToken` (`svc-at+jwt`, `svc-`) y `verifyDelegatedToken` (`dlg-at+jwt`, `svc-`). Un test cruza los tres tipos con los dos prefijos contra los tres verificadores y solo acepta la diagonal.
+
+**El servicio destino no ve los roles del producto:** el producto que actúa es responsable de haber comprobado el permiso de la persona antes de pedir el token. Un token delegado no sirve ante Auth.
 
 ### Firma HMAC
 
@@ -1020,13 +1105,40 @@ Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migra
 | `deleteWebhookSubscription(id)` | DELETE | `/api/v1/internal/webhooks/subscriptions/:id` | Elimina subscription. 204. |
 | `rotateWebhookSubscriptionSecret(id)` | POST | `/api/v1/internal/webhooks/subscriptions/:id/rotate-secret` | Rota signing key. One-time. Puede responder `409 webhook_secret_rotation_conflict` si otra rotación concurrente ganó: esa llamada no recibe clave (no hay clave nueva de ese caller que guardar) y se puede reintentar. |
 | `listWebhookDeliveries(query?)` | GET | `/api/v1/internal/webhooks/deliveries` | Lista entregas con filtros. |
-| `createEmpresa(input)` | POST | `/api/v1/internal/empresas` | Crea la empresa y su primer miembro (`primerMiembroUserId`) en una operación. 201. `409 conflict` si `ruc`, `razonSocial` o `slug` ya existen (el mensaje nombra el campo). Permiso `empresas:escribir`. |
-| `getEmpresa(id)` | GET | `/api/v1/internal/empresas/:id` | Empresa con sus sucursales y miembros. Permiso `empresas:leer`. |
-| `addEmpresaMember(id, userId)` | POST | `/api/v1/internal/empresas/:id/miembros` | Agrega un miembro. 201; `409` si ya lo es. `empresas:escribir`. |
-| `removeEmpresaMember(id, userId)` | DELETE | `/api/v1/internal/empresas/:id/miembros/:userId` | Quita un miembro. 204; `404` si no lo es. `empresas:escribir`. |
-| `createSucursal(id, input)` | POST | `/api/v1/internal/empresas/:id/sucursales` | Crea una sucursal (`nombre`, `direccion?`). 201. `empresas:escribir`. |
+| `createEmpresa(input)` | POST | `/api/v1/internal/empresas` | Crea la empresa. La persona de `input.subjectToken` queda **titular** y el producto del actor en `prueba` (el actor necesita `producto`). 201. `409 conflict` si `ruc`, `razonSocial` o `slug` ya existen; límite de altas por persona. `empresas:escribir`. |
+| `updateEmpresa(id, input)` | PATCH | `/api/v1/internal/empresas/:id` | Datos maestros, perfil (`perfil: { visible, rubro, ciudad, descripcion }`) y `img`. `ruc` y `slug` son inmutables. Administrador o titular. `empresas:escribir`. |
+| `listEmpresas(query?)` | GET | `/api/v1/internal/empresas?q=&cursor=` | Las empresas que contrataron el producto del actor, paginadas: `{ empresas, nextCursor }`. `empresas:leer`. |
+| `getEmpresa(id)` | GET | `/api/v1/internal/empresas/:id` | Una empresa. `data.vista === 'completa'` (sucursales, miembros con rol y datos de contacto) para un actor con producto contratado por la empresa; `'recortada'` (`id`, `razonSocial`, `estado`, sucursales sin dirección) para un actor sin producto. `404` si no existe o no contrató el producto del actor. `empresas:leer`. |
+| `bajaEmpresa(id)` / `reactivarEmpresa(id)` | POST | `/api/v1/internal/empresas/:id/baja` · `/reactivar` | Solo facturación (`empresas:baja`, sin persona). Una empresa de baja responde `404` a toda mutación salvo `reactivar`. |
+| `addEmpresaMember(id, { userId, subjectToken })` | POST | `/api/v1/internal/empresas/:id/miembros` | Agrega un miembro (entra como `miembro`). 201; `409` si ya lo es. Administrador o titular. `empresas:escribir`. |
+| `setEmpresaMemberRole(id, userId, { rol, subjectToken })` | PATCH | `/api/v1/internal/empresas/:id/miembros/:userId` | Cambia el rol (`titular`, `administrador`, `miembro`). Solo el titular. Siempre queda al menos un titular. |
+| `removeEmpresaMember(id, userId, { subjectToken })` | DELETE | `/api/v1/internal/empresas/:id/miembros/:userId` | Quita un miembro. 204; `404` si no lo es. Con `userId` = la persona del token es salir por cuenta propia (cualquier rol, salvo el último titular). |
+| `createSucursal(id, input)` | POST | `/api/v1/internal/empresas/:id/sucursales` | Crea una sucursal (`nombre`, `direccion?`, `subjectToken`). 201. Administrador o titular. |
+| `updateSucursal(id, sucursalId, input)` | PATCH | `/api/v1/internal/empresas/:id/sucursales/:sucursalId` | Edita una sucursal. |
+| `deactivateSucursal(id, sucursalId, { subjectToken })` | DELETE | `/api/v1/internal/empresas/:id/sucursales/:sucursalId` | Baja lógica (`activa = false`). 204. |
+| `requestContratacion(id, { subjectToken })` | POST | `/api/v1/internal/empresas/:id/productos` | El actor pide la contratación de **su propio** producto (`pendiente_pago`). La persona debe ser titular; `404` igual si la empresa no existe o no es titular. Solo si no hay fila o está `cancelado`. Permiso `contrataciones:pedir` (concedible a productos). |
+| `cancelContratacion(id, { subjectToken })` | DELETE | `/api/v1/internal/empresas/:id/productos` | Cancela la contratación del propio producto (`cancelado`, desde cualquier estado). Solo titular. 204. `contrataciones:pedir`. |
+| `getContratacion(id, producto)` | GET | `/api/v1/internal/empresas/:id/productos/:producto` | `{ contratado }` (`prueba` o `activo` y sin vencer): para servicios compartidos que atienden llamadas de servicio. `contrataciones:leer`. |
+| `setContratacion(id, producto, input)` | PUT | `/api/v1/internal/empresas/:id/productos/:producto` | Facturación (actor sin `producto`): `estado` y `hasta`. `contrataciones:escribir`, que solo se concede a facturación, no a productos. |
+| `createGrupo(input)` / `renameGrupo(id, input)` | POST / PATCH | `/api/v1/internal/grupos` · `/grupos/:id` | Agrupación de empresas (no da acceso). Solo titular. |
+| `addGrupoEmpresa(id, input)` / `removeGrupoEmpresa(id, empresaId, input)` | POST / DELETE | `/api/v1/internal/grupos/:id/empresas[/:empresaId]` | Agrega o quita una empresa de la que la persona es titular. Un grupo vacío se borra solo. |
+| `searchDirectorio(query?)` | GET | `/api/v1/directorio?q=&rubro=&ciudad=&cursor=` | Directorio de empresas visibles, para servicios con `directorio:leer`. |
+| `createAutorizacion(otorganteId, input)` | POST | `/api/v1/internal/empresas/:id/autorizaciones` | `{ beneficiariaId, permiso, subjectToken }`; el permiso es del catálogo entre empresas. 201; `409` si ya está vigente. `autorizaciones:escribir`. |
+| `deleteAutorizacion(empresaId, autorizacionId, { subjectToken })` | DELETE | `/api/v1/internal/empresas/:id/autorizaciones/:autorizacionId` | Revoca (otorgante) o renuncia (beneficiaria). 204. |
+| `listAutorizaciones(empresaId, { direccion, subjectToken })` | GET | `/api/v1/internal/empresas/:id/autorizaciones?direccion=` | `otorgadas` o `recibidas`, vigentes. La persona viaja en el header `x-eva-subject-token` (un GET no tiene body). `autorizaciones:leer`. |
+| `checkAutorizacion({ otorgante, beneficiaria, permiso })` | GET | `/api/v1/internal/autorizaciones/verificar` | `{ autorizado }`. Solo para actores sin `producto` cuya audiencia es dueña del permiso. Vale si las dos empresas están activas. **Caché de 30 s por cliente** (también las negativas, no los errores): una revocación o una baja tardan como máximo eso en notarse. `autorizaciones:leer`. |
 
-Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`. Auth no guarda roles: quién puede pedir cada operación de empresas lo decide el producto con los suyos. Los ids se validan y codifican como un solo segmento de path, igual que los demás.
+Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`. Los ids se validan y codifican como un solo segmento de path, igual que los demás.
+
+**Un solo mecanismo para las acciones de una persona sobre una empresa.** El backend del producto manda su token de servicio (`aud: auth-api`, el permiso de la ruta) **más el access token de la persona** como `subjectToken` en el body (`DELETE` incluido; en el único `GET` que necesita a la persona, `listAutorizaciones`, va en el header `x-eva-subject-token`, nunca en la URL). Auth valida firma y vigencia del `subjectToken`, que su `aud` sea el producto del actor, la sesión, el producto habilitado, el usuario activo, el **rol de la persona en la empresa de la ruta** (que Auth lee de la base en cada operación, no viaja en los tokens) y la contratación. La empresa sale de la **ruta**, no de la sesión. **Un fallo del token de la persona responde `403` con `code: subject_token_invalid`** (`SUBJECT_TOKEN_INVALID_CODE`), nunca `401`: un 401 es del Bearer de servicio y es lo único que hace que `createS2SClient` descarte el token de servicio y reintente. **No se usan tokens delegados para hablar con Auth.** Lo reservado a admin o facturación (`bajaEmpresa`, `reactivarEmpresa`, `setContratacion`) no lleva `subjectToken`.
+
+| Acción | titular | administrador | miembro |
+|--------|:-------:|:-------------:|:-------:|
+| Pedir o cancelar la contratación de un producto, cambiar roles, agrupar | sí | | |
+| Agregar o quitar personas (no titulares), editar datos maestros y perfil, sucursales, conceder o revocar autorizaciones | sí | sí | |
+| Salir de la empresa por cuenta propia | sí (si queda otro titular) | sí | sí |
+
+Un actor con `producto` solo ve y opera empresas que contrataron su producto (`404` si no, sin distinguir de inexistente). `GET /user/empresas` devuelve el `rol`, el `grupo` y `contratado` de cada empresa.
 
 ---
 
@@ -1052,23 +1164,35 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `ACCOUNT_STATES` | constante | Objeto con los 6 estados de cuenta (clave igual a valor); también se re-exporta desde `@eva_solutions/auth-sdk` |
 | `ACTIVITY_STATES`, `PRIVACY_STATES` | constante | Tuplas `as const` de los estados de actividad y de privacidad |
 | `USERS_BATCH_MAX_IDS` | constante | `100`: tope de ids de `POST /api/v1/internal/users/batch`. El schema del batch lo lleva como `.max(100)` (`maxItems` en el OpenAPI); el cliente del SDK lo valida antes del fetch y la API puede bajarlo con su env |
-| `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema`, `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /api/v1/user` (objeto estricto base, sin `.refine`) |
+| `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema` (cada empresa con `rol`, `grupo` y `contratado`; las que la persona es titular sin el producto del token vienen como `contratado: false`, sin contacto ni sucursales), `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /api/v1/user` (objeto estricto base, sin `.refine`) |
 | `sessionListResponseSchema` (+ `SessionListResponse`, `Session`) | schema + type | Listado de sesiones |
 | `usersBatchRequestSchema`, `usersBatchResponseSchema` (+ `UsersBatchRequest`, `UsersBatchResponse`) | schema + type | `POST /api/v1/internal/users/batch` |
-| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/api/v1/internal/webhooks/*` y de las 15 de `/api/v1/admin/*` (6 de service-clients, 3 de concesiones, 3 de productos, `restoreUser`, `republishPendingWebhooks` y `maintenanceCleanup`) |
-| `INTERNAL_TOKEN_ROUTES`, `INTERNAL_EMPRESA_ROUTES` | constante | `POST /api/v1/internal/token` y las 5 rutas de `/api/v1/internal/empresas/*` |
-| `EVENT_CODES` (+ type `EventCode`) | constante | Los 15 event codes de los webhooks (clave en mayúsculas, valor `user.created`, ..., `empresa.created`, `empresa.member_added`, `empresa.member_removed`, `empresa.branch_created`) |
+| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/api/v1/internal/webhooks/*` y de las 24 de `/api/v1/admin/*` (6 de service-clients, 3 de concesiones, 3 de delegaciones, 3 de productos, 2 de permisos autorizables, titular, baja, reactivar y contratación de empresas, `restoreUser`, `republishPendingWebhooks` y `maintenanceCleanup`) |
+| `INTERNAL_TOKEN_ROUTES`, `INTERNAL_TOKEN_EXCHANGE_ROUTES`, `INTERNAL_EMPRESA_ROUTES`, `INTERNAL_GRUPO_ROUTES`, `INTERNAL_AUTORIZACION_ROUTES`, `DIRECTORIO_ROUTES` | constante | `POST /api/v1/internal/token`, `POST /api/v1/internal/token-exchange`, las 19 rutas de `/api/v1/internal/empresas/*` (datos, miembros, sucursales, contratación, autorizaciones), las 4 de `/internal/grupos`, `GET /internal/autorizaciones/verificar` y `GET /directorio` |
+| `EVENT_CODES` (+ type `EventCode`) | constante | Los 27 event codes de los webhooks (clave en mayúsculas, valor `user.created`, ..., `empresa.created`, ..., `empresa.product_changed`, `grupo.*`, `autorizacion.*`). Módulo puro aparte (`event-codes`): no entra al bundle de `react` |
+| `IDENTITY_EVENT_PAYLOAD_SCHEMAS` (+ schemas por payload) | constante | `data` de los 12 eventos de la fase 2, por event code. **Solo ids** (y `rol` / `estado` / `permiso`): sin datos de contacto. `empresa.*`, `grupo.*` y `autorizacion.*` se entregan solo a los clients cuyo producto contrató la empresa afectada (o que no tienen producto) |
 | `WEBHOOK_HEADERS`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` | constante | Nombres en minúsculas de los headers del webhook (`SIGNATURE`, `ID`, `TIMESTAMP`) y ventana de la marca de tiempo (`300` s) |
 | `DELIVERY_STATUSES` | constante | Tupla de estados de entrega |
-| `SERVICE_AUDIENCE_SCOPES`, `SERVICE_AUDIENCES` (+ types `ServiceAudience`, `ServiceScope<A>`), `isServiceAudience`, `isScopeOfAudience` | constante + función | Catálogo cerrado de audiencias de servicio y sus permisos: `auth-api` (`users:read`, `webhooks:read`, `webhooks:write`, `empresas:leer`, `empresas:escribir`; **sin `admin`**) y `whatsapp-api` (`messages:send:text`, `messages:send:media`, `admin`). Un slug de producto nunca coincide con una audiencia (`isServiceAudience`) |
+| `SERVICE_AUDIENCE_SCOPES`, `SERVICE_AUDIENCES` (+ types `ServiceAudience`, `ServiceScope<A>`), `isServiceAudience`, `isScopeOfAudience` | constante + función | Catálogo cerrado de audiencias de servicio y sus permisos: `auth-api` (`users:read`, `webhooks:read`, `webhooks:write`, `empresas:leer`, `empresas:escribir`, `tokens:exchange`, `contrataciones:pedir`, `contrataciones:escribir`, `contrataciones:leer`, `empresas:baja`, `autorizaciones:escribir`, `autorizaciones:leer`, `directorio:leer`; **sin `admin`**) y `whatsapp-api` (`messages:send:text`, `messages:send:media`, `admin`). Un slug de producto nunca coincide con una audiencia (`isServiceAudience`) |
+| `DELEGABLE_AUDIENCE_SCOPES`, `DELEGABLE_AUDIENCES`, `DELEGABLE_SCOPES`, `isDelegableAudience`, `isDelegableScope` (+ types) | constante + función | Lo que una arista de delegación puede llevar: hoy `whatsapp-api` con `messages:send:text` y `messages:send:media`. **`auth-api` nunca es destino y `admin` nunca es delegable** (un test lo fija) |
+| `INTER_EMPRESA_PERMISSIONS`, `INTER_EMPRESA_PERMISSION_LIST`, `isInterEmpresaPermission`, `interEmpresaPermissionOwner` (+ types) | constante + función | Catálogo **cerrado y separado** de permisos entre empresas ("la empresa B puede X sobre los datos de A"), por servicio dueño de los datos. Arranca mínimo (`whatsapp-api`: `whatsapp:mensajes:leer`) y cada servicio agrega los suyos. Distinto del de audiencias: "el client puede X" no es "la empresa B puede X sobre A" |
+| `EMPRESA_ROLES`, `empresaRoleAtLeast`, `EMPRESA_ESTADOS`, `CONTRATACION_ESTADOS`, `CONTRATACION_ESTADOS_VIGENTES`, `CONTRATACION_ESTADOS_FACTURACION`, `isContratacionVigente`, `AUTORIZACION_DIRECCIONES`, `TITULAR_ANTERIOR_DESTINOS` | constante + función | Vocabulario de empresas (módulo puro): roles `titular` > `administrador` > `miembro`, estados de empresa (`activa`, `baja`) y de contratación (`prueba`, `pendiente_pago`, `activo`, `suspendido`, `cancelado`; solo `prueba` y `activo`, sin vencer, cuentan como contratado) |
+| `SUBJECT_TOKEN_INVALID_STATUS`, `SUBJECT_TOKEN_INVALID_CODE`, `TOKEN_BEARING_KEYS` | constante | Fallo de la persona (`403 subject_token_invalid`) y claves que transportan tokens (`subjectToken`, `subject_token`, `x-eva-subject-token`, `access_token`): Auth - API las redacta en logs y auditoría |
+| `DELEGATED_TOKEN_TYP`, `DELEGATED_TOKEN_LIFETIME_SECONDS`, `DELEGATED_TOKEN_MAX_DEPTH`, `TOKEN_EXCHANGE_GRANT_TYPE`, `ACCESS_TOKEN_TYPE`, `SUBJECT_TOKEN_HEADER`, `TOKEN_EXCHANGE_ERROR_CODES`, `DelegatedActorClaim` | constante + type | Token delegado: `typ: dlg-at+jwt`, vida 120 s, cadena `act` de máximo 3 niveles, identificadores RFC 8693, header `x-eva-subject-token` y códigos de error del exchange |
+| `tokenExchangeRequestSchema`, `tokenExchangeResponseSchema`, `tokenExchangeErrorSchema` (+ tipos) | schema + type | `POST /api/v1/internal/token-exchange`. Como el endpoint de tokens: sin envoltorio `data` ni `error: { code, message }`, sigue RFC 8693 |
 | `TOKEN_ISSUER`, `RESERVED_SERVICE_CLIENT_SLUGS`, `isReservedServiceClientSlug`, `AUTH_SERVICE_SUB`, `USER_TOKEN_TYP`, `SERVICE_TOKEN_TYP`, `USER_KID_PREFIX`, `SERVICE_KID_PREFIX`, `SERVICE_TOKEN_LIFETIME_SECONDS`, `INTERNAL_SERVICE_TOKEN_LIFETIME_SECONDS`, `SERVICE_TOKEN_ERROR_CODES` | constante + función | Vocabulario de los tokens: emisor (`auth-service`, slug reservado), `typ` (`at+jwt` / `svc-at+jwt`), prefijos de `kid` (`usr-` / `svc-`), vidas (300 s; 60 s para el OTP), id fijo de Auth como `sub` y códigos de error del endpoint de tokens |
 | `serviceTokenRequestSchema`, `serviceTokenResponseSchema`, `serviceTokenErrorSchema` (+ tipos) | schema + type | `POST /api/v1/internal/token`. Sin envoltorio `data` ni `error: { code, message }`: sigue RFC 6749 §5.1/§5.2 y RFC 8707 |
 | `setServiceClientGrantRequestSchema`, `serviceClientGrantSchema`, `listServiceClientGrantsResponseSchema`, `setServiceClientGrantResponseSchema` (+ tipos) | schema + type | Concesiones. El body es una unión discriminada por `audience`: un permiso de otra audiencia (o `admin` en `auth-api`) lo rechaza el schema |
-| `createEmpresaRequestSchema`, `addEmpresaMemberRequestSchema`, `createSucursalRequestSchema`, `empresaResponseSchema`, `empresaDetailResponseSchema`, `empresaMemberResponseSchema`, `sucursalResponseSchema`, `sucursalSchema` (+ tipos) | schema + type | API interna de empresas y sucursales |
+| `subjectTokenSchema`, `createEmpresaRequestSchema`, `updateEmpresaRequestSchema`, `listEmpresasQuerySchema`, `addEmpresaMemberRequestSchema`, `updateEmpresaMemberRequestSchema`, `removeEmpresaMemberRequestSchema`, `createSucursalRequestSchema`, `updateSucursalRequestSchema`, `deactivateSucursalRequestSchema`, `reassignTitularRequestSchema`, `empresaResponseSchema`, `listEmpresasResponseSchema`, `empresaDetailResponseSchema`, `empresaRecortadaResponseSchema`, `getEmpresaResponseSchema`, `empresaMemberResponseSchema`, `empresaEstadoResponseSchema`, `reassignTitularResponseSchema`, `sucursalResponseSchema`, `sucursalSchema` (+ tipos) | schema + type | API interna de empresas y sucursales: cada body de una persona lleva `subjectToken`; `GET /internal/empresas/{id}` responde `completa` o `recortada` (`data.vista`) |
+| `contratacionSchema`, `setContratacionRequestSchema`, `contratacionResponseSchema`, `contratadoResponseSchema` (+ tipos) | schema + type | Contratación de productos (§2 del diseño) |
+| `grupoSchema`, `createGrupoRequestSchema`, `renameGrupoRequestSchema`, `addGrupoEmpresaRequestSchema`, `removeGrupoEmpresaRequestSchema`, `grupoResponseSchema` (+ tipos) | schema + type | Grupos de empresas (solo agrupación) |
+| `directorioQuerySchema`, `directorioEmpresaSchema`, `directorioResponseSchema` (+ tipos) | schema + type | `GET /api/v1/directorio`: solo campos de perfil público |
+| `createAutorizacionRequestSchema`, `deleteAutorizacionRequestSchema`, `listAutorizacionesQuerySchema`, `verificarAutorizacionQuerySchema`, `autorizacionSchema`, `autorizacionResponseSchema`, `listAutorizacionesResponseSchema`, `verificarAutorizacionResponseSchema`, `setProductoPermisosAutorizablesRequestSchema`, `productoPermisosAutorizablesResponseSchema` (+ tipos) | schema + type | Autorizaciones entre empresas y permisos autorizables por producto |
+| `setServiceClientDelegationRequestSchema`, `serviceClientDelegationSchema`, `listServiceClientDelegationsResponseSchema`, `setServiceClientDelegationResponseSchema` (+ tipos) | schema + type | Aristas de delegación (`/admin/service-clients/{slug}/delegations`). El body es una unión por audiencia delegable: `auth-api` y `admin` los rechaza el schema |
 | `productoSchema`, `createProductoRequestSchema`, `updateProductoRequestSchema` (base estricto, sin `.refine`), `listProductosResponseSchema`, `productoResponseSchema` (+ tipos) | schema + type | Admin de productos (`/api/v1/admin/productos`). Sin DELETE: se deshabilita. El API aplica lo que el contrato no lleva: 400 si el slug es una audiencia de servicio (`isServiceAudience`) o si el body de PATCH viene vacío |
 | `productoSlugSchema`, `setActiveEmpresaRequestSchema`, `setActiveEmpresaResponseSchema` | schema | `producto` (obligatorio) y `empresaId` (opcional) del login; `POST /api/v1/auth/empresa-activa` |
 | `createSubscriptionRequestSchema`, `updateSubscriptionRequestSchema`, `deliveriesQuerySchema`, `republishPendingQuerySchema`, `republishPendingResponseSchema`, `maintenanceCleanupQuerySchema`, `maintenanceCleanupResponseSchema`, `subscriptionSchema`, `subscriptionWithSecretResponseSchema`, `subscriptionResponseSchema`, `subscriptionListResponseSchema`, `rotateSubscriptionSecretResponseSchema`, `deliverySchema`, `deliveryListResponseSchema` (+ tipos) | schema + type | Webhooks: subscriptions y deliveries |
-| `serviceClientSlugSchema`, `createServiceClientRequestSchema` (`esAdmin`, ya sin `scopes`), `updateServiceClientRequestSchema` (base estricto, sin `.refine`), `serviceClientPublicSchema` (con `esAdmin` y `grants`), `createServiceClientResponseSchema`, `listServiceClientsResponseSchema`, `getServiceClientResponseSchema`, `updateServiceClientResponseSchema`, `rotateServiceClientSecretResponseSchema`, `restoreUserResponseSchema` (+ tipos) | schema + type | Service clients (`/api/v1/admin/service-clients`) y restaurar usuario |
+| `serviceClientSlugSchema`, `createServiceClientRequestSchema` (`esAdmin`, `producto?`, `audiencia?`), `updateServiceClientRequestSchema` (base estricto, sin `.refine`; `producto` y `audiencia` admiten `null`), `serviceClientPublicSchema` (con `esAdmin`, `producto`, `audiencia` y `grants`), `createServiceClientResponseSchema`, `listServiceClientsResponseSchema`, `getServiceClientResponseSchema`, `updateServiceClientResponseSchema`, `rotateServiceClientSecretResponseSchema`, `restoreUserResponseSchema` (+ tipos) | schema + type | Service clients (`/api/v1/admin/service-clients`) y restaurar usuario |
 | `HttpMethod`, `RouteDescriptor` | types | Tipos de los descriptores |
 | `errorResponseSchema`, `ErrorResponse` | schema + type | Cuerpo de error `{ error: { code, message } }` (id OpenAPI `ErrorBody`) |
 | `messageResponseSchema`, `messageWithCountResponseSchema` (+ tipos `MessageResponse`, `MessageWithCountResponse`) | schema + type | Respuestas genéricas con mensaje |

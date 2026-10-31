@@ -1,8 +1,13 @@
 import { z } from 'zod'
 import {
   AUTH_ROUTES,
+  DIRECTORIO_ROUTES,
   SESSION_ROUTES,
   USER_ROUTES,
+} from '@eva_solutions/auth-contracts'
+import type {
+  DirectorioQuery,
+  DirectorioResponse,
 } from '@eva_solutions/auth-contracts'
 import { apiPath } from './api-path'
 import { getProduct, isEvaAuthConfigError } from './config'
@@ -226,6 +231,26 @@ const getUserEmpresas = (params: {
     accessToken: params.accessToken,
   })
 
+/**
+ * Busca en el directorio de empresas (solo las activas que optaron por aparecer; solo campos de
+ * perfil público; 50 por página). Basta el access token de usuario de CUALQUIER producto habilitado:
+ * Auth limita los pedidos por usuario. La siguiente página se pide con el `nextCursor` recibido.
+ */
+const getDirectorio = (
+  params: { accessToken: string } & DirectorioQuery,
+): Promise<Result<DirectorioResponse['data']>> => {
+  const { accessToken, ...filters } = params
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined) query.set(key, String(value))
+  }
+  const qs = query.toString()
+  return authFetch(
+    `${apiPath(DIRECTORIO_ROUTES.search)}${qs === '' ? '' : `?${qs}`}`,
+    { accessToken },
+  )
+}
+
 const getSessions = (params: {
   accessToken: string
 }): Promise<Result<EvaSession[]>> =>
@@ -278,6 +303,7 @@ export function createHttpClient() {
     updateUser,
     deleteUser,
     getUserEmpresas,
+    getDirectorio,
     getSessions,
     deleteSession,
     deleteAllSessions,

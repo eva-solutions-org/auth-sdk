@@ -12,6 +12,16 @@ export type { AdminClient } from './client'
 
 export type {
   AdminClientConfig,
+  AdminContratacionResult,
+  AdminEmpresaEstadoResult,
+  AdminSetContratacionInput,
+  ListServiceClientDelegationsResult,
+  ProductoPermisosAutorizablesResult,
+  ReassignEmpresaTitularInput,
+  ReassignEmpresaTitularResult,
+  ServiceClientDelegation,
+  SetProductoPermisosAutorizablesInput,
+  SetServiceClientDelegationInput,
   ServiceClientPublic,
   CreateServiceClientInput,
   CreateProductoInput,

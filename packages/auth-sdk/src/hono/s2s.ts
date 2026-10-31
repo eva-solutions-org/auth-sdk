@@ -16,6 +16,14 @@ import {
   verifyServiceToken,
 } from '../s2s/service-token'
 import type { ServiceTokenVerifyOptions } from '../s2s/service-token'
+import {
+  assertDelegatedTokenOptions,
+  verifyDelegatedToken,
+} from '../s2s/delegated-token'
+import type {
+  DelegatedActor,
+  DelegatedTokenVerifyOptions,
+} from '../s2s/delegated-token'
 import type { S2SVerifyOptions } from '../s2s/types'
 
 // ---------------------------------------------------------------------------
@@ -379,6 +387,109 @@ export function serviceTokenAuth(
       c.set('serviceClientId', result.data.serviceClientId)
       c.set('serviceClientSlug', result.data.serviceClientSlug)
       c.set('serviceScopes', result.data.scopes)
+      await next()
+    },
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Token delegado (otro servicio actuando en nombre de un usuario)
+// ---------------------------------------------------------------------------
+
+/** Options for `delegatedTokenAuth`: those of `verifyDelegatedToken` (the middleware provides the token). */
+export type DelegatedTokenAuthOptions = DelegatedTokenVerifyOptions
+
+/**
+ * Hono context variables set by `delegatedTokenAuth`.
+ */
+export type DelegatedTokenAuthVariables = {
+  /** `sub` del token: el usuario en cuyo nombre se actúa. */
+  userId: string
+  /** `empresa`: obligatoria en toda la cadena. */
+  empresaId: string
+  /** `producto` de origen de la cadena. */
+  producto: string
+  /** `sid`: sesión de origen. */
+  sessionId: string
+  /** Cadena de actores, del último (quien llama a este servicio) al primero. */
+  actorChain: readonly DelegatedActor[]
+  /** Permisos del token. */
+  scopes: readonly string[]
+}
+
+/**
+ * Hono middleware that verifies the delegated token (ES256, `typ: 'dlg-at+jwt'`, `kid` `svc-…`, one
+ * `aud` = this service, never `auth-api`, mandatory `empresa`) sent as `Authorization: Bearer`. See
+ * `verifyDelegatedToken` for the token contract. It accepts NOTHING else: a service token, a user
+ * access token and a delegated token are three different types and each verifier takes only its own.
+ *
+ * On **success**: sets `c.var.userId`, `empresaId`, `producto`, `sessionId`, `actorChain` and
+ * `scopes`, then calls `next()`.
+ * On **failure**: HTTP 401 `{ error: { code: <reason>, message } }`, or HTTP 403 with code
+ * `insufficient_scope` when the token is valid but lacks the required scope.
+ *
+ * With `scopeCheck: 'deferred'` no permission is required here; check `c.var.scopes` in the route.
+ * (`requireScope` reads the scopes of `s2sAuth` / `serviceTokenAuth` and does not apply here.)
+ *
+ * The receiving service does not see the roles of the product: the product that acted is
+ * responsible for having checked the permission of the person before asking for the token.
+ *
+ * @throws `TypeError` when the middleware is built with options that are not valid for the catalog.
+ *
+ * @example
+ * ```ts
+ * app.use(
+ *   '/v1/stock/*',
+ *   delegatedTokenAuth({ audience: 'whatsapp-api', requiredScope: 'messages:send:text' }),
+ * )
+ * ```
+ */
+export function delegatedTokenAuth(
+  opts: DelegatedTokenAuthOptions,
+): ReturnType<
+  typeof createMiddleware<{ Variables: DelegatedTokenAuthVariables }>
+> {
+  assertDelegatedTokenOptions(opts)
+  return createMiddleware<{ Variables: DelegatedTokenAuthVariables }>(
+    async (c, next) => {
+      const bearer = c.req.header('authorization')?.match(BEARER_REGEX)
+      const result = bearer
+        ? await verifyDelegatedToken(bearer[1] as string, opts)
+        : ({
+            ok: false,
+            error: {
+              reason: 'token_missing',
+              message:
+                opts.messages?.token_missing ?? 'Bearer token is missing',
+            },
+          } as const)
+
+      if (!result.ok) {
+        if (result.error.reason === 'scope_insufficient') {
+          return c.json(
+            {
+              error: {
+                code: 'insufficient_scope',
+                message: result.error.message,
+              },
+            },
+            403,
+          )
+        }
+        return c.json(
+          {
+            error: { code: result.error.reason, message: result.error.message },
+          },
+          401,
+        )
+      }
+
+      c.set('userId', result.data.userId)
+      c.set('empresaId', result.data.empresaId)
+      c.set('producto', result.data.producto)
+      c.set('sessionId', result.data.sessionId)
+      c.set('actorChain', result.data.actorChain)
+      c.set('scopes', result.data.scopes)
       await next()
     },
   )

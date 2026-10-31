@@ -5,12 +5,22 @@
  */
 
 import type {
+  ContratacionResponse,
   CreateProductoRequest,
   CreateServiceClientRequest,
   CreateServiceClientResponse,
   ListProductosResponse,
+  EmpresaEstadoResponse,
+  ListServiceClientDelegationsResponse,
   ListServiceClientGrantsResponse,
   MaintenanceCleanupResponse,
+  ProductoPermisosAutorizablesResponse,
+  ReassignTitularRequest,
+  ReassignTitularResponse,
+  ServiceClientDelegation as ContractServiceClientDelegation,
+  SetContratacionRequest,
+  SetProductoPermisosAutorizablesRequest,
+  SetServiceClientDelegationRequest,
   RepublishPendingResponse,
   RotateServiceClientSecretResponse,
   ServiceClientGrant as ContractServiceClientGrant,
@@ -148,3 +158,45 @@ export type MaintenanceCleanupQuery = {
  * vuelve a llamar).
  */
 export type MaintenanceCleanupResult = MaintenanceCleanupResponse['data']
+
+/**
+ * Arista de delegación de un service client: puede intercambiar tokens hacia `audience` con, como
+ * máximo, `scopes`; `requiere_scope_origen` vacío = no admite re-exchange.
+ */
+export type ServiceClientDelegation = ContractServiceClientDelegation
+
+/**
+ * Input de `setServiceClientDelegation`: audiencia delegable y permisos delegables del catálogo
+ * (`auth-api` y `admin` no compilan y el API los rechaza). `requiere_scope_origen` es opcional.
+ */
+export type SetServiceClientDelegationInput = SetServiceClientDelegationRequest
+
+/** Resultado de `listServiceClientDelegations`. */
+export type ListServiceClientDelegationsResult =
+  ListServiceClientDelegationsResponse['data']
+
+/** Input de `setProductoPermisosAutorizables`: la lista COMPLETA de permisos entre empresas (vacía = ninguno). */
+export type SetProductoPermisosAutorizablesInput =
+  SetProductoPermisosAutorizablesRequest
+
+/** Permisos entre empresas que un producto puede conceder: `{ producto, permisos }`. */
+export type ProductoPermisosAutorizablesResult =
+  ProductoPermisosAutorizablesResponse['data']
+
+/**
+ * Input de `reassignEmpresaTitular`: la persona que pasa a titular y qué pasa con el titular
+ * anterior (`'miembro'` por defecto, o `'fuera'`).
+ */
+export type ReassignEmpresaTitularInput = ReassignTitularRequest
+
+/** Resultado de la reasignación de titular. */
+export type ReassignEmpresaTitularResult = ReassignTitularResponse['data']
+
+/** Estado de la empresa tras `bajaEmpresa` / `reactivarEmpresa`. */
+export type AdminEmpresaEstadoResult = EmpresaEstadoResponse['data']
+
+/** Input de `setContratacion`: estado (`prueba`, `activo`, `suspendido`, `cancelado`) y vencimiento. */
+export type AdminSetContratacionInput = SetContratacionRequest
+
+/** Contratación de un producto tras escribirla. */
+export type AdminContratacionResult = ContratacionResponse['data']

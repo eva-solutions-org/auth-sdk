@@ -103,6 +103,19 @@ El SDK es dueño del algoritmo de firma S2S (canonical de 7 líneas, ver [api.md
 - **Solo ES256**: `algorithms` fijo; un `alg` distinto se rechaza aunque el JWKS tenga una clave válida de otro algoritmo.
 - **Fallos de infraestructura no son rechazos**: JWKS inalcanzable o `authUrl` sin configurar lanzan (500), no devuelven 401.
 
+## Delegación: token delegado (token exchange)
+
+`provider.exchangeToken` pide el token y `verifyDelegatedToken` / `delegatedTokenAuth` lo verifican ([api.md](api.md#verificación-de-token-delegado-verifydelegatedtoken--delegatedtokenauth)). Puntos de seguridad:
+
+- **Tres tipos, separados por `typ` y `kid`**: usuario (`at+jwt`, `usr-`), servicio (`svc-at+jwt`, `svc-`) y delegado (`dlg-at+jwt`, `svc-`). Ningún verificador acepta el tipo de otro; un test cruza los tres tipos con los dos prefijos contra los tres verificadores y solo acepta la diagonal.
+- **Una audiencia, nunca `auth-api`**: un `aud` arreglo se rechaza aunque contenga la audiencia propia. Las aristas y los permisos delegables salen de un catálogo cerrado donde `auth-api` y `admin` no existen; las opciones inválidas lanzan `TypeError` al construir.
+- **Empresa obligatoria**: un delegado sin `empresa` (o sin `producto` / `sid`) se rechaza (`claims_invalid`). La delegación sin empresa no existe en esta fase.
+- **Cadena acotada**: `act` de 1 a 3 niveles; una cadena más profunda se rechaza. Auth revalida la sesión, el usuario, la pertenencia, la empresa y la contratación en cada salto, así cerrar sesión o dar de baja corta la delegación en ≤ 120 s.
+- **El caché de `exchangeToken` no confía en claims sin verificar**: la llave lleva una huella SHA-256 del `subjectToken` completo (no sus claims), así que un token falsificado no puede leer la entrada de otra persona y un re-exchange desde otro token de la cadena (otro `jti`) nunca reutiliza una entrada obtenida con otro que sí cumplía `requiere_scope_origen`. El SDK no verifica el `subjectToken`: pásalo ya verificado.
+- **Ante Auth no se usan delegados**: toda acción de una persona sobre una empresa va con el token de servicio del producto más el access token de la persona (`subjectToken`), así ningún servicio intermedio puede ejercer el rol de la persona. El `subjectToken` va en el body, o en el header `x-eva-subject-token` en el único `GET` que lo necesita; nunca en la URL.
+- **Riesgo aceptado**: el token delegado no está atado al emisor (sin DPoP): quien lo robe lo usa hasta 120 s ante su `aud`. El servicio destino no ve los roles del producto.
+- **Caché de autorizaciones (30 s)**: una revocación o una baja de empresa tardan como máximo eso en notarse en un servicio que usa `checkAutorizacion`.
+
 ---
 
 ## Request timeouts

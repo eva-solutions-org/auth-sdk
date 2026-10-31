@@ -19,6 +19,15 @@
  *   GET    /admin/service-clients/:slug/grants          → listServiceClientGrants
  *   PUT    /admin/service-clients/:slug/grants          → setServiceClientGrant
  *   DELETE /admin/service-clients/:slug/grants/:audience → deleteServiceClientGrant (204)
+ *   GET    /admin/service-clients/:slug/delegations     → listServiceClientDelegations
+ *   PUT    /admin/service-clients/:slug/delegations     → setServiceClientDelegation
+ *   DELETE /admin/service-clients/:slug/delegations/:audience → deleteServiceClientDelegation (204)
+ *   GET    /admin/productos/:slug/permisos-autorizables → getProductoPermisosAutorizables
+ *   PUT    /admin/productos/:slug/permisos-autorizables → setProductoPermisosAutorizables
+ *   POST   /admin/empresas/:id/titular                  → reassignEmpresaTitular
+ *   POST   /admin/empresas/:id/baja                     → bajaEmpresa
+ *   POST   /admin/empresas/:id/reactivar                → reactivarEmpresa
+ *   PUT    /admin/empresas/:id/productos/:producto      → setContratacion
  *   GET    /admin/productos                             → listProductos
  *   POST   /admin/productos                             → createProducto (201)
  *   PATCH  /admin/productos/:slug                       → updateProducto
@@ -41,6 +50,16 @@ import { signS2SHeaders } from '../s2s/sign'
 import type { Result } from '../types'
 import type {
   AdminClientConfig,
+  AdminContratacionResult,
+  AdminEmpresaEstadoResult,
+  AdminSetContratacionInput,
+  ListServiceClientDelegationsResult,
+  ProductoPermisosAutorizablesResult,
+  ReassignEmpresaTitularInput,
+  ReassignEmpresaTitularResult,
+  ServiceClientDelegation,
+  SetProductoPermisosAutorizablesInput,
+  SetServiceClientDelegationInput,
   ServiceClientPublic,
   CreateServiceClientInput,
   CreateProductoInput,
@@ -92,6 +111,43 @@ export type AdminClient = {
     slug: string,
     audience: string,
   ): Promise<Result<void>>
+  /** Lista las aristas de delegación del client (token exchange). */
+  listServiceClientDelegations(
+    slug: string,
+  ): Promise<Result<ListServiceClientDelegationsResult>>
+  /** Crea o reemplaza la arista del client hacia una audiencia delegable (`scopes`, `requiere_scope_origen`). */
+  setServiceClientDelegation(
+    slug: string,
+    input: SetServiceClientDelegationInput,
+  ): Promise<Result<{ delegation: ServiceClientDelegation }>>
+  deleteServiceClientDelegation(
+    slug: string,
+    audience: string,
+  ): Promise<Result<void>>
+  /** Permisos entre empresas que el producto puede conceder en nombre de sus empresas. */
+  getProductoPermisosAutorizables(
+    slug: string,
+  ): Promise<Result<ProductoPermisosAutorizablesResult>>
+  /** Reemplaza la lista de permisos autorizables del producto (vacía = ninguno). */
+  setProductoPermisosAutorizables(
+    slug: string,
+    input: SetProductoPermisosAutorizablesInput,
+  ): Promise<Result<ProductoPermisosAutorizablesResult>>
+  /** Reasigna el titular de una empresa (disputa de RUC o empresa sin titular). */
+  reassignEmpresaTitular(
+    empresaId: string,
+    input: ReassignEmpresaTitularInput,
+  ): Promise<Result<ReassignEmpresaTitularResult>>
+  /** Da de baja una empresa (limpia sus sesiones activas; las autorizaciones y contrataciones dejan de valer). */
+  bajaEmpresa(empresaId: string): Promise<Result<AdminEmpresaEstadoResult>>
+  /** Reactiva una empresa de baja. */
+  reactivarEmpresa(empresaId: string): Promise<Result<AdminEmpresaEstadoResult>>
+  /** Escribe el estado y el vencimiento de la contratación de un producto por una empresa (hasta que exista facturación, así se activa a mano). */
+  setContratacion(
+    empresaId: string,
+    producto: string,
+    input: AdminSetContratacionInput,
+  ): Promise<Result<AdminContratacionResult>>
   /** Lista los productos (la audiencia del access token de usuario). */
   listProductos(): Promise<Result<ListProductosResult>>
   /** Crea un producto (201). 409 si el slug existe; 400 si es una audiencia de servicio. */
@@ -363,6 +419,164 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
           slug: segment,
           audience: audienceSegment,
         }),
+      })
+    },
+
+    async listServiceClientDelegations(
+      slug: string,
+    ): Promise<Result<ListServiceClientDelegationsResult>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('listServiceClientDelegations', 'slug')
+      }
+      return adminFetch<ListServiceClientDelegationsResult>({
+        config,
+        method: 'GET',
+        pathname: apiPath(ADMIN_ROUTES.listServiceClientDelegations, {
+          slug: segment,
+        }),
+      })
+    },
+
+    async setServiceClientDelegation(
+      slug: string,
+      input: SetServiceClientDelegationInput,
+    ): Promise<Result<{ delegation: ServiceClientDelegation }>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('setServiceClientDelegation', 'slug')
+      }
+      return adminFetch<{ delegation: ServiceClientDelegation }>({
+        config,
+        method: 'PUT',
+        pathname: apiPath(ADMIN_ROUTES.setServiceClientDelegation, {
+          slug: segment,
+        }),
+        body: input,
+      })
+    },
+
+    async deleteServiceClientDelegation(
+      slug: string,
+      audience: string,
+    ): Promise<Result<void>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('deleteServiceClientDelegation', 'slug')
+      }
+      const audienceSegment = encodePathSegment(audience)
+      if (audienceSegment === null) {
+        return invalidParamResult('deleteServiceClientDelegation', 'audience')
+      }
+      return adminFetch<void>({
+        config,
+        method: 'DELETE',
+        pathname: apiPath(ADMIN_ROUTES.deleteServiceClientDelegation, {
+          slug: segment,
+          audience: audienceSegment,
+        }),
+      })
+    },
+
+    async getProductoPermisosAutorizables(
+      slug: string,
+    ): Promise<Result<ProductoPermisosAutorizablesResult>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('getProductoPermisosAutorizables', 'slug')
+      }
+      return adminFetch<ProductoPermisosAutorizablesResult>({
+        config,
+        method: 'GET',
+        pathname: apiPath(ADMIN_ROUTES.getProductoPermisosAutorizables, {
+          slug: segment,
+        }),
+      })
+    },
+
+    async setProductoPermisosAutorizables(
+      slug: string,
+      input: SetProductoPermisosAutorizablesInput,
+    ): Promise<Result<ProductoPermisosAutorizablesResult>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('setProductoPermisosAutorizables', 'slug')
+      }
+      return adminFetch<ProductoPermisosAutorizablesResult>({
+        config,
+        method: 'PUT',
+        pathname: apiPath(ADMIN_ROUTES.setProductoPermisosAutorizables, {
+          slug: segment,
+        }),
+        body: input,
+      })
+    },
+
+    async reassignEmpresaTitular(
+      empresaId: string,
+      input: ReassignEmpresaTitularInput,
+    ): Promise<Result<ReassignEmpresaTitularResult>> {
+      const segment = encodePathSegment(empresaId)
+      if (segment === null) {
+        return invalidParamResult('reassignEmpresaTitular', 'empresaId')
+      }
+      return adminFetch<ReassignEmpresaTitularResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(ADMIN_ROUTES.reassignEmpresaTitular, { id: segment }),
+        body: input,
+      })
+    },
+
+    async bajaEmpresa(
+      empresaId: string,
+    ): Promise<Result<AdminEmpresaEstadoResult>> {
+      const segment = encodePathSegment(empresaId)
+      if (segment === null) {
+        return invalidParamResult('bajaEmpresa', 'empresaId')
+      }
+      return adminFetch<AdminEmpresaEstadoResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(ADMIN_ROUTES.bajaEmpresa, { id: segment }),
+      })
+    },
+
+    async reactivarEmpresa(
+      empresaId: string,
+    ): Promise<Result<AdminEmpresaEstadoResult>> {
+      const segment = encodePathSegment(empresaId)
+      if (segment === null) {
+        return invalidParamResult('reactivarEmpresa', 'empresaId')
+      }
+      return adminFetch<AdminEmpresaEstadoResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(ADMIN_ROUTES.reactivarEmpresa, { id: segment }),
+      })
+    },
+
+    async setContratacion(
+      empresaId: string,
+      producto: string,
+      input: AdminSetContratacionInput,
+    ): Promise<Result<AdminContratacionResult>> {
+      const segment = encodePathSegment(empresaId)
+      if (segment === null) {
+        return invalidParamResult('setContratacion', 'empresaId')
+      }
+      const productoSegment = encodePathSegment(producto)
+      if (productoSegment === null) {
+        return invalidParamResult('setContratacion', 'producto')
+      }
+      return adminFetch<AdminContratacionResult>({
+        config,
+        method: 'PUT',
+        pathname: apiPath(ADMIN_ROUTES.setContratacion, {
+          id: segment,
+          producto: productoSegment,
+        }),
+        body: input,
       })
     },
 

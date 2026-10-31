@@ -52,6 +52,14 @@ export const S2S_SCOPES = {
   WEBHOOKS_WRITE: 'webhooks:write',
   EMPRESAS_LEER: 'empresas:leer',
   EMPRESAS_ESCRIBIR: 'empresas:escribir',
+  TOKENS_EXCHANGE: 'tokens:exchange',
+  CONTRATACIONES_PEDIR: 'contrataciones:pedir',
+  CONTRATACIONES_ESCRIBIR: 'contrataciones:escribir',
+  CONTRATACIONES_LEER: 'contrataciones:leer',
+  EMPRESAS_BAJA: 'empresas:baja',
+  AUTORIZACIONES_ESCRIBIR: 'autorizaciones:escribir',
+  AUTORIZACIONES_LEER: 'autorizaciones:leer',
+  DIRECTORIO_LEER: 'directorio:leer',
 } as const satisfies Record<string, ServiceScope<'auth-api'>>
 
 /** Unión de literales de todos los permisos de la audiencia `auth-api`. */
@@ -71,3 +79,10 @@ export type S2SScope = (typeof S2S_SCOPES)[keyof typeof S2S_SCOPES]
 export const S2S_RESPONSE_HEADERS = {
   SERVER_TIME: INTERNAL_HEADERS.X_EVA_SERVER_TIME,
 } as const
+
+/**
+ * Vida en milisegundos del caché de `checkAutorizacion` en el cliente S2S (30 s). Una revocación o
+ * la baja de una empresa tardan como máximo esto en notarse en un servicio que verifica; así
+ * está declarado en el diseño.
+ */
+export const AUTORIZACION_CACHE_TTL_MS = 30_000

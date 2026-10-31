@@ -5,17 +5,45 @@
  */
 
 import type {
+  AddEmpresaMemberRequest,
+  AddGrupoEmpresaRequest,
+  AutorizacionResponse,
+  ContratacionResponse,
+  ContratadoResponse,
+  CreateAutorizacionRequest,
   CreateEmpresaRequest,
+  CreateGrupoRequest,
   CreateSubscriptionRequest,
   CreateSucursalRequest,
+  DeactivateSucursalRequest,
+  DeleteAutorizacionRequest,
+  DirectorioQuery,
+  DirectorioResponse,
   EmpresaDetailResponse,
+  EmpresaEstadoResponse,
   EmpresaMemberResponse,
+  EmpresaRecortadaResponse,
   EmpresaResponse,
+  GetEmpresaResponse,
+  GrupoResponse,
+  ListAutorizacionesQuery,
+  ListAutorizacionesResponse,
+  ListEmpresasQuery,
+  ListEmpresasResponse,
   ProfileResponse,
+  RemoveEmpresaMemberRequest,
+  RemoveGrupoEmpresaRequest,
+  RenameGrupoRequest,
+  SetContratacionRequest,
   SucursalResponse,
+  UpdateEmpresaMemberRequest,
+  UpdateEmpresaRequest,
   UpdateSubscriptionRequest,
+  UpdateSucursalRequest,
   UsersBatchRequest,
   UsersBatchResponse,
+  VerificarAutorizacionQuery,
+  VerificarAutorizacionResponse,
 } from '@eva_solutions/auth-contracts'
 import type {
   WebhookSubscription,
@@ -23,7 +51,7 @@ import type {
   WebhookDelivery,
   RotateWebhookSecretResult,
 } from '../webhooks/types'
-import type { ServiceTokenProvider } from './token-provider'
+import type { ServiceTokenSource } from './token-provider'
 
 // Re-exportar tipos de webhooks para que sean accesibles desde el barrel s2s
 export type {
@@ -46,7 +74,7 @@ export type S2SClientConfig = {
    * Proveedor del token de servicio con audiencia `auth-api` (`createServiceTokenProvider`). El
    * cliente lo usa en cada llamada y, ante un 401, lo invalida y reintenta una vez.
    */
-  tokenProvider: ServiceTokenProvider
+  tokenProvider: ServiceTokenSource
 }
 
 /**
@@ -116,23 +144,118 @@ export type ListWebhookDeliveriesQuery = {
   offset?: number
 }
 
-/** Input para crear una empresa y su primer miembro (alias del request del contrato). */
+/**
+ * Toda acción de una persona sobre una empresa lleva su access token como `subjectToken`: el
+ * backend del producto manda su token de servicio y, en el body, el token de la persona.
+ */
+export type SubjectTokenInput = RemoveEmpresaMemberRequest
+
+/**
+ * Input para crear una empresa (alias del request del contrato). La persona del `subjectToken`
+ * queda como titular y el producto del actor queda en `prueba`.
+ */
 export type CreateEmpresaInput = CreateEmpresaRequest
+
+/** Input para editar datos maestros, perfil y visibilidad (RUC y slug son inmutables). */
+export type UpdateEmpresaInput = UpdateEmpresaRequest
+
+/** Query de `listEmpresas`: `q` y `cursor` (la siguiente página sale de `nextCursor`). */
+export type ListEmpresasInput = ListEmpresasQuery
+
+/** Página de empresas contratadas por el producto del actor. */
+export type ListEmpresasResult = ListEmpresasResponse['data']
+
+/** Input para agregar un miembro (entra como `miembro`). */
+export type AddEmpresaMemberInput = AddEmpresaMemberRequest
+
+/** Input para cambiar el rol de un miembro (solo el titular). */
+export type UpdateEmpresaMemberInput = UpdateEmpresaMemberRequest
+
+/** Input para quitar un miembro; `userId` = la persona del token es salir por cuenta propia. */
+export type RemoveEmpresaMemberInput = RemoveEmpresaMemberRequest
 
 /** Input para crear una sucursal (alias del request del contrato). */
 export type CreateSucursalInput = CreateSucursalRequest
 
-/** Empresa creada (`data` de la respuesta 201). */
+/** Input para editar una sucursal. */
+export type UpdateSucursalInput = UpdateSucursalRequest
+
+/** Input para dar de baja lógica una sucursal (`activa = false`). */
+export type DeactivateSucursalInput = DeactivateSucursalRequest
+
+/** Empresa creada o editada (`data` de la respuesta). */
 export type EmpresaResult = EmpresaResponse['data']
 
-/** Empresa con sucursales y miembros (`data` de la respuesta). */
+/** Vista completa de una empresa: el actor tiene su producto contratado (`vista: 'completa'`). */
 export type EmpresaDetailResult = EmpresaDetailResponse['data']
 
-/** Miembro agregado (`data` de la respuesta 201). */
+/** Vista recortada para un actor sin producto: sin contacto ni miembros (`vista: 'recortada'`). */
+export type EmpresaRecortadaResult = EmpresaRecortadaResponse['data']
+
+/** Resultado de `getEmpresa`: una de las dos vistas, distinguidas por `vista`. */
+export type GetEmpresaResult = GetEmpresaResponse['data']
+
+/** Miembro agregado o con rol cambiado (`data` de la respuesta). */
 export type EmpresaMemberResult = EmpresaMemberResponse['data']
 
-/** Sucursal creada (`data` de la respuesta 201). */
+/** Sucursal creada o editada (`data` de la respuesta). */
 export type SucursalResult = SucursalResponse['data']
+
+/** Estado de la empresa tras `bajaEmpresa` / `reactivarEmpresa`. */
+export type EmpresaEstadoResult = EmpresaEstadoResponse['data']
+
+/** Contratación de un producto por una empresa. */
+export type ContratacionResult = ContratacionResponse['data']
+
+/** Input de `setContratacion` (facturación y admin): estado y vencimiento. */
+export type SetContratacionInput = SetContratacionRequest
+
+/** `{ contratado }`: ¿la empresa tiene el producto en `prueba` o `activo` y sin vencer? */
+export type ContratadoResult = ContratadoResponse['data']
+
+/** Input para crear un grupo con una empresa de la persona. */
+export type CreateGrupoInput = CreateGrupoRequest
+
+/** Input para renombrar un grupo. */
+export type RenameGrupoInput = RenameGrupoRequest
+
+/** Input para agregar una empresa a un grupo. */
+export type AddGrupoEmpresaInput = AddGrupoEmpresaRequest
+
+/** Input para quitar una empresa de un grupo. */
+export type RemoveGrupoEmpresaInput = RemoveGrupoEmpresaRequest
+
+/** Grupo con los ids de sus empresas. */
+export type GrupoResult = GrupoResponse['data']
+
+/** Query del directorio: `q`, `rubro`, `ciudad` y `cursor`. */
+export type SearchDirectorioInput = DirectorioQuery
+
+/** Página del directorio: solo campos de perfil público. */
+export type DirectorioResult = DirectorioResponse['data']
+
+/** Input para conceder una autorización a otra empresa (solo permisos del catálogo entre empresas). */
+export type CreateAutorizacionInput = CreateAutorizacionRequest
+
+/** Input para revocar (otorgante) o renunciar (beneficiaria) a una autorización. */
+export type DeleteAutorizacionInput = DeleteAutorizacionRequest
+
+/** Input de `listAutorizaciones`: dirección y persona (viaja en el header `x-eva-subject-token`). */
+export type ListAutorizacionesInput = ListAutorizacionesQuery & {
+  subjectToken: string
+}
+
+/** Autorización vigente. */
+export type AutorizacionResult = AutorizacionResponse['data']
+
+/** Autorizaciones vigentes de una empresa. */
+export type ListAutorizacionesResult = ListAutorizacionesResponse['data']
+
+/** Input de `checkAutorizacion`: otorgante, beneficiaria y permiso. */
+export type CheckAutorizacionInput = VerificarAutorizacionQuery
+
+/** `{ autorizado }`. */
+export type CheckAutorizacionResult = VerificarAutorizacionResponse['data']
 
 // ===== v1.1.0: Server-side verification types =====
 

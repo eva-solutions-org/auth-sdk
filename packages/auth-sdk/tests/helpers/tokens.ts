@@ -114,3 +114,31 @@ export function serviceToken(keys: TestKeys, over: Partial<SignInput> = {}) {
     ...(over.key && { key: over.key }),
   })
 }
+
+/**
+ * A valid delegated token (token exchange) for `whatsapp-api`: `typ: dlg-at+jwt`, signed with the
+ * SERVICE key (`svc-` kid), one actor, company, product and session of origin, 120 s of life.
+ */
+export function delegatedToken(keys: TestKeys, over: Partial<SignInput> = {}) {
+  const iat = now()
+  return sign({
+    key: keys.serviceKey,
+    header: { typ: 'dlg-at+jwt', kid: SERVICE_KID, ...over.header },
+    claims: {
+      iss: 'auth-service',
+      aud: 'whatsapp-api',
+      sub: 'user-1',
+      client_id: 'ventas-backend',
+      act: { sub: SERVICE_SUB, client_id: 'ventas-backend' },
+      empresa: 'emp-1',
+      producto: PRODUCT,
+      sid: 'sess-1',
+      scope: 'messages:send:text',
+      iat,
+      exp: iat + 120,
+      jti: crypto.randomUUID(),
+      ...over.claims,
+    },
+    ...(over.key && { key: over.key }),
+  })
+}

@@ -328,6 +328,38 @@ const s2s = createS2SClient({ baseUrl: authUrl, tokenProvider })
 
 ---
 
+## 14. Identidad fase 2: roles de empresa, delegación, contratación, directorio, autorizaciones y grupos
+
+Cambios incompatibles de la siguiente versión mayor (ADR-021). Requiere un Auth Service con el diseño `identidad-fase2` (lo implementa `Auth - API`).
+
+**S2S (`createS2SClient`):**
+
+| Antes | Ahora |
+|-------|-------|
+| `createEmpresa({ ruc, razonSocial, slug, primerMiembroUserId })` | `createEmpresa({ ruc, razonSocial, slug, subjectToken })`: la persona del token queda **titular** y tu producto en `prueba` |
+| `addEmpresaMember(id, userId)` | `addEmpresaMember(id, { userId, subjectToken })` (entra como `miembro`) |
+| `removeEmpresaMember(id, userId)` | `removeEmpresaMember(id, userId, { subjectToken })` |
+| `createSucursal(id, { nombre })` | `createSucursal(id, { nombre, subjectToken })` |
+| `getEmpresa(id)` → `{ ..., miembros: [{ userId }] }` | `GetEmpresaResult`: `vista: 'completa'` (miembros con `rol`) o `'recortada'` (actor sin producto). Discrimina por `vista` |
+
+Toda acción de una persona sobre una empresa lleva su access token como `subjectToken`: pásalo **ya verificado** (el que dejó `evaAuth`). Métodos nuevos: `updateEmpresa`, `listEmpresas`, `bajaEmpresa`, `reactivarEmpresa`, `setEmpresaMemberRole`, `updateSucursal`, `deactivateSucursal`, `requestContratacion`, `cancelContratacion`, `getContratacion`, `setContratacion`, `createGrupo`, `renameGrupo`, `addGrupoEmpresa`, `removeGrupoEmpresa`, `searchDirectorio`, `createAutorizacion`, `deleteAutorizacion`, `listAutorizaciones`, `checkAutorizacion` (caché de 30 s).
+
+**Delegación:**
+
+- `provider.exchangeToken({ subjectToken, audience, scope? })` devuelve un `Result` con el token delegado. El client necesita la concesión `tokens:exchange` sobre `auth-api` y una arista hacia la audiencia (`setServiceClientDelegation`).
+- El receptor usa `verifyDelegatedToken` o `delegatedTokenAuth` (Hono), que dejan `userId`, `empresaId`, `producto`, `sessionId`, `actorChain` y `scopes`. Un token de servicio o de usuario no pasa por ahí, ni un delegado por los otros verificadores.
+- `ServiceTokenProvider` ahora incluye `exchangeToken`. Si tenías un proveedor hecho a mano, tipéalo como `ServiceTokenSource` (`getToken` + `invalidate`), que es lo que `S2SClientConfig.tokenProvider` acepta.
+
+**Admin:** `ServiceClientPublic` y el resultado de creación traen `producto` y `audiencia`; `create/updateServiceClient` los aceptan. Métodos nuevos: `listServiceClientDelegations`, `setServiceClientDelegation`, `deleteServiceClientDelegation`, `getProductoPermisosAutorizables`, `setProductoPermisosAutorizables`, `reassignEmpresaTitular`, `bajaEmpresa`, `reactivarEmpresa`, `setContratacion`.
+
+**Usuario (HTTP):** `createHttpClient().getDirectorio(...)`. `EvaEmpresa` (lista del usuario) trae `rol`, `grupo` y `contratado`; las empresas donde la persona es titular sin el producto contratado llegan como `contratado: false`, sin contacto ni sucursales (narrow por `contratado`).
+
+**Contrato y constantes:** `S2S_SCOPES` suma `TOKENS_EXCHANGE`, `CONTRATACIONES_PEDIR`, `CONTRATACIONES_ESCRIBIR`, `CONTRATACIONES_LEER`, `EMPRESAS_BAJA`, `AUTORIZACIONES_ESCRIBIR`, `AUTORIZACIONES_LEER` y `DIRECTORIO_LEER`. `EVENT_CODES` pasa de 15 a 27 (`empresa.updated`, `deactivated`, `reactivated`, `member_role_changed`, `branch_updated`, `branch_deactivated`, `product_changed`; `grupo.*`; `autorizacion.*`). `sucursalSchema` suma `activa`; las empresas suman `estado`, `grupoId` y `perfil`.
+
+**Qué hacer:** pasa el `subjectToken` en las llamadas de empresas, sucursales y miembros; adapta los lugares que leían `miembros[].userId` o la forma de `getEmpresa`; pide al admin de Auth las concesiones (`tokens:exchange`, `contrataciones:*`, `autorizaciones:*`, `directorio:leer` según uses) y las aristas de delegación; maneja `contratado: false` en la lista de empresas del usuario.
+
+---
+
 ## Versiones anteriores
 
 Las secciones siguientes corresponden a la migración 0.x → 1.0.0 y se conservan como referencia.

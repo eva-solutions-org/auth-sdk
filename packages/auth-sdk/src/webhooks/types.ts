@@ -11,7 +11,7 @@ import type {
 } from '@eva_solutions/auth-contracts'
 
 /**
- * Tipo del event code — unión de los 11 valores del catálogo (alias del contrato compartido).
+ * Tipo del event code — unión de los valores del catálogo (alias del contrato compartido).
  */
 export type { EventCode }
 
@@ -23,7 +23,7 @@ export type { EventCode }
 export type WebhookPayload<TData = Record<string, unknown>> = {
   /** UUID del evento (único por entrega). */
   id: string
-  /** Código del evento (uno de los 11 EVENT_CODES). */
+  /** Código del evento (uno de los EVENT_CODES). */
   eventCode: EventCode
   /** Unix timestamp en segundos del momento en que se generó el evento. */
   timestamp: number

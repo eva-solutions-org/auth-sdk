@@ -115,7 +115,9 @@ function fail(
 }
 
 /** Traduce un error de jose; los que no son del token (fallo de red del JWKS, config) se relanzan. */
-function reasonFromJoseError(err: unknown): ServiceTokenVerifyReason | null {
+export function reasonFromJoseError(
+  err: unknown,
+): ServiceTokenVerifyReason | null {
   const code = (err as { code?: unknown } | null)?.code
   switch (code) {
     case 'ERR_JWT_EXPIRED':

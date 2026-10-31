@@ -7,7 +7,7 @@ import { createS2SClient } from '../src/s2s/client'
 import { ServiceTokenRequestError } from '../src/s2s/token-provider'
 import {
   createServiceTokenProvider,
-  type ServiceTokenProvider,
+  type ServiceTokenSource,
 } from '../src/s2s/token-provider'
 
 const BASE_URL = 'https://auth.test'
@@ -32,7 +32,7 @@ function sequentialProvider() {
   const provider = {
     getToken: vi.fn(async () => `tok-${++n}`),
     invalidate: vi.fn(),
-  } satisfies ServiceTokenProvider
+  } satisfies ServiceTokenSource
   return provider
 }
 
@@ -117,7 +117,7 @@ describe('401 handling', () => {
 
 describe('provider failures become Results', () => {
   it('maps a rejected token request to an api error carrying the RFC code', async () => {
-    const provider: ServiceTokenProvider = {
+    const provider: ServiceTokenSource = {
       getToken: async () => {
         throw new ServiceTokenRequestError('invalid_client', 401, 'disabled')
       },
@@ -142,7 +142,7 @@ describe('provider failures become Results', () => {
   })
 
   it('maps a provider network failure to an sdk network error', async () => {
-    const provider: ServiceTokenProvider = {
+    const provider: ServiceTokenSource = {
       getToken: async () => {
         throw new Error('ECONNREFUSED')
       },
@@ -180,7 +180,7 @@ describe('companies API', () => {
       ruc: '20123456789',
       razonSocial: 'Gym SAC',
       slug: 'gym',
-      primerMiembroUserId: UUID,
+      subjectToken: 'a.b.c',
     }
 
     const result = await client().createEmpresa(input)
@@ -200,7 +200,7 @@ describe('companies API', () => {
       ruc: '1',
       razonSocial: 'r',
       slug: 'gym',
-      primerMiembroUserId: UUID,
+      subjectToken: 'a.b.c',
     })
 
     expect(result).toMatchObject({
@@ -221,26 +221,33 @@ describe('companies API', () => {
     })
   })
 
-  it('addEmpresaMember posts { userId }', async () => {
-    fetchMock.mockResolvedValue(ok({ empresaId: 'e1', userId: UUID }, 201))
+  it('addEmpresaMember posts { userId, subjectToken }', async () => {
+    fetchMock.mockResolvedValue(
+      ok({ empresaId: 'e1', userId: UUID, rol: 'miembro' }, 201),
+    )
 
-    const result = await client().addEmpresaMember('e1', UUID)
+    const result = await client().addEmpresaMember('e1', {
+      userId: UUID,
+      subjectToken: 'a.b.c',
+    })
 
     expect(result).toEqual({
       ok: true,
-      data: { empresaId: 'e1', userId: UUID },
+      data: { empresaId: 'e1', userId: UUID, rol: 'miembro' },
     })
     expect(lastCall()).toEqual({
       url: `${BASE_URL}/api/v1/internal/empresas/e1/miembros`,
       method: 'POST',
-      body: JSON.stringify({ userId: UUID }),
+      body: JSON.stringify({ userId: UUID, subjectToken: 'a.b.c' }),
     })
   })
 
   it('removeEmpresaMember deletes and treats 204 as success without data', async () => {
     fetchMock.mockResolvedValue({ ok: true, status: 204 })
 
-    const result = await client().removeEmpresaMember('e1', UUID)
+    const result = await client().removeEmpresaMember('e1', UUID, {
+      subjectToken: 'a.b.c',
+    })
 
     expect(result).toEqual({ ok: true, data: undefined })
     expect(lastCall()).toMatchObject({
@@ -252,7 +259,9 @@ describe('companies API', () => {
   it('removeEmpresaMember surfaces 404 when the person is not a member', async () => {
     fetchMock.mockResolvedValue(apiError(404, 'not_found'))
 
-    const result = await client().removeEmpresaMember('e1', UUID)
+    const result = await client().removeEmpresaMember('e1', UUID, {
+      subjectToken: 'a.b.c',
+    })
 
     expect(result).toMatchObject({ ok: false, error: { status: 404 } })
   })
@@ -260,13 +269,16 @@ describe('companies API', () => {
   it('createSucursal posts the branch to the company', async () => {
     fetchMock.mockResolvedValue(ok({ id: 's1', nombre: 'Centro' }, 201))
 
-    const result = await client().createSucursal('e1', { nombre: 'Centro' })
+    const result = await client().createSucursal('e1', {
+      nombre: 'Centro',
+      subjectToken: 'a.b.c',
+    })
 
     expect(result.ok).toBe(true)
     expect(lastCall()).toEqual({
       url: `${BASE_URL}/api/v1/internal/empresas/e1/sucursales`,
       method: 'POST',
-      body: JSON.stringify({ nombre: 'Centro' }),
+      body: JSON.stringify({ nombre: 'Centro', subjectToken: 'a.b.c' }),
     })
   })
 
@@ -277,9 +289,9 @@ describe('companies API', () => {
 
       for (const result of [
         await c.getEmpresa(bad),
-        await c.addEmpresaMember(bad, UUID),
-        await c.removeEmpresaMember('e1', bad),
-        await c.createSucursal(bad, { nombre: 'x' }),
+        await c.addEmpresaMember(bad, { userId: UUID, subjectToken: 'a.b.c' }),
+        await c.removeEmpresaMember('e1', bad, { subjectToken: 'a.b.c' }),
+        await c.createSucursal(bad, { nombre: 'x', subjectToken: 'a.b.c' }),
       ]) {
         expect(result).toMatchObject({
           ok: false,
