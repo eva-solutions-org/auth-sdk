@@ -4,8 +4,10 @@
 
 | Cookie | Max-Age | HttpOnly | Secure | SameSite | Path |
 |--------|---------|----------|--------|----------|------|
-| `eva_access_token` | 900 (15 min) | Sí | Sí | Lax | `/` |
-| `eva_refresh_token` | 2592000 (30 días) | Sí | Sí | Lax | `/` |
+| `eva_<producto>_access_token` | 900 (15 min) | Sí | Sí | Lax | `/` |
+| `eva_<producto>_refresh_token` | 2592000 (30 días) | Sí | Sí | Lax | `/` |
+
+`<producto>` es el slug de `configureEvaAuth({ product })`: dos productos bajo el mismo dominio padre no se pisan las cookies.
 
 `Secure` es **siempre** `true`, en todos los entornos y también al limpiar las cookies, aunque la `authUrl` sea `http://localhost`. Costo: Safari descarta cookies `Secure` sobre `http://localhost`, así que en desarrollo local se sirve la app por https. → [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre) (enmienda ADR-002 y ADR-007)
 
@@ -26,7 +28,10 @@ Claims validados:
 | Claim | Valor esperado |
 |-------|----------------|
 | `iss` | `auth-service` |
-| `aud` | `proyecto-global` |
+| `aud` | El producto configurado (`configureEvaAuth({ product })`) |
+| `client_id` | Obligatorio (RFC 9068): el producto |
+| `typ` (header) | `at+jwt` |
+| `kid` (header) | Obligatorio, con prefijo `usr-`: un token sin `kid` o con `kid` `svc-` se rechaza antes de buscar una clave |
 | `exp` | No expirado |
 | `nbf` | No antes de |
 
@@ -36,12 +41,12 @@ Claims validados:
 
 | Parámetro | Valor |
 |-----------|-------|
-| Cache TTL (`cacheMaxAge`) | 24 horas |
+| Cache TTL (`cacheMaxAge`) | 10 minutos |
 | Cooldown entre re-fetches | 30 segundos |
 | Timeout de fetch | 5 segundos |
 | Revalidación | Re-fetch completo (sin ETag) |
 
-Mientras el endpoint JWKS esté online: re-fetch transparente tras expiración del TTL, sin interrupción. Si el endpoint cae exactamente cuando el TTL expira: **verificación rechazada** (fail-closed). No se usa key potencialmente revocada tras expiración. Kid-matching RFC 7517 automático — soporte transparente de rotación multi-clave. → [ADR-016](decisions.md)
+Mientras el endpoint JWKS esté online: re-fetch transparente tras expiración del TTL, sin interrupción. Si el endpoint cae exactamente cuando el TTL expira: **verificación rechazada** (fail-closed). No se usa key potencialmente revocada tras expiración. Kid-matching RFC 7517 automático — soporte transparente de rotación multi-clave. El TTL de 10 min acota cuánto tiempo siguen aceptando los receptores una clave retirada (por ejemplo ante un compromiso). Un `kid` desconocido fuerza una recarga, respetando el cooldown. → [ADR-016](decisions.md), [ADR-020](decisions.md#adr-020-identidad-fase-1-tokens-de-servicio-token-de-usuario-por-producto-y-empresas)
 
 ---
 
@@ -74,9 +79,9 @@ El SDK es dueño del algoritmo de firma S2S (canonical de 7 líneas, ver [api.md
 
 ---
 
-## Admin: firma HMAC de un service client con scope `admin`
+## Admin: firma HMAC de un service client `esAdmin`
 
-`createAdminClient` firma cada request con `signS2SHeaders` (mismas reglas que la sección anterior: nonce por request, timestamp, canonical de 7 líneas con el query y los bytes exactos del body) con el `clientId` y el `secretHex` de un service client que tenga el scope `admin`. Puntos de seguridad:
+`createAdminClient` firma cada request con `signS2SHeaders` (mismas reglas que la sección anterior: nonce por request, timestamp, canonical de 7 líneas con el query y los bytes exactos del body) con el `clientId` y el `secretHex` de un service client con la marca `esAdmin` (ya no es un scope: `admin` no es concedible para `auth-api`). Puntos de seguridad:
 
 - **Sin credencial global ni secreto estático en el viaje**: ya no existe `adminPassword` ni el header `x-admin-password`; el secret no viaja, solo la firma. Una persona, un client: se revoca deshabilitando o borrando su client, y el API registra el slug que firmó.
 - **Anti-replay**: lo aplica el Auth Service con su `replayCache`; el SDK solo garantiza un nonce nuevo por llamada.
@@ -85,13 +90,16 @@ El SDK es dueño del algoritmo de firma S2S (canonical de 7 líneas, ver [api.md
 
 ---
 
-## JWT de servicio: Auth Service hacia otros servicios
+## Token de servicio (client credentials)
 
-`verifyServiceJwt` / `serviceJwtAuth` verifican las llamadas que el Auth Service firma con un JWT ES256 (contrato en [api.md](api.md#verificación-de-jwt-de-servicio-verifyservicejwt--servicejwtauth)). Puntos de seguridad:
+`createServiceTokenProvider` pide el token y `verifyServiceToken` / `serviceTokenAuth` lo verifican (contrato en [api.md](api.md#verificación-de-token-de-servicio-verifyservicetoken--servicetokenauth)). Puntos de seguridad:
 
-- **No se confunde con un access token de usuario**: el JWKS y el `iss` son los mismos, así que la separación la hacen `typ: 'svc+jwt'` en el header, una `aud` propia del receptor (configurar `proyecto-global` lanza), el claim `scope` y el hash del body `bsha`. Cada chequeo tiene su test que lo rompe por separado.
-- **Vida corta y un solo uso**: `exp - iat` ≤ 60 s por defecto, tolerancia de reloj de 5 s, `jti` obligatorio y `replayCache` obligatorio (atómico y compartido entre instancias). El `jti` se registra después de verificar el body.
-- **El token queda atado al body** (`bsha`), pero no al método ni al path: lo que limita su alcance es el `scope`, la audiencia y el uso único.
+- **Dos claves de firma separadas de verdad**: el JWKS publica una clave de usuario (`kid` `usr-…`) y una de servicio (`kid` `svc-…`). Cada verificador solo considera las claves de su prefijo y rechaza los tokens sin `kid`. Un token firmado con la clave de servicio bajo un `kid` `usr-` falla la firma, y al revés; hay un test por cada combinación.
+- **Tipado explícito** (RFC 8725 §3.11, RFC 9068 §2.1): usuario `typ: at+jwt`, servicio `typ: svc-at+jwt`. Cada verificador exige el suyo.
+- **Audiencias disjuntas**: el token de usuario lleva `aud` = producto; el de servicio, una audiencia de servicio. `verifyServiceToken` solo acepta audiencias del catálogo y un permiso que no sea de esa audiencia lanza `TypeError`. `admin` no es un permiso de `auth-api`.
+- **Identidad estable**: `sub` es el id interno del service client (no cambia ni se reutiliza); `client_id` (slug) es solo informativo. Los registros del receptor se indexan por `sub`.
+- **Vida corta y sin replay cache**: 300 s (60 s el token que Auth acuña por cada OTP), tolerancia de reloj de 5 s. Es reutilizable dentro de su vida: lo acotan la audiencia, el permiso y la vida. Revocar una concesión no afecta a los tokens ya emitidos (siguen valiendo hasta 300 s); para cortar de inmediato, deshabilitar el client.
+- **El secreto HMAC solo sirve para pedir tokens**: vive en Auth y en el servicio, y firma `POST /internal/token` (y la superficie `/admin`). El proveedor mide el vencimiento con `expires_in`, no con el `exp` contra el reloj local.
 - **Solo ES256**: `algorithms` fijo; un `alg` distinto se rechaza aunque el JWKS tenga una clave válida de otro algoritmo.
 - **Fallos de infraestructura no son rechazos**: JWKS inalcanzable o `authUrl` sin configurar lanzan (500), no devuelven 401.
 

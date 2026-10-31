@@ -1,4 +1,6 @@
-# Migration Guide — @eva_solutions/auth-sdk 2.x → 3.0.0
+# Migration Guide — @eva_solutions/auth-sdk 2.x → 3.0.0 (y siguiente major)
+
+> **Identidad fase 1 (siguiente major).** Si ya estás en 3.x, ve directo a la [sección 13](#13-identidad-fase-1-producto-token-de-servicio-y-empresas): producto en el login, tokens de servicio en lugar de HMAC por llamada y empresas.
 
 La versión 3.0.0 mueve la URL del Auth Service de build-time a runtime. Hay **un solo paquete** para todos los entornos: ya no se instala un tarball por entorno. Razonamiento: [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre).
 
@@ -282,6 +284,47 @@ createAdminClient({ clientId: process.env.AUTH_ADMIN_SLUG!, secretHex: process.e
 Además: `SERVICE_CLIENT_SCOPES` y `S2S_SCOPES` suman `admin` (ya se puede crear un client con ese scope por la API), `ADMIN_ERROR_CODES` suma `last_admin_client` (409), y hay un método nuevo, `republishPendingWebhooks`. Despliega este SDK junto con el Auth Service que exige la firma.
 
 **Qué hacer:** crea un client admin (bootstrap del Auth Service), guarda su secret en tu gestor de secretos y reemplaza `adminPassword`. Si comparabas códigos con un `switch` exhaustivo sobre `AdminErrorCode`, agrega `last_admin_client`.
+
+---
+
+## 13. Identidad fase 1: producto, token de servicio y empresas
+
+Cambios incompatibles de la siguiente versión mayor (ADR-020). Requiere un Auth Service con el mismo diseño (`identidad-fase1`).
+
+**Usuarios (BFF, cookies y verificación):**
+
+| Antes | Ahora |
+|-------|-------|
+| `aud: 'proyecto-global'` | `aud` = tu producto: `configureEvaAuth({ product: 'whatsapp-panel' })`. Obligatorio para login, cookies y `verifyAccessToken`; sin él lanzan `EvaAuthConfigError` (500) |
+| `COOKIES.ACCESS_TOKEN` (`eva_access_token`) | `getCookieNames().ACCESS_TOKEN` (`eva_<producto>_access_token`). **Las cookies viejas dejan de leerse**: las sesiones activas se reinician (aceptable sin producción) |
+| `JWT_CONFIG.AUDIENCE` | Eliminado. `JWT_CONFIG` queda con `ISSUER` y `ALGORITHM` |
+| `verifyAccessToken` → `{ id, sessionId }` | `{ id, sessionId, clientId, empresaId? }`. Exige `typ: at+jwt`, `kid` `usr-` y el claim `client_id`; un token sin `kid` se rechaza |
+| Login sin producto | `POST /login` lleva `producto` (el SDK lo pone; no lo mandes desde el navegador) y `empresaId` opcional. `get-code` no cambia |
+| JWKS en caché 24 h | 10 min |
+
+**Servicios (llamadas entre servicios):**
+
+```ts
+// Antes
+const s2s = createS2SClient({ clientId, secretHex, baseUrl })
+// Ahora
+const tokenProvider = createServiceTokenProvider({ authUrl, clientId, secretHex, audience: 'auth-api' })
+const s2s = createS2SClient({ baseUrl: authUrl, tokenProvider })
+```
+
+- `createS2SClient` ya no firma cada llamada: manda `Authorization: Bearer` con el token del proveedor y, ante un 401, invalida y reintenta una vez. `S2SClientConfig` es `{ baseUrl, tokenProvider }`. La firma HMAC (`signS2SHeaders`, `verifyS2SRequest`, `s2sAuth`) sigue disponible: solo la usan `POST /internal/token` y `/admin`.
+- Quien recibe llamadas de otro servicio: `verifyServiceJwt` / `serviceJwtAuth` (`svc+jwt`, `bsha`, `replayCache`) se eliminan. Usa `verifyServiceToken(token, { audience, requiredScope | anyScope })` o el middleware `serviceTokenAuth` (deja `serviceClientId` = `sub`, `serviceClientSlug` = `client_id` y `serviceScopes`). No hay `replayCache`.
+- `S2S_SCOPES` pierde `ADMIN` y suma `EMPRESAS_LEER` y `EMPRESAS_ESCRIBIR`. `SERVICE_CLIENT_SCOPES` (contrato) se reemplaza por `SERVICE_AUDIENCE_SCOPES`.
+
+**Admin:**
+
+- `createServiceClient` / `updateServiceClient` pierden `scopes` y ganan `esAdmin`; `ServiceClientPublic` y el resultado de creación traen `esAdmin` (y `grants` en el primero) en lugar de `scopes`. El cliente que firma `/admin` debe tener `esAdmin`.
+- Métodos nuevos: `listServiceClientGrants`, `setServiceClientGrant`, `deleteServiceClientGrant`.
+- El slug `auth-service` está reservado.
+
+**Empresas:** `S2SClient` suma `createEmpresa`, `getEmpresa`, `addEmpresaMember`, `removeEmpresaMember` y `createSucursal`; `EvaEmpresa` (lista del usuario) trae `sucursales`; el cliente HTTP suma `setActiveEmpresa`. `EVENT_CODES` pasa de 11 a 15 (`empresa.*`).
+
+**Qué hacer:** configura `product` en los consumidores de usuario; reemplaza `COOKIES` por `getCookieNames()`; crea un `createServiceTokenProvider` por (audiencia, scope) en los servicios que llaman a otros; migra a `serviceTokenAuth` los receptores de `svc+jwt`; pide al admin de Auth las concesiones (`setServiceClientGrant`) que cada service client necesita.
 
 ---
 

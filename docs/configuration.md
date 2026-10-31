@@ -131,6 +131,7 @@ import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 
 configureEvaAuth({
   authUrl: process.env.AUTH_URL,             // URL del Auth Service (https, o http en loopback)
+  product: 'whatsapp-panel',                 // producto de este consumidor (login, cookies, verifyAccessToken)
   cookieDomain: process.env.COOKIE_DOMAIN,   // Domain para cookies (ej: '.miempresa.com')
 })
 ```
@@ -140,6 +141,7 @@ configureEvaAuth({
 | Opción | Tipo | Descripción |
 |--------|------|-------------|
 | `authUrl` | `string \| undefined` | URL base del Auth Service. Obligatoria antes del primer uso que la necesite; inmutable. Ver [URL del Auth Service](#url-del-auth-service). |
+| `product` | `string \| undefined` | Slug del producto (`^[a-z][a-z0-9-]{2,63}$`, por ejemplo `whatsapp-panel`). **Obligatorio solo** si usas las rutas de login, las cookies de sesión o `verifyAccessToken`: da el nombre de las cookies (`eva_<producto>_access_token` / `eva_<producto>_refresh_token`), la audiencia (`aud`) que exige `verifyAccessToken` y el `producto` que viaja en el login. Un servicio que solo verifica tokens de servicio no lo necesita. Inmutable, como `authUrl`; sin él, esos usos lanzan `EvaAuthConfigError` (500). Auth valida que el producto exista, esté habilitado y no coincida con una audiencia de servicio. |
 | `cookieDomain` | `string \| undefined` | Atributo `Domain` para `Set-Cookie`. Si se omite, no resetea el valor previo. |
 | `errorWire` | `'api' \| 'string' \| undefined` | Shape HTTP que el SDK emite cuando rechaza un request. Default: `'api'`. Ver [sección errorWire](#errorwire) más abajo. |
 | `errorMessages` | `Partial<EvaErrorMessages> \| undefined` | Override de mensajes de error. Ver [sección Mensajes de error personalizados](#mensajes-de-error-personalizados). |
@@ -147,11 +149,12 @@ configureEvaAuth({
 ### Validaciones
 
 - `authUrl` debe cumplir las reglas de la tabla de [URL del Auth Service](#url-del-auth-service); si no, **lanza inmediatamente**.
+- `product` debe ser un slug (`^[a-z][a-z0-9-]{2,63}$`); si no, **lanza inmediatamente**.
 - `cookieDomain` no puede contener `;`, `\r` ni `\n` (defensa contra header injection). Si los contiene, **lanza inmediatamente**.
 
 ### Reconfiguración
 
-`authUrl` es **inmutable** (ver [URL del Auth Service](#url-del-auth-service)). Los demás campos provistos sobrescriben el valor previo; un campo omitido (`undefined`) preserva el valor previo:
+`authUrl` y `product` son **inmutables** (ver [URL del Auth Service](#url-del-auth-service)): reconfigurar el mismo valor es no-op y uno distinto lanza. Los demás campos provistos sobrescriben el valor previo; un campo omitido (`undefined`) preserva el valor previo:
 
 ```ts
 configureEvaAuth({ cookieDomain: '.a.com' })
@@ -192,19 +195,19 @@ configureEvaAuth({ authUrl: process.env.AUTH_URL })
 
 > **Migración desde 2.x**: ver [migration.md](migration.md).
 
-### Validación HTTPS en S2S y Admin
+### Validación HTTPS en S2S, Admin y proveedor de tokens
 
-`createS2SClient` y `createAdminClient` validan que `config.baseUrl` use `https:` (o `http:` con host loopback: `localhost`, `127.0.0.0/8`, `::1`/`[::1]`). Si no cumple, lanzan sincrónicamente antes de retornar el cliente.
+`createS2SClient`, `createAdminClient` (`baseUrl`) y `createServiceTokenProvider` (`authUrl`) validan que la URL use `https:` (o `http:` con host loopback: `localhost`, `127.0.0.0/8`, `::1`/`[::1]`). Si no cumple, lanzan sincrónicamente antes de retornar el cliente.
 
 ```ts
 // Válido — https
-createS2SClient({ baseUrl: 'https://auth.example.com', ... })
+createS2SClient({ baseUrl: 'https://auth.example.com', tokenProvider })
 
 // Válido — loopback para tests
-createS2SClient({ baseUrl: 'http://localhost:4000', ... })
+createS2SClient({ baseUrl: 'http://localhost:4000', tokenProvider })
 
 // Lanza — http no-loopback (CWE-319)
-createS2SClient({ baseUrl: 'http://auth.example.com', ... })
+createS2SClient({ baseUrl: 'http://auth.example.com', tokenProvider })
 // Error: S2SClientConfig.baseUrl inválida: se requiere https (o loopback http): http://auth.example.com
 ```
 

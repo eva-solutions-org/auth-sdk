@@ -38,7 +38,7 @@ Los errores del Auth Service se propagan **transparentes** al frontend. El SDK a
 | Archivos | kebab-case | `auth-routes.ts`, `http-client.ts` |
 | Funciones | camelCase | `readTokensFromCookies`, `verifyAccessToken` |
 | Types | PascalCase | `EvaTokenPayload`, `AuthContextValue` |
-| Constantes | UPPER_SNAKE | `HEADERS`, `COOKIES`, `JWT_CONFIG` |
+| Constantes | UPPER_SNAKE | `HEADERS`, `COOKIE_MAX_AGE`, `JWT_CONFIG` |
 
 ---
 

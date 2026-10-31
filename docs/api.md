@@ -34,13 +34,14 @@ Retorna `EvaHttpClient`.
 
 #### `verifyAccessToken<TExtra extends Record<string, unknown> = {}>(token: string, opts?: { extraClaimsSchema?: ZodType<TExtra> })`
 
-Verifica un JWT localmente usando la public key del JWKS. Soporta extensión de claims con validación de schema.
+Verifica un access token de usuario localmente con el JWKS. Exige firma ES256 con una clave de **usuario** (`kid` con prefijo `usr-`; un token sin `kid` o firmado con una clave de servicio se rechaza), header `typ: at+jwt`, `iss: auth-service`, `aud` igual al producto configurado con `configureEvaAuth({ product })` (un `aud` arreglo se rechaza), `client_id` igual al producto, `exp` obligatorio y los claims base. Soporta extensión de claims con validación de schema.
 
 ```ts
-// Sin claims extra (solo id, sessionId)
+// Sin claims extra: id, sessionId, clientId (client_id, el producto) y empresaId (claim `empresa`)
 const result = await verifyAccessToken(token)
 if (result.ok) {
   console.log(result.data.id) // string
+  console.log(result.data.empresaId) // string | undefined: empresa activa de la sesión
 }
 
 // Con claims extra validados
@@ -55,11 +56,11 @@ if (result.ok) {
 
 Retorna `Promise<Result<EvaTokenPayload<TExtra> & TExtra>>`.
 
-Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza** un error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` no fue configurada: no se degrada a 401, el consumidor debe responder 500.
+Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza** un error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` o `product` no fueron configurados: no se degrada a 401, el consumidor debe responder 500. `empresaId` solo está presente si la sesión tiene empresa activa; los claims `client_id` y `empresa` no se pueden pedir en `extraClaimsSchema`.
 
 ---
 
-> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../packages/auth-sdk/CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<authUrl>/.well-known/jwks.json` (en la raíz del Auth Service, sin `/api/v1`). La URL viene de `configureEvaAuth({ authUrl })` (ver [configuration.md](configuration.md#url-del-auth-service)). Cache de 24 h, cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). No hay forma de invalidar la cache manualmente.
+> **JWKS (v2.0.0+)**: no existen exports públicos para manejar el JWKS (`getPublicKey`, `fetchJwks` y `clearJwksCache` fueron eliminados; ver [CHANGELOG](../packages/auth-sdk/CHANGELOG.md)). `verifyAccessToken()` y los middlewares resuelven la clave por `kid` con `createRemoteJWKSet` de jose, sobre `<authUrl>/.well-known/jwks.json` (en la raíz del Auth Service, sin `/api/v1`). La URL viene de `configureEvaAuth({ authUrl })` (ver [configuration.md](configuration.md#url-del-auth-service)). Cache de 10 min (igual al `max-age` del JWKS), cooldown de 30 s entre refetch y timeout de 5 s (`src/jwks.ts`). El JWKS publica dos tipos de clave: `usr-<thumbprint>` (usuario) y `svc-<thumbprint>` (servicio). Cada verificador solo entrega a jose las claves de su prefijo y **rechaza los tokens sin `kid`** (`src/key-resolver.ts`). Un `kid` desconocido fuerza una recarga, respetando el cooldown. No hay forma de invalidar la cache manualmente.
 
 ---
 
@@ -70,7 +71,7 @@ Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza
 | `EvaUser` | Datos del usuario autenticado |
 | `EvaSession` | Sesión activa del usuario |
 | `EvaEmpresa` | Empresa asociada al usuario |
-| `EvaTokenPayload<TExtra>` | Claims base del JWT: `{ id: string, sessionId: string }`. Extendible con TExtra. |
+| `EvaTokenPayload<TExtra>` | Claims base del access token: `{ id, sessionId, clientId, empresaId? }`. Extendible con TExtra. |
 | `Result<T>` | `{ ok: true, data: T } \| { ok: false, error: EvaError }` |
 | `EvaApiError` | Error del Auth Service: `{ kind: 'api', code, message, status }` |
 | `EvaSdkError` | Error interno del SDK: `{ kind: 'sdk', reason, message, status }` |
@@ -84,7 +85,7 @@ Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza
 | `PrivacyState` | Estado de privacidad |
 | `ReservedJwtClaim` | Tipo union: `typeof RESERVED_JWT_CLAIMS[number]` |
 | `EvaErrorMessages` | Interface con las 17 keys de mensajes de error del SDK |
-| `ConfigureEvaAuthOptions` | Opciones de `configureEvaAuth()`: `authUrl?`, `cookieDomain?`, `errorMessages?` y `errorWire?` |
+| `ConfigureEvaAuthOptions` | Opciones de `configureEvaAuth()`: `authUrl?`, `product?`, `cookieDomain?`, `errorMessages?` y `errorWire?` |
 
 ### Error utilities
 
@@ -110,9 +111,9 @@ Retorna `string`.
 | Constante | Descripción |
 |-----------|-------------|
 | `HEADERS` | Nombres de headers custom (`Authorization`, `X-Eva-Refresh-Token`, etc.) |
-| `COOKIES` | Nombres de cookies (`eva_access_token`, `eva_refresh_token`) |
+| `getCookieNames()` | Función: nombres de las cookies del producto configurado (`eva_<producto>_access_token`, `eva_<producto>_refresh_token`). Lanza `EvaAuthConfigError` si falta `product` |
 | `COOKIE_MAX_AGE` | TTL de cookies (access: 900s, refresh: 2592000s) |
-| `JWT_CONFIG` | Configuración de verificación JWT (issuer, audience, algorithms) |
+| `JWT_CONFIG` | Configuración de verificación JWT (`ISSUER`, `ALGORITHM`). La audiencia de usuario es el producto configurado |
 | `RESERVED_JWT_CLAIMS` | Array readonly con 12 claims reservados (RFC 7519 + OIDC): `iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`, `nonce`, `auth_time`, `acr`, `amr`, `azp` |
 | `DEFAULT_ERROR_MESSAGES` | Objeto frozen con los 16 mensajes de error en español (ver tabla en [configuration.md](configuration.md#mensajes-de-error-personalizados)) |
 | `ERROR_CODES` | Catálogo de 12 error codes core del Auth Service. Solo aplica a `EvaApiError` (kind: `'api'`). |
@@ -121,7 +122,7 @@ Retorna `string`.
 | `WEBHOOK_HEADERS` | Nombres de los headers HTTP que el Auth Service incluye en cada webhook: `SIGNATURE`, `ID`, `TIMESTAMP`. |
 | `ADMIN_ERROR_CODES` | Códigos de error específicos del módulo Admin: `service_client_already_exists`, `service_client_not_found`, `service_client_secret_rotation_conflict`, `last_admin_client`. |
 | `S2S_ERROR_CODES` | Códigos de error específicos del módulo S2S (usuarios y webhooks): `user_not_found`, `webhook_subscription_duplicate`, `webhook_subscription_not_found`, `webhook_secret_rotation_conflict`, `webhook_url_invalid`, `webhook_event_codes_empty`. |
-| `S2S_SCOPES` | Catálogo de scopes S2S reconocidos: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`, `ADMIN`. |
+| `S2S_SCOPES` | Permisos de la audiencia `auth-api`: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`, `EMPRESAS_LEER`, `EMPRESAS_ESCRIBIR`. `admin` no está: la superficie `/admin` de Auth se firma, no usa tokens. |
 | `S2S_RESPONSE_HEADERS` | Header de respuesta S2S: `SERVER_TIME` (`x-eva-server-time`). |
 | `USERS_BATCH_MAX_IDS` | Número máximo de IDs por llamada a `batchUsers` (100). El cliente valida este límite antes de hacer fetch. |
 
@@ -136,11 +137,14 @@ Retorna `string`.
 | `SDK_ERROR_REASONS` | constante | 6 reasons del SDK como `as const` |
 | `getMessage` | función | Helper `getMessage(err: EvaError): string` |
 | `verifyWebhookSignature` | función | Verifica firma HMAC-SHA256 de webhooks |
-| `EVENT_CODES` | constante | 11 event codes del Auth Service |
+| `EVENT_CODES` | constante | 15 event codes del Auth Service (11 de usuario/sesión y `empresa.created`, `empresa.member_added`, `empresa.member_removed`, `empresa.branch_created`) |
 | `WEBHOOK_HEADERS` | constante | Headers de webhooks entrantes (SIGNATURE, ID, TIMESTAMP) |
 | `createAdminClient` | función | Factory del cliente Admin |
 | `ADMIN_ERROR_CODES` | constante | Error codes específicos del módulo Admin |
-| `createS2SClient` | función | Factory del cliente S2S |
+| `createS2SClient` | función | Factory del cliente S2S (Bearer con un `ServiceTokenProvider`) |
+| `createServiceTokenProvider` | función | Pide, guarda y renueva el token de servicio (client credentials) |
+| `verifyServiceToken` | función | Verifica un token de servicio recibido como Bearer |
+| `ServiceTokenRequestError` | clase | Error del pedido de token (`code` RFC 6749, `status`) |
 | `signS2SHeaders` | función | Genera los 4 headers S2S (client id, timestamp, nonce, firma) |
 | `generateS2SNonce` | función | Genera un nonce S2S (32 hex en minúsculas) |
 | `S2S_SCOPES` | constante | Scopes S2S reconocidos por el Auth Service |
@@ -148,7 +152,7 @@ Retorna `string`.
 | `USERS_BATCH_MAX_IDS` | constante | Límite de IDs por llamada a `batchUsers` (100) |
 | `ACCOUNT_STATES` | constante | Catálogo de estados de cuenta de usuario |
 | `AccountState` | type | Unión de literales de estados de cuenta |
-| `S2SScope` | type | Unión de literales de scopes S2S |
+| `S2SScope` | type | Unión de literales de permisos de `auth-api` |
 | `AdminErrorCode` | type | Unión de literales de error codes Admin |
 | `S2S_ERROR_CODES` | constante | Error codes específicos del módulo S2S (usuarios y webhooks) |
 | `S2SErrorCode` | type | Unión de literales de error codes S2S |
@@ -229,7 +233,7 @@ Las cookies son `SameSite=Lax`, que no cubre a un sitio del mismo *site* pero de
 | Método | Ruta | Body / Entrada | Respuesta |
 |--------|------|----------------|-----------|
 | `POST` | `/get-code` | `{ phone }` | `{ data: { message, challengeId } }` |
-| `POST` | `/login` | `{ phone, code, challengeId }` | `{ data: { user: { id } } }` + Set-Cookie |
+| `POST` | `/login` | `{ phone, code, challengeId, empresaId? }` | `{ data: { user: { id } } }` + Set-Cookie |
 | `POST` | `/refresh` | cookies | `{ data: { user: { id } } }` + Set-Cookie |
 | `POST` | `/logout` | cookies | `{ data: { message } }` + Clear-Cookie |
 | `GET` | `/me` | cookies | `{ data: EvaUser }` |
@@ -239,6 +243,8 @@ Las cookies son `SameSite=Lax`, que no cubre a un sitio del mismo *site* pero de
 | `GET` | `/sessions` | cookies | `{ data: EvaSession[] }` |
 | `DELETE` | `/sessions/:id` | cookies | `{ data: { message } }` |
 | `DELETE` | `/sessions` | cookies | `{ data: { message, count } }` + Clear-Cookie |
+
+**Producto en el login.** El SDK agrega `producto` (el de `configureEvaAuth({ product })`) al `POST /login` que envía al Auth Service; un `producto` que llegue en el body del navegador se ignora. `empresaId` (opcional) deja esa empresa activa en la sesión si la persona pertenece a ella; `get-code` no lleva ninguno de los dos. Las rutas de login, el refresh y los middlewares necesitan `product` configurado: sin él lanzan `EvaAuthConfigError` (500). El cliente HTTP (`createHttpClient`) suma `setActiveEmpresa({ accessToken, empresaId | null })` → `POST /api/v1/auth/empresa-activa`, que valida la pertenencia en Auth y devuelve `{ empresaId, accessToken }`: Auth reemite solo el access token (`x-eva-new-access-token`; el refresh no rota); el SDK no expone todavía una ruta BFF para él.
 
 > Estas rutas son las del BFF de **tu** backend, montadas bajo el prefijo que elijas (por ejemplo `/auth`). No son las del Auth Service y no llevan `/api/v1`: por dentro, el SDK llama al Auth Service en `/api/v1/...`.
 
@@ -298,7 +304,7 @@ Además de sus propias funciones, el entry point `/hono` re-exporta los siguient
 | `readTokensFromCookies` | `cookies.ts` | Lee tokens desde un string de cookies |
 | `setTokenCookies` | `cookies.ts` | Genera headers Set-Cookie para access + refresh |
 | `clearTokenCookies` | `cookies.ts` | Genera headers Set-Cookie con Max-Age=0 |
-| `COOKIES` | `constants.ts` | Nombres de las cookies |
+| `getCookieNames` | `constants.ts` | Nombres de las cookies del producto configurado |
 | `COOKIE_MAX_AGE` | `constants.ts` | TTL de las cookies |
 | `HEADERS` | `constants.ts` | Nombres de headers custom del protocolo |
 | `DEFAULT_ERROR_MESSAGES` | `error-messages.ts` | Defaults de mensajes de error |
@@ -424,7 +430,7 @@ Retorna `string[]`.
 | Export | Origen | Descripción |
 |--------|--------|-------------|
 | `readTokensFromCookies` | `cookies.ts` | Lee tokens desde un string de cookies |
-| `COOKIES` | `constants.ts` | Nombres de las cookies |
+| `getCookieNames` | `constants.ts` | Nombres de las cookies del producto configurado |
 | `COOKIE_MAX_AGE` | `constants.ts` | TTL de las cookies |
 | `HEADERS` | `constants.ts` | Nombres de headers custom del protocolo |
 | `DEFAULT_ERROR_MESSAGES` | `error-messages.ts` | Defaults de mensajes de error |
@@ -683,26 +689,34 @@ type WebhookPayload<TData = Record<string, unknown>> = {
 
 Para operaciones de administración de service clients, restauración de usuarios y reconciliación de entregas de webhooks.
 
-**Autenticación.** Cada request se firma con HMAC S2S (la misma firma de `createS2SClient`, vía `signS2SHeaders`) con las credenciales de un service client que tenga el scope `admin`. No hay password global ni header `x-admin-password`: una persona, un client; el API registra el slug que firmó como `actor`. Un client sin el scope `admin` recibe 403. El primer client admin se crea con el script de bootstrap del Auth Service (ADR 0007 del API).
+**Autenticación.** Cada request se firma con HMAC S2S (la misma firma de `createS2SClient`, vía `signS2SHeaders`) con las credenciales de un service client con la marca `esAdmin` (columna `es_admin`; ya no es un scope). `/admin` es, junto con `POST /internal/token`, lo único que conserva la firma HMAC. No hay password global ni header `x-admin-password`: una persona, un client; el API registra el slug que firmó como `actor`. Un client sin `esAdmin` recibe 403. El primer client admin se crea con el script de bootstrap del Auth Service (ADR 0007 del API).
 
 ```typescript
 import { createAdminClient } from '@eva_solutions/auth-sdk/admin'
 
 const admin = createAdminClient({
-  clientId: process.env.AUTH_ADMIN_SLUG!, // service client con scope `admin`
+  clientId: process.env.AUTH_ADMIN_SLUG!, // service client con `esAdmin`
   secretHex: process.env.AUTH_ADMIN_SECRET!, // su secret en hex (64 chars)
   baseUrl: 'https://auth.miapp.com',
 })
 
 // Crear service client
 const result = await admin.createServiceClient({
-  slug: 'mi-servicio',
+  slug: 'mi-servicio', // 'auth-service' está reservado (es el `iss` de los tokens)
   name: 'Mi Servicio',
-  scopes: ['users:read'],
 })
 if (result.ok) {
   console.log(result.data.secret) // guardar AHORA — no se muestra de nuevo
 }
+
+// Concesiones: qué permisos puede pedir en su token, por audiencia (catálogo de auth-contracts)
+await admin.setServiceClientGrant('mi-servicio', {
+  audience: 'auth-api',
+  scopes: ['users:read', 'empresas:escribir'], // `admin` no es concedible para auth-api: no compila
+})
+await admin.setServiceClientGrant('mi-servicio', { audience: 'whatsapp-api', scopes: ['messages:send:text'] })
+const grants = await admin.listServiceClientGrants('mi-servicio')
+await admin.deleteServiceClientGrant('mi-servicio', 'whatsapp-api') // 204
 
 // Listar
 const list = await admin.listServiceClients()
@@ -747,14 +761,17 @@ Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migra
 | `getServiceClient(slug)` | GET | `/api/v1/admin/service-clients/:slug` | Detalle por slug. |
 | `updateServiceClient(slug, input)` | PATCH | `/api/v1/admin/service-clients/:slug` | Parche parcial. |
 | `deleteServiceClient(slug)` | DELETE | `/api/v1/admin/service-clients/:slug` | Hard-delete. 204. |
+| `listServiceClientGrants(slug)` | GET | `/api/v1/admin/service-clients/:slug/grants` | Concesiones del client: `{ grants: [{ audience, scopes }] }`. |
+| `setServiceClientGrant(slug, input)` | PUT | `/api/v1/admin/service-clients/:slug/grants` | Crea o reemplaza la concesión de una audiencia. `input` es `{ audience, scopes }` y los `scopes` deben ser de esa audiencia (el tipo y el schema lo imponen). |
+| `deleteServiceClientGrant(slug, audience)` | DELETE | `/api/v1/admin/service-clients/:slug/grants/:audience` | Quita la concesión. 204. |
 | `rotateServiceClientSecret(slug)` | POST | `/api/v1/admin/service-clients/:slug/rotate-secret` | Rota secret. One-time. Puede responder `409 service_client_secret_rotation_conflict` (`ADMIN_ERROR_CODES`) si otra rotación concurrente ganó: esa llamada no recibe secret y se puede reintentar. |
 | `restoreUser(userId)` | POST | `/api/v1/admin/users/:id/restore` | Restaura usuario eliminado. |
 | `republishPendingWebhooks(query?)` | POST | `/api/v1/admin/webhooks/republish-pending` | Republica en QStash las entregas `pending` con más de `older_than_minutes` minutos (default 10, máx. 10080) y como máximo `limit` por llamada (default y tope 100). El query va firmado (`older_than_minutes`, `limit`, en snake_case como `listWebhookDeliveries`). Devuelve `{ republished, hasMore }`; con `hasMore: true` vuelve a llamar. Idempotente. 503 `service_unavailable` si QStash no aceptó el lote (las entregas siguen `pending`). |
 | `maintenanceCleanup(query?)` | POST | `/api/v1/admin/maintenance/cleanup` | Limpieza on-demand, sin polling: purga las cuentas `eliminado` cuya ventana de restauración ya venció y borra los `webhook_events` sin entregas vivas que superan la retención. `limit` (1 a 100, default 100) va firmado en el query y acota cada lote. Devuelve `{ usersPurged, eventsDeleted, hasMore }`; con `hasMore: true` vuelve a llamar. |
 
-Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`. Borrar, deshabilitar o quitarle el scope `admin` al último service client admin habilitado responde `409 last_admin_client` (`ADMIN_ERROR_CODES.last_admin_client`) y no se aplica.
+Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`. Borrar, deshabilitar o quitarle `esAdmin` al último service client admin habilitado responde `409 last_admin_client` (`ADMIN_ERROR_CODES.last_admin_client`) y no se aplica.
 
-`slug` y `userId` se validan y se codifican como un solo segmento de path (mismo helper que los ids del cliente S2S): si no son string, o son vacíos, `.` o `..` (crudo o percent-decodificado), el método devuelve `{ ok: false, error: { kind: 'sdk', reason: 'malformed', status: 0 } }` sin hacer la request; no lanza. El resto pasa por `encodeURIComponent` (`a/b` → `a%2Fb`; un `%` existente se codifica una vez: `a%2Fb` → `a%252Fb`).
+`slug`, `audience` y `userId` se validan y se codifican como un solo segmento de path (mismo helper que los ids del cliente S2S): si no son string, o son vacíos, `.` o `..` (crudo o percent-decodificado), el método devuelve `{ ok: false, error: { kind: 'sdk', reason: 'malformed', status: 0 } }` sin hacer la request; no lanza. El resto pasa por `encodeURIComponent` (`a/b` → `a%2Fb`; un `%` existente se codifica una vez: `a%2Fb` → `a%252Fb`).
 
 > **Advertencia**: solo usar desde backends o herramientas de operador seguras. El secret del service client admin nunca debe exponerse en el cliente/browser.
 
@@ -762,15 +779,23 @@ Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`. Borrar, 
 
 ## `@eva_solutions/auth-sdk/s2s`
 
-Para llamadas internas al Auth Service autenticadas con HMAC S2S (SigV4-style).
+Para llamadas entre servicios. Un servicio prueba quién es pidiendo un **token de servicio** a Auth (`createServiceTokenProvider`, firmado con HMAC S2S SigV4-style) y lo manda como `Authorization: Bearer` (`createS2SClient`); el servicio receptor lo verifica con `verifyServiceToken` / `serviceTokenAuth`. El HMAC solo queda en el pedido de token y en la superficie `/admin` de Auth.
 
 ```typescript
-import { createS2SClient } from '@eva_solutions/auth-sdk/s2s'
+import { createS2SClient, createServiceTokenProvider } from '@eva_solutions/auth-sdk/s2s'
+
+// Un proveedor por (audiencia, scope): guarda el token, lo renueva y deduplica los pedidos simultáneos.
+const tokenProvider = createServiceTokenProvider({
+  authUrl: 'https://auth.example.com',
+  clientId: 'mi-servicio',               // slug del service client
+  secretHex: process.env.AUTH_CLIENT_SECRET_HEX!, // hex del secret
+  audience: 'auth-api',
+  scope: 'users:read',                   // opcional: si falta, se piden todos los concedidos
+})
 
 const s2s = createS2SClient({
-  clientId: 'mi-servicio',            // slug del service client
-  secretHex: process.env.S2S_SECRET!, // hex del secret
   baseUrl: 'https://auth.example.com',
+  tokenProvider, // Bearer en cada llamada; ante un 401 invalida el token y reintenta UNA vez
 })
 
 // Obtener usuario por ID
@@ -803,15 +828,30 @@ const deliveries = await s2s.listWebhookDeliveries({ status: 'failed', limit: 20
 
 `S2S_ERROR_CODES` (con el tipo `S2SErrorCode`) lista los codes propios de usuarios y webhooks, para comparar sin strings sueltos (`result.error.code === S2S_ERROR_CODES.webhook_url_invalid`). El catálogo `ErrorCode` sigue abierto: un code que no esté en la lista no rompe la compilación.
 
-`baseUrl` puede llevar un prefijo de path (por ejemplo `https://host/auth`). Todas las rutas del Auth Service llevan además el prefijo `/api/v1`, que el cliente agrega después del de `baseUrl`: `https://host/auth` → `https://host/auth/api/v1/internal/users/u1`. El cliente firma el pathname de la URL final (`/auth/api/v1/internal/users/...`), que es el que lee el verificador en `request.url`. Si un proxy quita ese prefijo antes de llegar al verificador, la firma falla con `signature_invalid` (ver [migration.md](migration.md), sección 7).
+`baseUrl` y `authUrl` pueden llevar un prefijo de path (por ejemplo `https://host/auth`). Todas las rutas del Auth Service llevan además el prefijo `/api/v1`, que el cliente agrega después del de `baseUrl`: `https://host/auth` → `https://host/auth/api/v1/internal/users/u1`. El proveedor de tokens firma el pathname de la URL final del pedido (`/auth/api/v1/internal/token`), que es el que lee el verificador en `request.url`. Si un proxy quita ese prefijo antes de llegar al verificador, la firma falla con `signature_invalid` (ver [migration.md](migration.md), sección 7).
 
 Los ids que recibe el cliente (`getUser`, `getWebhookSubscription`, `updateWebhookSubscription`, `deleteWebhookSubscription`, `rotateWebhookSubscriptionSecret`) se validan y se codifican como un solo segmento de path: un id que no es string, vacío, `.` o `..` (crudo o percent-decodificado) devuelve `{ ok: false, error: { kind: 'sdk', reason: 'malformed' } }` sin hacer fetch, y el resto pasa por `encodeURIComponent` (`a/b` → `a%2Fb`). Los UUID no cambian. El cliente admin aplica la misma regla a `slug` y `userId` (ver [Métodos del AdminClient](#métodos-del-adminclient)).
 
 La entrada de `createWebhookSubscription` y `updateWebhookSubscription` sigue el contrato compartido: `url` con esquema `http` o `https` seguido de `//`, sin espacios ni caracteres de control (`javascript:`, `ftp://` y `https:host/x` se rechazan; el contrato no rechaza el userinfo: lo rechaza el Auth Service al parsear la URL, `https://user:pass@host` y `https://user@host`; un `@` en el path o el query es válido) y `eventCodes` con valores de `EVENT_CODES` (tipo `EventCode[]`), mínimo uno. Los duplicados en `eventCodes` tampoco los rechaza el contrato: los rechaza el Auth Service. El Auth Service devuelve `eventCodes` sin repetidos y ordenados en orden de bytes, no en el orden en que los enviaste, y no admite dos subscriptions del mismo service client con la misma URL normalizada y el mismo conjunto de `eventCodes` (`409 webhook_subscription_duplicate`, también en `updateWebhookSubscription`).
 
-### Firma HMAC automática
+### Token de servicio: `createServiceTokenProvider`
 
-El cliente genera automáticamente los headers de autenticación S2S (cuatro, todos obligatorios):
+```ts
+function createServiceTokenProvider(config: {
+  authUrl: string; clientId: string; secretHex: string; audience: string; scope?: string
+}): { getToken(): Promise<string>; invalidate(rejectedToken?: string): void }
+```
+
+- Hace `POST /api/v1/internal/token` con `{ audience, scope? }`, firmado con HMAC S2S. La respuesta es la de RFC 6749 §5.1 (`access_token`, `token_type: 'Bearer'`, `expires_in`, `scope`), sin envoltorio `data`.
+- **Vencimiento**: se calcula con `expires_in` desde el momento del pedido, no comparando el `exp` del token con el reloj local. Renueva 30 s antes (`SERVICE_TOKEN_RENEW_MARGIN_MS`).
+- **Deduplicación**: N llamadas simultáneas a `getToken()` con el caché vacío o vencido hacen UN pedido (dentro del mismo isolate). Un pedido fallido no se guarda: la siguiente llamada reintenta.
+- `invalidate(rejectedToken)` descarta el token guardado **solo si sigue siendo ese** y nunca descarta un pedido en curso. Con N respuestas 401 simultáneas del mismo token, la primera descarta y las demás comparten el pedido de renovación: UN pedido a `/internal/token`, no N (`createS2SClient` pasa el token rechazado). Sin argumento descarta el guardado.
+- **Cloudflare Workers**: las requests del mismo isolate comparten el pedido en curso (probado en workerd con miniflare: 3 requests simultáneas → 1 pedido; la request que lo inició cancelada por el cliente → las demás siguen recibiendo el token). Si la request que inició el pedido termina **sin esperarlo** (`getToken()` sin `await` ni `waitUntil`), el runtime cancela su subrequest y la promesa nunca se resuelve: quien se unió espera como máximo la duración de un pedido más 1 s de margen (11 s) y luego hace el suyo. Espera siempre `getToken()` dentro de la request.
+- Si Auth rechaza el pedido, `getToken()` rechaza con `ServiceTokenRequestError { code, status }`; `code` es el `error` de RFC 6749/8707: `invalid_client` (401: firma inválida o client deshabilitado), `invalid_target` (400: audiencia desconocida o sin concesión), `invalid_scope` (400), `invalid_request`, `temporarily_unavailable` (503: la caché de replay no responde; la ruta falla cerrado; también el `429` del límite por client, aunque Auth no mande cuerpo RFC: el error trae `retryAfterSeconds` si hubo `Retry-After`). El proveedor valida su configuración al crearse: audiencia del catálogo, permisos de esa audiencia y `secretHex` hex (`TypeError`). `createS2SClient` lo devuelve como `Result` `{ kind: 'api', code, status }`.
+
+### Firma HMAC
+
+El proveedor de tokens (y el cliente admin) generan los headers de autenticación S2S (cuatro, todos obligatorios):
 
 | Header | Descripción |
 |--------|-------------|
@@ -842,7 +882,7 @@ Para requests sin body, se usa el hash del cuerpo vacío (`EMPTY_BODY_SHA256_HEX
 
 ### Firmar a mano: `signS2SHeaders` y `generateS2SNonce`
 
-Si no usas `createS2SClient` (por ejemplo, llamas a otro servicio que verifica con `s2sAuth`), genera los cuatro headers con `signS2SHeaders`. Es el único punto que genera timestamp y nonce y firma; `createS2SClient` lo usa por dentro.
+Si llamas a un servicio que todavía verifica con `s2sAuth`, genera los cuatro headers con `signS2SHeaders`. Es el único punto que genera timestamp y nonce y firma; `createServiceTokenProvider` y el cliente admin lo usan por dentro.
 
 ```typescript
 import { signS2SHeaders } from '@eva_solutions/auth-sdk/s2s'
@@ -884,33 +924,35 @@ Un query malformado sigue el mismo camino que una firma inválida (consulta `sec
 
 **`replayCache`**: `setIfAbsent(key, ttlSeconds)` debe ser atómico (por ejemplo Redis `SET key 1 NX EX ttl`). La clave que arma el SDK es `${clientId}:${nonce}` y el TTL es `2 * timestampWindowSeconds + 1` (241 s con el default): la hora se trunca a segundos y la ventana es inclusiva (±W), así que un request firmado sigue siendo aceptable durante 2W + 1 segundos y la clave debe sobrevivirlo. Compártelo entre todas las instancias que comparten el par clientId/secreto. El chequeo ocurre después de verificar el HMAC.
 
-### Verificación de JWT de servicio (`verifyServiceJwt` / `serviceJwtAuth`)
+### Verificación de token de servicio (`verifyServiceToken` / `serviceTokenAuth`)
 
-Sentido inverso al HMAC: el Auth Service llama a otro servicio (por ejemplo Whatsapp-api) firmando con un JWT ES256 de vida corta. El receptor lo verifica contra el JWKS del Auth Service. `verifyServiceJwt` vive en `@eva_solutions/auth-sdk/s2s` y `serviceJwtAuth` (Hono) en `@eva_solutions/auth-sdk/hono`. No toca `verifyS2SRequest`: el HMAC sigue igual (ver [ADR-018](decisions.md#adr-018-nonce-obligatorio-en-las-firmas-s2s-x-eva-nonce) y [ADR-019](decisions.md#adr-019-jwt-de-servicio-es256-para-las-llamadas-del-auth-service)).
+El servicio receptor (por ejemplo Whatsapp-api) verifica el `Authorization: Bearer` contra el JWKS del Auth Service. `verifyServiceToken` vive en `@eva_solutions/auth-sdk/s2s` y `serviceTokenAuth` (Hono) en `@eva_solutions/auth-sdk/hono`. Reemplaza al `verifyServiceJwt` / `serviceJwtAuth` (`svc+jwt` con `bsha`) de las versiones anteriores; ver [ADR-020](decisions.md#adr-020-identidad-fase-1-tokens-de-servicio-token-de-usuario-por-producto-y-empresas).
 
 ```ts
 import { Hono } from 'hono'
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
-import { serviceJwtAuth, type ServiceJwtAuthVariables } from '@eva_solutions/auth-sdk/hono'
+import { serviceTokenAuth, type ServiceTokenAuthVariables } from '@eva_solutions/auth-sdk/hono'
 
-configureEvaAuth({ authUrl: process.env.AUTH_URL! }) // el JWKS sale de aquí
+configureEvaAuth({ authUrl: process.env.AUTH_URL! }) // el JWKS sale de aquí; no hace falta `product`
 
-const app = new Hono<{ Variables: ServiceJwtAuthVariables }>()
+const app = new Hono<{ Variables: ServiceTokenAuthVariables }>()
 app.use(
-  '/v1/internal/messages/*',
-  serviceJwtAuth({
-    audience: 'whatsapp-api',
-    requiredScope: 'messages:send',
-    replayCache: { setIfAbsent: (key, ttlSeconds) => store.setNx(key, ttlSeconds) },
-  }),
+  '/v1/internal/messages/text',
+  serviceTokenAuth({ audience: 'whatsapp-api', requiredScope: 'messages:send:text' }),
 )
+app.post('/v1/internal/messages/text', (c) => {
+  const id = c.var.serviceClientId // `sub`: id interno estable, la identidad
+  const slug = c.var.serviceClientSlug // `client_id`: dato visible (logs, UI)
+  const scopes = c.var.serviceScopes
+  return c.json({ id, slug, scopes })
+})
 ```
 
 **Firma exacta:**
 
 ```ts
-function verifyServiceJwt(request: Request, opts: ServiceJwtVerifyOptions): Promise<ServiceJwtVerifyResult>
-function serviceJwtAuth(opts: ServiceJwtAuthOptions): MiddlewareHandler // ServiceJwtAuthOptions = ServiceJwtVerifyOptions
+function verifyServiceToken(token: string, opts: ServiceTokenVerifyOptions): Promise<ServiceTokenVerifyResult>
+function serviceTokenAuth(opts: ServiceTokenAuthOptions): MiddlewareHandler // = ServiceTokenVerifyOptions
 ```
 
 **Formato del token** (lo emite el Auth Service):
@@ -918,50 +960,44 @@ function serviceJwtAuth(opts: ServiceJwtAuthOptions): MiddlewareHandler // Servi
 | Parte | Valor |
 |-------|-------|
 | Header `alg` | `ES256` (cualquier otro se rechaza) |
-| Header `typ` | `svc+jwt` (`SERVICE_JWT_TYP`). Un access token de usuario no lo lleva |
-| Header `kid` | Clave del JWKS (`/.well-known/jwks.json`) |
+| Header `typ` | `svc-at+jwt` (`SERVICE_TOKEN_TYP`). El del access token de usuario es `at+jwt` |
+| Header `kid` | Prefijo `svc-` (`SERVICE_KID_PREFIX`). Un `kid` ausente o `usr-` ni llega a una clave |
 | `iss` | `auth-service` |
-| `aud` | La audiencia del receptor (por ejemplo `whatsapp-api`). Nunca `proyecto-global`, la de los access tokens |
-| `iat`, `exp` | Obligatorios; `exp - iat` ≤ `maxLifetimeSeconds` (default 60); `iat` no puede estar en el futuro más allá de `clockToleranceSeconds` (default 5) |
-| `jti` | Obligatorio, string de 1 a 128 caracteres, único por token |
-| `scope` | String con scopes separados por espacio; debe incluir `requiredScope` |
-| `bsha` | SHA-256 del body **crudo** en base64url sin padding. Body vacío: `47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU` |
+| `aud` | **Una** audiencia de servicio: la del receptor (`whatsapp-api`, `auth-api`). Un `aud` con varias se rechaza |
+| `sub` | Id interno estable del service client (uuid). Es la identidad |
+| `client_id` | Slug del service client. Informativo |
+| `scope` | Permisos separados por espacio |
+| `iat`, `exp` | Obligatorios; `exp - iat` ≤ `maxLifetimeSeconds` (default 300; el token que Auth acuña por envío de OTP vive 60 s) |
 
-El token viaja en `Authorization: Bearer <jwt>`.
+No hay `bsha` ni replay cache: el token es reutilizable dentro de su vida. El efecto de un token robado lo acota la audiencia, el permiso y los 300 s.
 
-**`ServiceJwtVerifyOptions`:**
+**`ServiceTokenVerifyOptions`:**
 
 | Opción | Tipo | Descripción |
 |--------|------|-------------|
-| `audience` | `string` | Obligatoria. Lanza `TypeError` si es vacía o `proyecto-global` |
-| `requiredScope` | `string` | Obligatoria |
-| `replayCache` | `{ setIfAbsent(key, ttlSeconds): Promise<boolean> }` | **Obligatoria** (a diferencia de `verifyS2SRequest`, donde es opcional): un token capturado se podría reenviar hasta su `exp`. Misma semántica atómica que la de S2S. Clave `svcjwt:${jti}`, TTL = vida restante + tolerancia + 1 s |
-| `jwks` | `JWTVerifyGetKey` | Resolutor de claves. Por defecto `getJwksKeyFn()` (JWKS remoto, requiere `configureEvaAuth({ authUrl })`). Inyectable para tests |
-| `maxLifetimeSeconds` | `number` | Default `SERVICE_JWT_MAX_LIFETIME_SECONDS` (60) |
-| `clockToleranceSeconds` | `number` | Default `SERVICE_JWT_CLOCK_TOLERANCE_SECONDS` (5) |
-| `messages` | `Partial<Record<ServiceJwtVerifyReason, string>>` | Override de mensajes |
+| `audience` | `'auth-api' \| 'whatsapp-api'` | Obligatoria, del catálogo de `auth-contracts`. Un slug de producto o cualquier otro valor lanza `TypeError` |
+| `requiredScope`, `anyScope` o `scopeCheck: 'deferred'` | `string` / `readonly string[]` / `'deferred'` | Exactamente uno. `'deferred'` autentica sin exigir permiso aquí y deja el permiso por ruta a `requireScope`. Cada permiso debe ser de la audiencia (`admin` en `auth-api` lanza `TypeError`); `anyScope` no puede ser vacío |
+| `jwks` | `JWTVerifyGetKey` | Resolutor de claves. Por defecto el JWKS remoto (requiere `configureEvaAuth({ authUrl })`). Inyectable para tests; igual se filtra por el prefijo `svc-` |
+| `maxLifetimeSeconds` | `number` | Default `SERVICE_TOKEN_LIFETIME_SECONDS` (300) |
+| `clockToleranceSeconds` | `number` | Default `SERVICE_TOKEN_CLOCK_TOLERANCE_SECONDS` (5) |
+| `messages` | `Partial<Record<ServiceTokenVerifyReason, string>>` | Override de mensajes |
 
-**Resultado:** `{ ok: true, data: { jti, scopes } }` o `{ ok: false, error: { reason, message } }`.
+**Resultado:** `{ ok: true, data: { serviceClientId, serviceClientSlug, scopes, jti } }` o `{ ok: false, error: { reason, message } }`.
 
 | `reason` | Cuándo |
 |----------|--------|
-| `token_missing` | Sin `Authorization: Bearer <jwt>` |
+| `token_missing` | Sin `Authorization: Bearer <jwt>` (lo produce el middleware) |
 | `token_malformed` | No es un JWS/JWT bien formado |
 | `token_expired` | `exp` pasado más la tolerancia |
-| `signature_invalid` | Firma inválida, `kid` desconocido o `alg` distinto de ES256 |
-| `claims_invalid` | `typ`, `iss` o `aud` incorrectos; `iat`/`exp` ausentes o fuera de rango; vida mayor al máximo |
-| `jti_missing` | `jti` ausente, vacío, no string o de más de 128 caracteres |
-| `scope_insufficient` | `scope` no incluye `requiredScope` |
-| `body_hash_mismatch` | `bsha` ausente o distinto del SHA-256 del body recibido |
-| `replay_detected` | El `jti` ya fue visto |
+| `signature_invalid` | Firma inválida; `kid` ausente, `usr-` o desconocido; `alg` distinto de ES256 |
+| `claims_invalid` | `typ`, `iss` o `aud` incorrectos; `sub` o `client_id` ausentes; `iat`/`exp` ausentes o fuera de rango; vida mayor al máximo |
+| `scope_insufficient` | `scope` no cubre lo requerido |
 
-Orden: firma y claims estándar → rangos de `iat`/`exp` → `jti` → `scope` → `bsha` → `replayCache`. El `jti` se registra al final para que un token con el body equivocado no lo gaste.
+**Middleware `serviceTokenAuth`:** en éxito setea `c.var.serviceClientId` (`sub`), `c.var.serviceClientSlug` (`client_id`) y `c.var.serviceScopes`. En fallo responde 401 `{ error: { code: <reason>, message } }`, salvo `scope_insufficient`, que responde 403 con `code: 'insufficient_scope'`. Para exigir un permiso distinto por ruta, monta `serviceTokenAuth({ audience, scopeCheck: 'deferred' })` una vez y `requireScope('permiso')` en cada ruta (`requireScope` lee `serviceScopes` cuando no hay `s2sScopes`), o un `serviceTokenAuth` por ruta. El esquema `Bearer` se compara sin distinguir mayúsculas (RFC 9110 §11.1). `serviceTokenAuth` valida sus opciones al construirse (`TypeError` al arrancar).
 
-**Middleware `serviceJwtAuth`:** clona la request antes de leer el body (`cloneRawRequest`), así que el handler aún puede leerlo. En éxito setea `c.var.serviceJwtId` y `c.var.serviceJwtScopes`. En fallo responde 401 `{ error: { code: <reason>, message } }`, salvo `scope_insufficient`, que responde 403 con `code: 'insufficient_scope'`.
+**Un access token de usuario no pasa, ni al revés.** El JWKS publica las dos claves, así que la separación la hacen chequeos independientes: el prefijo del `kid` decide qué claves se consideran (un token firmado con la clave de servicio bajo un `kid` `usr-` falla la firma, y viceversa), el `typ` distinto, la `aud` (producto en el de usuario, audiencia de servicio en el de servicio) y el `scope`. `verifyAccessToken` y `verifyServiceToken` rechazan los tokens sin `kid`.
 
-**Un access token de usuario no pasa.** Comparte emisor y JWKS con el token de servicio, así que lo separan cuatro chequeos independientes: `typ`, `aud`, `scope` y `bsha`. Sin el `typ: 'svc+jwt'` o con `aud: 'proyecto-global'` el token se rechaza con `claims_invalid` antes de consultar el `replayCache`. A la inversa, `verifyAccessToken` rechaza un JWT de servicio por su `aud`.
-
-**Errores que no son rechazos:** si falta `authUrl` (`EvaAuthConfigError`) o el JWKS no se puede descargar, `verifyServiceJwt` lanza y el middleware responde 500: es infraestructura, no un token inválido, y un 401 haría que el emisor lo tratara como una credencial rechazada.
+**Errores que no son rechazos:** si falta `authUrl` (`EvaAuthConfigError`) o el JWKS no se puede descargar, `verifyServiceToken` lanza y el middleware responde 500: es infraestructura, no un token inválido, y un 401 haría que el emisor lo tratara como una credencial rechazada.
 
 ### Métodos del S2SClient
 
@@ -978,8 +1014,13 @@ Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migra
 | `deleteWebhookSubscription(id)` | DELETE | `/api/v1/internal/webhooks/subscriptions/:id` | Elimina subscription. 204. |
 | `rotateWebhookSubscriptionSecret(id)` | POST | `/api/v1/internal/webhooks/subscriptions/:id/rotate-secret` | Rota signing key. One-time. Puede responder `409 webhook_secret_rotation_conflict` si otra rotación concurrente ganó: esa llamada no recibe clave (no hay clave nueva de ese caller que guardar) y se puede reintentar. |
 | `listWebhookDeliveries(query?)` | GET | `/api/v1/internal/webhooks/deliveries` | Lista entregas con filtros. |
+| `createEmpresa(input)` | POST | `/api/v1/internal/empresas` | Crea la empresa y su primer miembro (`primerMiembroUserId`) en una operación. 201. `409 conflict` si `ruc`, `razonSocial` o `slug` ya existen (el mensaje nombra el campo). Permiso `empresas:escribir`. |
+| `getEmpresa(id)` | GET | `/api/v1/internal/empresas/:id` | Empresa con sus sucursales y miembros. Permiso `empresas:leer`. |
+| `addEmpresaMember(id, userId)` | POST | `/api/v1/internal/empresas/:id/miembros` | Agrega un miembro. 201; `409` si ya lo es. `empresas:escribir`. |
+| `removeEmpresaMember(id, userId)` | DELETE | `/api/v1/internal/empresas/:id/miembros/:userId` | Quita un miembro. 204; `404` si no lo es. `empresas:escribir`. |
+| `createSucursal(id, input)` | POST | `/api/v1/internal/empresas/:id/sucursales` | Crea una sucursal (`nombre`, `direccion?`). 201. `empresas:escribir`. |
 
-Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`.
+Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`. Auth no guarda roles: quién puede pedir cada operación de empresas lo decide el producto con los suyos. Los ids se validan y codifican como un solo segmento de path, igual que los demás.
 
 ---
 
@@ -1000,7 +1041,7 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `HEADERS` | constante | Nombres de los headers de sesión: `AUTHORIZATION`, `REFRESH_TOKEN`, `NEW_ACCESS_TOKEN`, `NEW_REFRESH_TOKEN` |
 | `INTERNAL_HEADERS` | constante | Nombres de los headers S2S: `X_EVA_CLIENT_ID`, `X_EVA_TIMESTAMP`, `X_EVA_NONCE`, `X_EVA_SIGNATURE`, `X_EVA_SERVER_TIME` |
 | `API_PREFIX` | constante | `'/api/v1'`: prefijo de todas las rutas del Auth Service salvo JWKS, `/health`, `/ui` y `/doc`. Los clientes del SDK lo anteponen con `apiPath()` |
-| `AUTH_ROUTES` | constante | Descriptores `{ method, path }` de `getCode`, `login`, `refresh` y `logout`, con `path` relativo a `API_PREFIX` (la ruta real es `/api/v1` + `path`) |
+| `AUTH_ROUTES` | constante | Descriptores `{ method, path }` de `getCode`, `login`, `refresh`, `logout` y `setActiveEmpresa` (`POST /auth/empresa-activa`), con `path` relativo a `API_PREFIX` (la ruta real es `/api/v1` + `path`) |
 | `USER_ROUTES`, `SESSION_ROUTES`, `INTERNAL_USER_ROUTES` | constante | Descriptores `{ method, path }` de usuario (`get`, `update`, `deactivate`, `listCompanies`), sesiones (`list`, `deleteOne`, `deleteAll`) y `/api/v1/internal/users` (`get`, `batch`) |
 | `ACCOUNT_STATES` | constante | Objeto con los 6 estados de cuenta (clave igual a valor); también se re-exporta desde `@eva_solutions/auth-sdk` |
 | `ACTIVITY_STATES`, `PRIVACY_STATES` | constante | Tuplas `as const` de los estados de actividad y de privacidad |
@@ -1008,16 +1049,23 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `publicProfileSchema`, `profileResponseSchema`, `companyListResponseSchema`, `updateUserRequestSchema` (+ tipos `PublicProfile`, `ProfileResponse`, `CompanyListResponse`, `Company`, `UpdateUserRequest`) | schema + type | Perfil, empresas y body de `PATCH /api/v1/user` (objeto estricto base, sin `.refine`) |
 | `sessionListResponseSchema` (+ `SessionListResponse`, `Session`) | schema + type | Listado de sesiones |
 | `usersBatchRequestSchema`, `usersBatchResponseSchema` (+ `UsersBatchRequest`, `UsersBatchResponse`) | schema + type | `POST /api/v1/internal/users/batch` |
-| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/api/v1/internal/webhooks/*` y de las 9 de `/api/v1/admin/*` (6 de service-clients, `restoreUser`, `republishPendingWebhooks` y `maintenanceCleanup`) |
-| `EVENT_CODES` (+ type `EventCode`) | constante | Los 11 event codes de los webhooks (clave en mayúsculas, valor `user.created`, ...) |
+| `WEBHOOK_ROUTES`, `ADMIN_ROUTES` | constante | Descriptores de las 7 rutas de `/api/v1/internal/webhooks/*` y de las 12 de `/api/v1/admin/*` (6 de service-clients, 3 de concesiones, `restoreUser`, `republishPendingWebhooks` y `maintenanceCleanup`) |
+| `INTERNAL_TOKEN_ROUTES`, `INTERNAL_EMPRESA_ROUTES` | constante | `POST /api/v1/internal/token` y las 5 rutas de `/api/v1/internal/empresas/*` |
+| `EVENT_CODES` (+ type `EventCode`) | constante | Los 15 event codes de los webhooks (clave en mayúsculas, valor `user.created`, ..., `empresa.created`, `empresa.member_added`, `empresa.member_removed`, `empresa.branch_created`) |
 | `WEBHOOK_HEADERS`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` | constante | Nombres en minúsculas de los headers del webhook (`SIGNATURE`, `ID`, `TIMESTAMP`) y ventana de la marca de tiempo (`300` s) |
-| `SERVICE_CLIENT_SCOPES` (+ type `ServiceClientScope`), `DELIVERY_STATUSES` | constante | Tupla de scopes (`users:read`, `webhooks:read`, `webhooks:write`, `admin`) y de estados de entrega |
+| `DELIVERY_STATUSES` | constante | Tupla de estados de entrega |
+| `SERVICE_AUDIENCE_SCOPES`, `SERVICE_AUDIENCES` (+ types `ServiceAudience`, `ServiceScope<A>`), `isServiceAudience`, `isScopeOfAudience` | constante + función | Catálogo cerrado de audiencias de servicio y sus permisos: `auth-api` (`users:read`, `webhooks:read`, `webhooks:write`, `empresas:leer`, `empresas:escribir`; **sin `admin`**) y `whatsapp-api` (`messages:send:text`, `messages:send:media`, `admin`). Un slug de producto nunca coincide con una audiencia (`isServiceAudience`) |
+| `TOKEN_ISSUER`, `RESERVED_SERVICE_CLIENT_SLUGS`, `isReservedServiceClientSlug`, `AUTH_SERVICE_SUB`, `USER_TOKEN_TYP`, `SERVICE_TOKEN_TYP`, `USER_KID_PREFIX`, `SERVICE_KID_PREFIX`, `SERVICE_TOKEN_LIFETIME_SECONDS`, `INTERNAL_SERVICE_TOKEN_LIFETIME_SECONDS`, `SERVICE_TOKEN_ERROR_CODES` | constante + función | Vocabulario de los tokens: emisor (`auth-service`, slug reservado), `typ` (`at+jwt` / `svc-at+jwt`), prefijos de `kid` (`usr-` / `svc-`), vidas (300 s; 60 s para el OTP), id fijo de Auth como `sub` y códigos de error del endpoint de tokens |
+| `serviceTokenRequestSchema`, `serviceTokenResponseSchema`, `serviceTokenErrorSchema` (+ tipos) | schema + type | `POST /api/v1/internal/token`. Sin envoltorio `data` ni `error: { code, message }`: sigue RFC 6749 §5.1/§5.2 y RFC 8707 |
+| `setServiceClientGrantRequestSchema`, `serviceClientGrantSchema`, `listServiceClientGrantsResponseSchema`, `setServiceClientGrantResponseSchema` (+ tipos) | schema + type | Concesiones. El body es una unión discriminada por `audience`: un permiso de otra audiencia (o `admin` en `auth-api`) lo rechaza el schema |
+| `createEmpresaRequestSchema`, `addEmpresaMemberRequestSchema`, `createSucursalRequestSchema`, `empresaResponseSchema`, `empresaDetailResponseSchema`, `empresaMemberResponseSchema`, `sucursalResponseSchema`, `sucursalSchema` (+ tipos) | schema + type | API interna de empresas y sucursales |
+| `productoSlugSchema`, `setActiveEmpresaRequestSchema`, `setActiveEmpresaResponseSchema` | schema | `producto` (obligatorio) y `empresaId` (opcional) del login; `POST /api/v1/auth/empresa-activa` |
 | `createSubscriptionRequestSchema`, `updateSubscriptionRequestSchema`, `deliveriesQuerySchema`, `republishPendingQuerySchema`, `republishPendingResponseSchema`, `maintenanceCleanupQuerySchema`, `maintenanceCleanupResponseSchema`, `subscriptionSchema`, `subscriptionWithSecretResponseSchema`, `subscriptionResponseSchema`, `subscriptionListResponseSchema`, `rotateSubscriptionSecretResponseSchema`, `deliverySchema`, `deliveryListResponseSchema` (+ tipos) | schema + type | Webhooks: subscriptions y deliveries |
-| `serviceClientSlugSchema`, `createServiceClientRequestSchema`, `updateServiceClientRequestSchema` (base estricto, sin `.refine`), `serviceClientPublicSchema`, `createServiceClientResponseSchema`, `listServiceClientsResponseSchema`, `getServiceClientResponseSchema`, `updateServiceClientResponseSchema`, `rotateServiceClientSecretResponseSchema`, `restoreUserResponseSchema` (+ tipos) | schema + type | Service clients (`/api/v1/admin/service-clients`) y restaurar usuario |
+| `serviceClientSlugSchema`, `createServiceClientRequestSchema` (`esAdmin`, ya sin `scopes`), `updateServiceClientRequestSchema` (base estricto, sin `.refine`), `serviceClientPublicSchema` (con `esAdmin` y `grants`), `createServiceClientResponseSchema`, `listServiceClientsResponseSchema`, `getServiceClientResponseSchema`, `updateServiceClientResponseSchema`, `rotateServiceClientSecretResponseSchema`, `restoreUserResponseSchema` (+ tipos) | schema + type | Service clients (`/api/v1/admin/service-clients`) y restaurar usuario |
 | `HttpMethod`, `RouteDescriptor` | types | Tipos de los descriptores |
 | `errorResponseSchema`, `ErrorResponse` | schema + type | Cuerpo de error `{ error: { code, message } }` (id OpenAPI `ErrorBody`) |
 | `messageResponseSchema`, `messageWithCountResponseSchema` (+ tipos `MessageResponse`, `MessageWithCountResponse`) | schema + type | Respuestas genéricas con mensaje |
-| `getCodeRequestSchema`, `getCodeResponseSchema`, `loginRequestSchema`, `loginResponseSchema` | schema | Flujo de login. `/api/v1/login/refresh` responde con `loginResponseSchema` y `/api/v1/login/logout` con `messageResponseSchema` |
+| `getCodeRequestSchema`, `getCodeResponseSchema`, `loginRequestSchema` (con `producto` obligatorio y `empresaId` opcional; `get-code` no los lleva), `loginResponseSchema` | schema | Flujo de login. `/api/v1/login/refresh` responde con `loginResponseSchema` y `/api/v1/login/logout` con `messageResponseSchema` |
 | `GetCodeRequest`, `GetCodeResponse`, `LoginRequest`, `LoginResponse` | type | `z.input<>` para requests y `z.output<>` para responses |
 
 Los schemas usan metadata `.meta()` (nunca `.openapi()`) y los de request son objetos planos estrictos, sin `.refine`. `ERROR_CODES` y `HEADERS` también se re-exportan desde `@eva_solutions/auth-sdk`. Los schemas BFF del SDK (`GetCodeSchema`, `LoginSchema`, `UpdateUserSchema`) siguen siendo propios y más laxos: la autoridad de validación es el servidor.
@@ -1142,7 +1190,7 @@ Timeout de **30 segundos**. Distingue errores:
 | Export | Origen | Descripción |
 |--------|--------|-------------|
 | `readTokensFromCookies` | `cookies.ts` | Lee tokens desde un string de cookies |
-| `COOKIES` | `constants.ts` | Nombres de las cookies |
+| `getCookieNames` | `constants.ts` | Nombres de las cookies del producto configurado |
 | `COOKIE_MAX_AGE` | `constants.ts` | TTL de las cookies |
 | `HEADERS` | `constants.ts` | Nombres de headers custom del protocolo |
 | `DEFAULT_ERROR_MESSAGES` | `error-messages.ts` | Defaults de mensajes de error |

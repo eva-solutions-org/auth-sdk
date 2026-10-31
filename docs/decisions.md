@@ -669,7 +669,7 @@ Se verificó directamente el código fuente de jose v6.2.3 (`node_modules/.pnpm/
 ### Decisión
 
 1. Migrar `src/jwks.ts` a `createRemoteJWKSet` de jose. Eliminar la implementación manual de cache (fetchJwks, getPublicKey, clearJwksCache) y el módulo de estado `src/jwks-cache.ts`.
-2. Configurar `cacheMaxAge: 86_400_000` (24h) — alineado con el TTL normal de ADR-005.
+2. Configurar `cacheMaxAge: 86_400_000` (24h) — alineado con el TTL normal de ADR-005. *(Enmienda ADR-020: 10 min.)*
 3. Configurar `cooldownDuration: 30_000` (30s) y `timeoutDuration: 5_000` (5s) explícitamente.
 4. Agregar `algorithms: ['ES256']` en el call a `jwtVerify` (defensa en profundidad — P4).
 5. Pinear jose a `~6.2.3` en package.json para acotar el rango de upgrades automáticos.
@@ -779,7 +779,7 @@ La firma S2S cubría método, path, query, timestamp, clientId y hash del body. 
 ## ADR-019: JWT de servicio ES256 para las llamadas del Auth Service
 
 **Fecha**: 2026-10-30
-**Estado**: Aceptada
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-020](#adr-020-identidad-fase-1-tokens-de-servicio-token-de-usuario-por-producto-y-empresas) (2026-10-31): `verifyServiceJwt` / `serviceJwtAuth` (`svc+jwt` con `bsha` y `replayCache`) se retiran; el token de servicio pasa a ser `svc-at+jwt`, reutilizable dentro de su vida.
 
 ### Contexto
 
@@ -787,7 +787,7 @@ El Auth Service llama a otros servicios (Whatsapp-api) y hoy firma esas llamadas
 
 ### Decisión
 
-1. `verifyServiceJwt` (subpath `./s2s`) y `serviceJwtAuth` (subpath `./hono`) verifican un JWT ES256 contra el JWKS remoto, con `iss: 'auth-service'`, `aud` del receptor, `typ: 'svc+jwt'`, `scope`, `jti` y `bsha` (SHA-256 base64url del body crudo). Contrato completo en [api.md](api.md#verificación-de-jwt-de-servicio-verifyservicejwt--servicejwtauth).
+1. `verifyServiceJwt` (subpath `./s2s`) y `serviceJwtAuth` (subpath `./hono`) verifican un JWT ES256 contra el JWKS remoto, con `iss: 'auth-service'`, `aud` del receptor, `typ: 'svc+jwt'`, `scope`, `jti` y `bsha` (SHA-256 base64url del body crudo). Contrato (histórico; reemplazado por el de ADR-020) en la sección de token de servicio de [api.md](api.md).
 2. Como comparte emisor y JWKS con los access tokens, el `typ` y la `aud` propia lo separan de ellos; configurar la `aud` de usuario lanza.
 3. `replayCache` es **obligatorio** (en `verifyS2SRequest` es opcional): el token vive hasta 60 s y la llamada tiene efectos (enviar un mensaje).
 4. `verify.ts` (HMAC) no cambia: ADR-018 y sus decisiones siguen vigentes.
@@ -802,3 +802,37 @@ El Auth Service llama a otros servicios (Whatsapp-api) y hoy firma esas llamadas
 
 - Los receptores necesitan `configureEvaAuth({ authUrl })` y un `replayCache` atómico.
 - El emisor (Auth Service) debe producir exactamente el formato de claims del contrato; el SDK no incluye el firmante.
+
+## ADR-020: Identidad fase 1: tokens de servicio, token de usuario por producto y empresas
+
+**Fecha**: 2026-10-31
+**Estado**: Aceptada (parte del SDK y del contrato del diseño `identidad-fase1`, revisión 3, del repo de Ecosistema)
+
+### Contexto
+
+Hasta ahora el SDK tenía un solo tipo de clave y de audiencia: el access token de usuario era `aud: 'proyecto-global'`, los servicios se autenticaban entre sí con HMAC en cada llamada, y el Auth Service firmaba sus llamadas a otros servicios con un JWT `svc+jwt` de un solo uso (ADR-019). Eso no permite más de un producto por usuario, ni que un servicio tenga identidad y permisos por audiencia, ni que los productos creen empresas y sucursales. Nada está en producción: se permiten cambios incompatibles sin expand/contract.
+
+### Decisión
+
+1. **Dos claves, separadas por `kid`**: el JWKS publica claves de usuario (`usr-…`) y de servicio (`svc-…`). El resolutor del SDK (`withKidPrefix`) rechaza los tokens sin `kid` y solo entrega a jose las claves del prefijo que corresponde al tipo de token. Caché del JWKS de 10 min (antes 24 h).
+2. **Tipado explícito**: usuario `typ: at+jwt`, servicio `typ: svc-at+jwt`; cada verificador exige el suyo.
+3. **Token de usuario por producto**: `configureEvaAuth({ product })`; `aud` = producto, `client_id` = producto, `empresa` opcional; `verifyAccessToken` devuelve `clientId` y `empresaId`. Cookies `eva_<producto>_access_token` / `eva_<producto>_refresh_token`. El login lleva `producto` (siempre el configurado) y `empresaId` opcional; `POST /auth/empresa-activa` cambia la empresa activa. `product` es obligatorio solo para login, cookies y `verifyAccessToken`.
+4. **Token de servicio (client credentials)**: `POST /internal/token` autenticado con la firma HMAC existente; respuesta y errores según RFC 6749/8707. `createServiceTokenProvider` guarda el token, mide el vencimiento con `expires_in`, renueva 30 s antes, deduplica pedidos simultáneos e invalida con `invalidate(tokenRechazado)`. `createS2SClient` usa el proveedor (Bearer) y, ante un 401, invalida y reintenta **una** vez. `verifyServiceToken` / `serviceTokenAuth` verifican (`sub` = id estable, `client_id` = slug, `aud` única, `scope`).
+5. **Catálogo cerrado en el contrato** (`catalog.ts`): audiencias de servicio y permisos por audiencia. `admin` no es concedible para `auth-api` (el admin de Auth sigue firmado con HMAC y se marca con `esAdmin`) y sí para `whatsapp-api`. Las concesiones se administran por `/admin/service-clients/{slug}/grants`.
+6. **API interna de empresas** (`empresas:leer` / `empresas:escribir`) y sucursales, con los eventos `empresa.created`, `empresa.member_added`, `empresa.member_removed`, `empresa.branch_created`. Auth no guarda roles.
+7. Se retiran `verifyServiceJwt`, `serviceJwtAuth`, `COOKIES`, `JWT_CONFIG.AUDIENCE`, `SERVICE_CLIENT_SCOPES` y el `admin` de `S2S_SCOPES`. La firma HMAC (`signS2SHeaders` …) se conserva: la usan `/internal/token` y `/admin`.
+8. Los módulos nuevos del contrato que no necesita `react` (`catalog.ts`, `tokens.ts`) son PURE y van aparte de `constants.ts` para no engordar el cierre del entry `react`.
+
+### Alternativas consideradas
+
+- **Una sola clave y distinguir por `typ` y `aud`**: descartada. Un fallo en un chequeo bastaría para confundir tipos; con claves separadas por `kid`, un token de servicio no pasa como de usuario aunque `typ` y `aud` se falsifiquen.
+- **Replay cache para el token de servicio**: descartada. El token es reutilizable por diseño (vida de 300 s, una audiencia, permisos mínimos); el costo del replay cache (estado compartido) no compra nada que la vida corta y la audiencia no den. El token del OTP es de 60 s por envío.
+- **`obtenerToken` con el proveedor del SDK dentro de otros SDKs**: el SDK de WhatsApp no depende de este; el consumidor le pasa el proveedor.
+- **Validar en `configureEvaAuth` que el producto no coincida con una audiencia**: descartada en el SDK (cuesta ~900 B gzip en el cierre de `react` y no cambia ningún resultado: un token de usuario nunca lleva una audiencia de servicio). Lo valida Auth con `isServiceAudience`.
+
+### Consecuencias
+
+- Cambio incompatible: versión mayor. Guía en [migration.md](migration.md#13-identidad-fase-1-producto-token-de-servicio-y-empresas).
+- Los consumidores de usuario configuran `product`; los servicios receptores usan `serviceTokenAuth`; los servicios que llaman a Auth o a otros servicios usan `createServiceTokenProvider`.
+- Revocar una concesión no afecta a los tokens ya emitidos (hasta 300 s). Para cortar de inmediato, deshabilitar el client.
+- El presupuesto ESM del cierre de `react` sube de 11 272 a 11 800 B.

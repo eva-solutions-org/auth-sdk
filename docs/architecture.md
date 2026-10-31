@@ -29,8 +29,10 @@ Comunicación con el navegador del usuario:
 
 | Cookie | Contenido | Flags |
 |--------|-----------|-------|
-| `eva_access_token` | JWT ES256 | HttpOnly, Secure, SameSite=Lax, Path=/ |
-| `eva_refresh_token` | `session_id:token` | HttpOnly, Secure, SameSite=Lax, Path=/ |
+| `eva_<producto>_access_token` | JWT ES256 (`typ: at+jwt`, `aud` = producto) | HttpOnly, Secure, SameSite=Lax, Path=/ |
+| `eva_<producto>_refresh_token` | `session_id:token` | HttpOnly, Secure, SameSite=Lax, Path=/ |
+
+`<producto>` es el slug de `configureEvaAuth({ product })` (por ejemplo `whatsapp-panel`): dos productos bajo el mismo dominio padre no se pisan las cookies.
 
 → TTLs y detalles de flags: [security.md](security.md)
 
@@ -71,12 +73,13 @@ packages/auth-sdk/src/
 ├── config.ts          # Config runtime: configureEvaAuth, getAuthUrl (authUrl inmutable), validación y errores de configuración → ADR-017
 ├── types.ts           # Todos los tipos exportados
 ├── errors.ts          # EvaAuthError, createAuthError, isAuthError
-├── constants.ts       # HEADERS (re-export del contrato), COOKIES, JWT_CONFIG, COOKIE_MAX_AGE
+├── constants.ts       # HEADERS (re-export del contrato), getCookieNames (por producto), JWT_CONFIG, COOKIE_MAX_AGE
 ├── api-path.ts        # apiPath(): construye la ruta de un descriptor del contrato (rellena {param} y antepone API_PREFIX = /api/v1)
 ├── parse-error-response.ts  # parseErrorResponse (módulo puro: sin zod, solo `import type`)
 ├── refresh-dedup.ts   # Deduplicación de refresh compartida (Map por refreshToken)
-├── jwks.ts            # JWKS remoto lazy (jose createRemoteJWKSet): cache 24h, cooldown 30s, timeout 5s
-├── jwt.ts             # verifyAccessToken con jose
+├── jwks.ts            # JWKS remoto lazy (jose createRemoteJWKSet): cache 10 min, cooldown 30s, timeout 5s
+├── key-resolver.ts    # withKidPrefix: solo claves `usr-` o `svc-` según el tipo de token; rechaza tokens sin `kid`
+├── jwt.ts             # verifyAccessToken con jose (typ at+jwt, aud = producto, kid usr-)
 ├── cookies.ts         # Lectura/escritura de cookies (decodeURIComponent en parsing)
 ├── http-client.ts     # Cliente HTTP tipado contra Auth Service (timeout 10s, validación de IDs)
 ├── index.ts           # Barrel file del root
@@ -141,8 +144,8 @@ Cada módulo del contrato es de uno de dos tipos:
 
 | Tipo | Módulos | Qué pueden importar | Qué los distingue |
 |------|---------|---------------------|-------------------|
-| **PURE** | `constants.ts` (códigos de error, nombres de headers, estados de cuenta/actividad/privacidad/entrega, `USERS_BATCH_MAX_IDS`, `EVENT_CODES`, `WEBHOOK_HEADERS`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS`, `SERVICE_CLIENT_SCOPES` y toda constante futura), `routes.ts` | Nada de `zod` ni de módulos SCHEMA; solo datos `as const` y tipos | Importarlos no tiene efectos al cargar |
-| **SCHEMA** | `errors.ts`, `common.ts`, `auth.ts`, `users.ts`, `sessions.ts`, `internal-users.ts`, `webhooks.ts`, `service-clients.ts` | `zod` y módulos PURE | Al cargarse ejecutan `.meta()`, que escribe en el registro global de zod: no es tree-shakeable |
+| **PURE** | `constants.ts` (códigos de error, nombres de headers, estados de cuenta/actividad/privacidad/entrega, `USERS_BATCH_MAX_IDS`, `EVENT_CODES`, `WEBHOOK_HEADERS`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS`), `catalog.ts` (audiencias de servicio y sus permisos), `tokens.ts` (emisor, `typ`, prefijos de `kid`, vidas, códigos de error del endpoint de tokens), `routes.ts` | Nada de `zod` ni de módulos SCHEMA; solo datos `as const` y tipos | Importarlos no tiene efectos al cargar |
+| **SCHEMA** | `errors.ts`, `common.ts`, `auth.ts`, `users.ts`, `sessions.ts`, `internal-users.ts`, `webhooks.ts`, `service-clients.ts`, `service-tokens.ts`, `empresas.ts` | `zod` y módulos PURE | Al cargarse ejecutan `.meta()`, que escribe en el registro global de zod: no es tree-shakeable |
 
 ### Regla de imports de `react`
 
@@ -150,11 +153,11 @@ El entry `react` tiene un tope de tamaño. Por eso **todo módulo del SDK alcanz
 
 Los tipos de usuarios y sesiones del SDK son alias `import type` del contrato, sin definición local: `EvaUser` = `PublicProfile`, `EvaSession` = `Session`, `EvaEmpresa` = `Company`, `ActivityState`/`PrivacyState` derivados de `ACTIVITY_STATES`/`PRIVACY_STATES`, y en `s2s/types.ts` `S2SBatchUsersInput` = `UsersBatchRequest`, `S2SBatchUsersResult` = `UsersBatchResponse['data']` y `S2SGetUserResult` = `ProfileResponse['data']`. Los valores son reexports del barrel, solo de módulos PURE: `ACCOUNT_STATES` sale de `account-states.ts` y `USERS_BATCH_MAX_IDS` de `s2s/constants.ts`; las rutas de `http-client.ts` y `s2s/client.ts` se arman con `apiPath(USER_ROUTES.*)`, `SESSION_ROUTES.*` e `INTERNAL_USER_ROUTES.*`. Los tipos de webhooks y de admin también son alias `import type` del contrato cuando el wire y el tipo del SDK coinciden: `WebhookDelivery` = `Delivery`, `RotateWebhookSecretResult` = `RotateSubscriptionSecretResponse['data']`, `ServiceClientPublic`, `CreateServiceClientResult`, `UpdateServiceClientResult` y `RotateSecretResult` (admin), y `CreateWebhookSubscriptionInput`/`UpdateWebhookSubscriptionInput` (s2s). Los valores `EVENT_CODES`, `WEBHOOK_HEADERS` y `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` son reexports del contrato, y las rutas de `admin/client.ts` y `s2s/client.ts` se arman con `apiPath(ADMIN_ROUTES.*)` y `apiPath(WEBHOOK_ROUTES.*)`.
 
-**Tipos propios del SDK (D-28).** Seis tipos se quedan escritos a mano porque son más ergonómicos que el wire y un alias los degradaría: `WebhookSubscription` y `WebhookSubscriptionWithSecret` (`eventCodes: EventCode[]`, el wire es `string[]`), `ListWebhookDeliveriesQuery` (`limit`/`offset` numéricos, el input de `z.coerce` es `unknown`), `CreateServiceClientInput` y `UpdateServiceClientInput` (`scopes: string[]`, el contrato es la tupla del catálogo) y `RestoreUserResult` (`stateAccount: AccountState`, el wire es un literal). `tests/types.test-d.ts` los documenta con `.not.toEqualTypeOf`.
+**Tipos propios del SDK (D-28).** Cuatro tipos se quedan escritos a mano porque son más ergonómicos que el wire y un alias los degradaría: `WebhookSubscription` y `WebhookSubscriptionWithSecret` (`eventCodes: EventCode[]`, el wire es `string[]`), `ListWebhookDeliveriesQuery` (`limit`/`offset` numéricos, el input de `z.coerce` es `unknown`) y `RestoreUserResult` (`stateAccount: AccountState`, el wire es un literal). `CreateServiceClientInput` y `UpdateServiceClientInput` eran un quinto y sexto caso por `scopes: string[]`; sin `scopes` (las concesiones tienen su propio schema tipado por audiencia) pasaron a ser alias del contrato. `tests/types.test-d.ts` los documenta con `.not.toEqualTypeOf`.
 
-**`S2S_SCOPES` (D-27).** Sigue siendo del SDK (`s2s/constants.ts`) y se fija contra el catálogo con `satisfies Record<string, ServiceClientScope>`: un scope que el contrato no publica deja de compilar.
+**`S2S_SCOPES` (D-27).** Sigue siendo del SDK (`s2s/constants.ts`) y se fija contra los permisos de `auth-api` del catálogo con `satisfies Record<string, ServiceScope<'auth-api'>>`: un permiso que el contrato no publica deja de compilar.
 
-El chunk `constants` del bundle `react` crece con cada constante PURA nueva (el módulo se conserva entero): al agregar más, vigila el margen del gate de cierre. Tras S3 el cierre mide 11 054 B ESM (tope 11 272, margen 218 B) y 12 099 B CJS (tope 12 380, margen 281 B); S3 sumó unos 620 B en cada formato, casi todo del chunk `constants`. Si un cambio posterior cae sobre el tope, el fallback previsto (D-IF-4) es partir `constants`/`routes` por área sin crear un subpath nuevo; hoy no se aplica porque el gate pasa. Ojo con `api-path.ts`: hoy solo lo importa `http-client.ts` (no `react`), pero si `react` llegara a alcanzarlo con un import por valor del contrato, el chunk PURO `routes` (ahora con `WEBHOOK_ROUTES` y `ADMIN_ROUTES`) entraría al cierre.
+El chunk `constants` del bundle `react` crece con cada constante PURA nueva (el módulo se conserva entero): al agregar más, vigila el margen del gate de cierre. Tras S3 el cierre medía 11 054 B ESM (tope 11 272) y 12 099 B CJS (tope 12 380). La identidad de fase 1 (producto en `configureEvaAuth`, nombres de cookie por producto y 4 event codes) lo subió a 11 622 B ESM y 12 180 B CJS: el tope ESM pasó a 11 800 (decisión de mantenedor, ver [CONTRIBUTING.md](../CONTRIBUTING.md#react-entry-closure-gate)). El catálogo de audiencias y el vocabulario de tokens viven en `catalog.ts` y `tokens.ts`, módulos aparte, justamente para que `react` no los arrastre (`config.ts` no los importa). Si un cambio posterior cae sobre el tope, el fallback previsto (D-IF-4) es partir `constants`/`routes` por área sin crear un subpath nuevo; hoy no se aplica porque el gate pasa. Ojo con `api-path.ts`: hoy solo lo importa `http-client.ts` (no `react`), pero si `react` llegara a alcanzarlo con un import por valor del contrato, el chunk PURO `routes` (ahora con `WEBHOOK_ROUTES` y `ADMIN_ROUTES`) entraría al cierre.
 
 Consecuencia: `parseErrorResponse` vive en su propio módulo puro, `src/parse-error-response.ts` (sin `zod`, solo `import type`), y no en `schemas.ts`; `react/auth-fetch.ts`, `http-client.ts`, `admin/client.ts` y `s2s/client.ts` lo importan de ahí.
 

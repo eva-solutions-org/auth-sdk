@@ -50,12 +50,12 @@ The `react` entry must stay small and free of schema modules, in both formats. `
 
 ```bash
 pnpm --filter @eva_solutions/auth-sdk run check:react-closure
-# = node scripts/react-closure-size.mjs dist --max 11272 --max-cjs 12380 --forbid "\.meta\("
+# = node scripts/react-closure-size.mjs dist --max 11800 --max-cjs 12380 --forbid "\.meta\("
 ```
 
 | Flag | Meaning |
 |------|---------|
-| `--max <bytes>` | Fails if the gzip size of the ESM closure is above this number (and of the CJS one when `--max-cjs` is absent). CI uses `11272`, the budget fixed for this change (10 248 B baseline plus 10 %); the ESM closure measures 9 942 B. |
+| `--max <bytes>` | Fails if the gzip size of the ESM closure is above this number (and of the CJS one when `--max-cjs` is absent). CI uses `11800`. It was `11272` (10 248 B baseline plus 10 %); the identity phase 1 change (`product` in `configureEvaAuth`, per-product cookie names, four more event codes) took the closure from 11 212 B to 11 622 B and the maintainers raised the budget (ADR-020). |
 | `--max-cjs <bytes>` | Own budget for the CJS closure. CJS is larger by design: it carries the bundler interop helper as its own chunk (`rolldown-runtime-*.cjs`). CI uses `12380`: the measured 10 954 B plus 13 %, the same relative margin as ESM. |
 | `--forbid <regex>` | Fails if the text of any file in either closure matches. CI uses `\.meta\(`: a file that registers `.meta()` metadata is a SCHEMA module of the contract, and it must not be reachable from `react`. |
 
