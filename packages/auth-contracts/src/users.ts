@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { ACTIVITY_STATES, PRIVACY_STATES } from './constants'
+import { sucursalSchema } from './empresas'
 
 /**
  * SCHEMA module: the user profile and its update body. The update body is the strict BASE object
@@ -47,6 +48,9 @@ export const companyListResponseSchema = z.object({
           .meta({ description: 'Celular de contacto' }),
         email: z.string().nullable().meta({ description: 'Email de contacto' }),
         img: z.string().nullable().meta({ description: 'URL de imagen/logo' }),
+        sucursales: z
+          .array(sucursalSchema)
+          .meta({ description: 'Sucursales de la empresa' }),
       }),
     )
     .meta({ description: 'Lista de empresas' }),

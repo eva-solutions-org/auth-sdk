@@ -24,6 +24,8 @@ const ALLOWED_EXAMPLES = new Set([
   'Mozilla/5.0 ...',
   '-34.6037',
   '-58.3816',
+  'whatsapp-panel',
+  'whatsapp-api',
 ])
 
 const REAL_LOOKING = [
@@ -143,6 +145,7 @@ describe('contract body schemas', () => {
 })
 
 const validLogin = {
+  producto: 'whatsapp-panel',
   phone: '5491155551234',
   code: 'A1B2C3',
   challengeId: '9f86d081884c7d659a2feaa0c55ad015',
@@ -338,6 +341,7 @@ describe('users, sessions and internal users schemas accept and reject (REQ-CONT
       celular: null,
       email: null,
       img: null,
+      sucursales: [],
     }
     expect(
       contract.companyListResponseSchema.safeParse({ data: [company] }).success,
@@ -433,7 +437,8 @@ const SERVICE_CLIENT = {
   slug: 'whatsapp-api',
   name: 'Whatsapp API',
   enabled: true,
-  scopes: ['users:read'],
+  esAdmin: false,
+  grants: [{ audience: 'whatsapp-api', scopes: ['messages:send:text'] }],
   lastUsedAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -745,38 +750,12 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
         false,
       )
     }
-    const created = contract.createServiceClientRequestSchema.parse({
-      slug: 'whatsapp-api',
-      scopes: ['webhooks:read', 'users:read', 'webhooks:read'],
-    })
-    // repeated scopes are deduplicated keeping the first order, they are not rejected
-    expect(created.scopes).toEqual(['webhooks:read', 'users:read'])
     expect(
       contract.createServiceClientRequestSchema.parse({ slug: 'whatsapp-api' })
-        .scopes,
-    ).toEqual([])
-    // request arrays are bounded: 16 entries pass (repeats included), 17 do not
-    const scopesAt = (n: number) =>
-      Array.from({ length: n }, () => 'users:read' as const)
-    expect(
-      contract.createServiceClientRequestSchema.safeParse({
-        slug: 'whatsapp-api',
-        scopes: scopesAt(16),
-      }).success,
-    ).toBe(true)
-    expect(
-      contract.createServiceClientRequestSchema.safeParse({
-        slug: 'whatsapp-api',
-        scopes: scopesAt(17),
-      }).success,
-    ).toBe(false)
-    expect(
-      contract.updateServiceClientRequestSchema.safeParse({
-        scopes: scopesAt(17),
-      }).success,
+        .esAdmin,
     ).toBe(false)
     for (const body of [
-      { slug: 'whatsapp-api', scopes: ['admin:all'] },
+      { slug: 'whatsapp-api', scopes: ['users:read'] },
       { slug: 'whatsapp-api', name: '' },
       { slug: 'whatsapp-api', extra: 1 },
       {},
@@ -785,6 +764,21 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
         contract.createServiceClientRequestSchema.safeParse(body).success,
       ).toBe(false)
     }
+    // grant scopes are bounded (repeats included): 16 entries pass, 17 do not
+    const scopesAt = (n: number) =>
+      Array.from({ length: n }, () => 'users:read' as const)
+    expect(
+      contract.setServiceClientGrantRequestSchema.safeParse({
+        audience: 'auth-api',
+        scopes: scopesAt(16),
+      }).success,
+    ).toBe(true)
+    expect(
+      contract.setServiceClientGrantRequestSchema.safeParse({
+        audience: 'auth-api',
+        scopes: scopesAt(17),
+      }).success,
+    ).toBe(false)
     // the update body is the strict BASE: an empty body parses (the "one field at least" rule is an API refine)
     expect(
       contract.updateServiceClientRequestSchema.safeParse({}).success,
@@ -817,7 +811,7 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
           id: UUID,
           slug: 'whatsapp-api',
           name: 'n',
-          scopes: [],
+          esAdmin: false,
           enabled: true,
           secret: 's',
           warning: 'w',
@@ -830,7 +824,7 @@ describe('webhook and service client schemas accept and reject (REQ-CONTRACT-12)
           id: UUID,
           slug: 'whatsapp-api',
           name: 'n',
-          scopes: [],
+          esAdmin: false,
           enabled: false,
           secret: 's',
           warning: 'w',

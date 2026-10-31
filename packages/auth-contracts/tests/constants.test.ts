@@ -19,14 +19,13 @@ import {
   HEADERS,
   INTERNAL_HEADERS,
   PRIVACY_STATES,
-  SERVICE_CLIENT_SCOPES,
   USERS_BATCH_MAX_IDS,
   WEBHOOK_HEADERS,
   WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
   type CoreErrorCode,
   type EventCode,
-  type ServiceClientScope,
 } from '../src/constants'
+import { SERVICE_AUDIENCE_SCOPES, type ServiceScope } from '../src/catalog'
 import {
   ADMIN_ROUTES,
   API_PREFIX,
@@ -407,6 +406,7 @@ describe('contract route descriptors (REQ-CONTRACT-09)', () => {
       login: { method: 'post', path: '/login' },
       refresh: { method: 'post', path: '/login/refresh' },
       logout: { method: 'post', path: '/login/logout' },
+      setActiveEmpresa: { method: 'post', path: '/auth/empresa-activa' },
     })
     for (const { path } of Object.values(AUTH_ROUTES)) {
       expect(path.startsWith('/')).toBe(true)
@@ -496,13 +496,17 @@ const TODAY_EVENT_CODES = {
   USER_DELETED: 'user.deleted',
   USER_RESTORED: 'user.restored',
   USER_HARD_DELETED: 'user.hard_deleted',
+  EMPRESA_CREATED: 'empresa.created',
+  EMPRESA_MEMBER_ADDED: 'empresa.member_added',
+  EMPRESA_MEMBER_REMOVED: 'empresa.member_removed',
+  EMPRESA_BRANCH_CREATED: 'empresa.branch_created',
 }
 
 describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CONTRACT-12)', () => {
   it('s3_constants_equal_today', () => {
     expect({ ...EVENT_CODES }).toEqual(TODAY_EVENT_CODES)
     expect(Object.keys(EVENT_CODES)).toEqual(Object.keys(TODAY_EVENT_CODES))
-    expect(Object.keys(EVENT_CODES)).toHaveLength(11)
+    expect(Object.keys(EVENT_CODES)).toHaveLength(15)
     // Webhook headers as the SDK receiver reads them (lowercase names; the API sends mixed case).
     expect({ ...WEBHOOK_HEADERS }).toEqual({
       SIGNATURE: 'x-eva-webhook-signature',
@@ -510,12 +514,13 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
       TIMESTAMP: 'x-eva-webhook-timestamp',
     })
     expect(WEBHOOK_TIMESTAMP_WINDOW_SECONDS).toBe(300)
-    // Exact order of API `features/service-clients/domain/scopes.ts`.
-    expect([...SERVICE_CLIENT_SCOPES]).toEqual([
+    // Exact order of the audience catalog; the other tests in identity-phase1 pin the semantics.
+    expect(SERVICE_AUDIENCE_SCOPES['auth-api']).toEqual([
       'users:read',
       'webhooks:read',
       'webhooks:write',
-      'admin',
+      'empresas:leer',
+      'empresas:escribir',
     ])
     expect(Array.isArray(DELIVERY_STATUSES)).toBe(true)
     expect([...DELIVERY_STATUSES]).toEqual([
@@ -526,7 +531,8 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
     ])
 
     const code: EventCode = EVENT_CODES.USER_CREATED
-    const scope: ServiceClientScope = SERVICE_CLIENT_SCOPES[0]
+    const scope: ServiceScope<'auth-api'> =
+      SERVICE_AUDIENCE_SCOPES['auth-api'][0]
     expect([code, scope]).toEqual(['user.created', 'users:read'])
   })
 
@@ -536,7 +542,7 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
     expect(contract.WEBHOOK_TIMESTAMP_WINDOW_SECONDS).toBe(
       WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
     )
-    expect(contract.SERVICE_CLIENT_SCOPES).toBe(SERVICE_CLIENT_SCOPES)
+    expect(contract.SERVICE_AUDIENCE_SCOPES).toBe(SERVICE_AUDIENCE_SCOPES)
     expect(contract.DELIVERY_STATUSES).toBe(DELIVERY_STATUSES)
     expect(contract.WEBHOOK_ROUTES).toBe(WEBHOOK_ROUTES)
     expect(contract.ADMIN_ROUTES).toBe(ADMIN_ROUTES)
@@ -589,6 +595,18 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
         method: 'post',
         path: '/admin/service-clients/{slug}/rotate-secret',
       },
+      listServiceClientGrants: {
+        method: 'get',
+        path: '/admin/service-clients/{slug}/grants',
+      },
+      setServiceClientGrant: {
+        method: 'put',
+        path: '/admin/service-clients/{slug}/grants',
+      },
+      deleteServiceClientGrant: {
+        method: 'delete',
+        path: '/admin/service-clients/{slug}/grants/{audience}',
+      },
       restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
       republishPendingWebhooks: {
         method: 'post',
@@ -600,7 +618,7 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
       },
     })
     expect(Object.keys(WEBHOOK_ROUTES)).toHaveLength(7)
-    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(9)
+    expect(Object.keys(ADMIN_ROUTES)).toHaveLength(12)
     for (const { path } of [
       ...Object.values(WEBHOOK_ROUTES),
       ...Object.values(ADMIN_ROUTES),
@@ -649,7 +667,7 @@ describe('contract export surface (REQ-CONTRACT-13)', () => {
 
 // REQ-CONTRACT-15 (D-35): constants.ts and routes.ts are PURE. The SDK `react` entry imports their
 // VALUES; a zod or schema-module import would drag `.meta()` side effects into that closure.
-const PURE_MODULES = ['constants', 'routes']
+const PURE_MODULES = ['catalog', 'constants', 'routes', 'tokens']
 
 const importSpecifiers = (source: string): string[] =>
   [...source.matchAll(/(?:\bfrom|\bimport)\s+['"]([^'"]+)['"]/g)].map(

@@ -89,6 +89,10 @@ export const EVENT_CODES = {
   USER_DELETED: 'user.deleted',
   USER_RESTORED: 'user.restored',
   USER_HARD_DELETED: 'user.hard_deleted',
+  EMPRESA_CREATED: 'empresa.created',
+  EMPRESA_MEMBER_ADDED: 'empresa.member_added',
+  EMPRESA_MEMBER_REMOVED: 'empresa.member_removed',
+  EMPRESA_BRANCH_CREATED: 'empresa.branch_created',
 } as const
 
 export type EventCode = (typeof EVENT_CODES)[keyof typeof EVENT_CODES]
@@ -105,19 +109,6 @@ export const WEBHOOK_HEADERS = {
 
 /** Seconds around "now" within which a receiver accepts the timestamp of a webhook. */
 export const WEBHOOK_TIMESTAMP_WINDOW_SECONDS = 300
-
-/**
- * Scopes a service client may hold, in the order the API lists them. A tuple so schemas can build
- * an enum straight from it; add one here only together with the route that requires it.
- */
-export const SERVICE_CLIENT_SCOPES = [
-  'users:read',
-  'webhooks:read',
-  'webhooks:write',
-  'admin',
-] as const
-
-export type ServiceClientScope = (typeof SERVICE_CLIENT_SCOPES)[number]
 
 /**
  * Delivery states of a webhook. A tuple, like the other enums: the API database enum is checked

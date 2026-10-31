@@ -33,6 +33,20 @@ const phoneSchema = z
     example: '5491155551234',
   })
 
+/**
+ * Product slug: same shape as a service client slug. It never equals a service audience; the API
+ * checks that with `isServiceAudience`.
+ */
+export const productoSlugSchema = z
+  .string()
+  .regex(/^[a-z][a-z0-9-]{2,63}$/, {
+    error: 'producto debe matchear ^[a-z][a-z0-9-]{2,63}$',
+  })
+  .meta({
+    description: 'Producto al que entra la persona',
+    example: 'whatsapp-panel',
+  })
+
 export const getCodeRequestSchema = z
   .object({
     phone: phoneSchema,
@@ -71,6 +85,10 @@ export const loginRequestSchema = z
         description: 'Código OTP de 6 caracteres',
         example: 'A1B2C3',
       }),
+    producto: productoSlugSchema,
+    empresaId: z.string().min(1).max(64).optional().meta({
+      description: 'Empresa que queda activa en la sesión (opcional)',
+    }),
     challengeId: z
       .string()
       .regex(/^[0-9a-f]{32}$/, { error: 'Formato de challenge inválido' })
@@ -137,7 +155,29 @@ export const loginResponseSchema = z.object({
   }),
 })
 
+/** Active company switch body: an id, or `null` to leave the session without one. */
+export const setActiveEmpresaRequestSchema = z
+  .object({
+    empresaId: z.string().min(1).max(64).nullable().meta({
+      description: 'Empresa que queda activa, o null para ninguna',
+    }),
+  })
+  .strict()
+
+/** Active company switch answer. The re-issued access token travels in the `x-eva-new-access-token` header; the refresh token does not rotate. */
+export const setActiveEmpresaResponseSchema = z.object({
+  data: z.object({
+    empresaId: z.string().nullable().meta({ description: 'Empresa activa' }),
+  }),
+})
+
 export type GetCodeRequest = z.input<typeof getCodeRequestSchema>
 export type GetCodeResponse = z.output<typeof getCodeResponseSchema>
 export type LoginRequest = z.input<typeof loginRequestSchema>
 export type LoginResponse = z.output<typeof loginResponseSchema>
+export type SetActiveEmpresaRequest = z.input<
+  typeof setActiveEmpresaRequestSchema
+>
+export type SetActiveEmpresaResponse = z.output<
+  typeof setActiveEmpresaResponseSchema
+>

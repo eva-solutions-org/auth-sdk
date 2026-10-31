@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { SERVICE_CLIENT_SCOPES } from './constants'
+import { SERVICE_AUDIENCE_SCOPES, SERVICE_AUDIENCES } from './catalog'
 
 /**
  * SCHEMA module: service client provisioning (admin) and the user restore answer. The update body
@@ -15,20 +15,56 @@ export const serviceClientSlugSchema = z
   })
 
 /**
- * Scopes without repeats. Duplicates are removed (first order kept) instead of rejected: repeating
- * a scope does not change the permissions granted. The input list is bounded (repeats included)
- * so a request cannot carry an arbitrarily long array.
+ * Permissions of one audience without repeats. Duplicates are removed (first order kept) instead
+ * of rejected: repeating a scope does not change what is granted. At least one is required (a
+ * grant with no permissions is removed, not stored) and the input list is bounded (repeats
+ * included) so a request cannot carry an arbitrarily long array.
  */
-const scopesSchema = z
-  .array(z.enum(SERVICE_CLIENT_SCOPES))
-  .max(16)
-  .transform((scopes) => [...new Set(scopes)])
+const scopesOf = <const T extends readonly [string, ...string[]]>(scopes: T) =>
+  z
+    .array(z.enum(scopes))
+    .min(1)
+    .max(16)
+    .transform((list) => [...new Set(list)])
+
+/**
+ * Create or replace the grant of a service client on one audience. One variant per audience of the
+ * catalog, so a permission typo or a permission of another audience (`admin` on `auth-api`) is
+ * rejected by the schema itself. A test pins that every audience has its variant.
+ */
+export const setServiceClientGrantRequestSchema = z.discriminatedUnion(
+  'audience',
+  [
+    z
+      .object({
+        audience: z.literal('auth-api'),
+        scopes: scopesOf(SERVICE_AUDIENCE_SCOPES['auth-api']),
+      })
+      .strict(),
+    z
+      .object({
+        audience: z.literal('whatsapp-api'),
+        scopes: scopesOf(SERVICE_AUDIENCE_SCOPES['whatsapp-api']),
+      })
+      .strict(),
+  ],
+)
+
+export const serviceClientGrantSchema = z
+  .object({
+    audience: z.enum(SERVICE_AUDIENCES),
+    scopes: z.array(z.string()),
+  })
+  .meta({ id: 'ServiceClientGrant' })
 
 export const createServiceClientRequestSchema = z
   .object({
     slug: serviceClientSlugSchema,
     name: z.string().min(1).max(100).optional(),
-    scopes: scopesSchema.optional().default([]),
+    esAdmin: z.boolean().optional().default(false).meta({
+      description:
+        'Marca de administrador de Auth: autoriza la superficie /admin firmada',
+    }),
   })
   .strict()
 
@@ -36,7 +72,7 @@ export const createServiceClientRequestSchema = z
 export const updateServiceClientRequestSchema = z
   .object({
     enabled: z.boolean().optional(),
-    scopes: scopesSchema.optional(),
+    esAdmin: z.boolean().optional(),
     name: z.string().min(1).max(100).optional(),
   })
   .strict()
@@ -48,7 +84,8 @@ export const serviceClientPublicSchema = z
     slug: z.string(),
     name: z.string(),
     enabled: z.boolean(),
-    scopes: z.array(z.string()),
+    esAdmin: z.boolean(),
+    grants: z.array(serviceClientGrantSchema),
     lastUsedAt: z.union([z.string(), z.null()]),
     createdAt: z.string(),
     updatedAt: z.string(),
@@ -62,7 +99,7 @@ export const createServiceClientResponseSchema = z
       id: z.string().uuid(),
       slug: z.string(),
       name: z.string(),
-      scopes: z.array(z.string()),
+      esAdmin: z.boolean(),
       enabled: z.literal(true),
       secret: z.string(),
       warning: z.string(),
@@ -85,6 +122,22 @@ export const getServiceClientResponseSchema = z
     }),
   })
   .meta({ id: 'AdminDetailResponse' })
+
+export const listServiceClientGrantsResponseSchema = z
+  .object({
+    data: z.object({
+      grants: z.array(serviceClientGrantSchema),
+    }),
+  })
+  .meta({ id: 'AdminGrantsResponse' })
+
+export const setServiceClientGrantResponseSchema = z
+  .object({
+    data: z.object({
+      grant: serviceClientGrantSchema,
+    }),
+  })
+  .meta({ id: 'AdminGrantResponse' })
 
 export const updateServiceClientResponseSchema = z
   .object({
@@ -131,6 +184,16 @@ export type CreateServiceClientRequest = z.input<
 >
 export type UpdateServiceClientRequest = z.input<
   typeof updateServiceClientRequestSchema
+>
+export type SetServiceClientGrantRequest = z.input<
+  typeof setServiceClientGrantRequestSchema
+>
+export type ServiceClientGrant = z.output<typeof serviceClientGrantSchema>
+export type ListServiceClientGrantsResponse = z.output<
+  typeof listServiceClientGrantsResponseSchema
+>
+export type SetServiceClientGrantResponse = z.output<
+  typeof setServiceClientGrantResponseSchema
 >
 export type ServiceClientPublic = z.output<typeof serviceClientPublicSchema>
 export type CreateServiceClientResponse = z.output<

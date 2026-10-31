@@ -6,7 +6,7 @@
 /** Version prefix of every Auth route except the root ones (JWKS, health, docs UI). */
 export const API_PREFIX = '/api/v1' as const
 
-export type HttpMethod = 'get' | 'post' | 'patch' | 'delete'
+export type HttpMethod = 'get' | 'post' | 'put' | 'patch' | 'delete'
 
 /**
  * Route as data: `path` is relative to {@link API_PREFIX} and uses the OpenAPI template form
@@ -36,6 +36,26 @@ export const SESSION_ROUTES = {
 export const INTERNAL_USER_ROUTES = {
   get: { method: 'get', path: '/internal/users/{id}' },
   batch: { method: 'post', path: '/internal/users/batch' },
+} as const satisfies Record<string, RouteDescriptor>
+
+/**
+ * Service token endpoint. The only service-to-service route that authenticates with the signed
+ * request of the service client. Relative to {@link API_PREFIX}.
+ */
+export const INTERNAL_TOKEN_ROUTES = {
+  issue: { method: 'post', path: '/internal/token' },
+} as const satisfies Record<string, RouteDescriptor>
+
+/** Companies and branches, service-to-service. Relative to {@link API_PREFIX}. */
+export const INTERNAL_EMPRESA_ROUTES = {
+  create: { method: 'post', path: '/internal/empresas' },
+  get: { method: 'get', path: '/internal/empresas/{id}' },
+  addMember: { method: 'post', path: '/internal/empresas/{id}/miembros' },
+  removeMember: {
+    method: 'delete',
+    path: '/internal/empresas/{id}/miembros/{userId}',
+  },
+  createBranch: { method: 'post', path: '/internal/empresas/{id}/sucursales' },
 } as const satisfies Record<string, RouteDescriptor>
 
 /**
@@ -89,6 +109,18 @@ export const ADMIN_ROUTES = {
     method: 'post',
     path: '/admin/service-clients/{slug}/rotate-secret',
   },
+  listServiceClientGrants: {
+    method: 'get',
+    path: '/admin/service-clients/{slug}/grants',
+  },
+  setServiceClientGrant: {
+    method: 'put',
+    path: '/admin/service-clients/{slug}/grants',
+  },
+  deleteServiceClientGrant: {
+    method: 'delete',
+    path: '/admin/service-clients/{slug}/grants/{audience}',
+  },
   restoreUser: { method: 'post', path: '/admin/users/{id}/restore' },
   republishPendingWebhooks: {
     method: 'post',
@@ -97,10 +129,11 @@ export const ADMIN_ROUTES = {
   maintenanceCleanup: { method: 'post', path: '/admin/maintenance/cleanup' },
 } as const satisfies Record<string, RouteDescriptor>
 
-/** Login, refresh and logout routes. Relative to {@link API_PREFIX}. */
+/** Login, refresh, logout and active company routes. Relative to {@link API_PREFIX}. */
 export const AUTH_ROUTES = {
   getCode: { method: 'post', path: '/login/get-code' },
   login: { method: 'post', path: '/login' },
   refresh: { method: 'post', path: '/login/refresh' },
   logout: { method: 'post', path: '/login/logout' },
+  setActiveEmpresa: { method: 'post', path: '/auth/empresa-activa' },
 } as const satisfies Record<string, RouteDescriptor>
