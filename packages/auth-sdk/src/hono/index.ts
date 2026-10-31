@@ -17,14 +17,14 @@ export {
   setTokenCookies,
   clearTokenCookies,
 } from '../cookies'
-export { HEADERS, COOKIES, COOKIE_MAX_AGE } from '../constants'
+export { HEADERS, getCookieNames, COOKIE_MAX_AGE } from '../constants'
 export type { EvaErrorMessages } from '../error-messages'
 export { DEFAULT_ERROR_MESSAGES } from '../error-messages'
 // S2S Hono middlewares (v1.1.0)
-export { s2sAuth, requireScope, serviceJwtAuth } from './s2s'
+export { s2sAuth, requireScope, serviceTokenAuth } from './s2s'
 export type {
   S2sAuthOptions,
   S2sAuthVariables,
-  ServiceJwtAuthOptions,
-  ServiceJwtAuthVariables,
+  ServiceTokenAuthOptions,
+  ServiceTokenAuthVariables,
 } from './s2s'

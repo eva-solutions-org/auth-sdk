@@ -11,7 +11,7 @@
 export {
   /**
    * Catálogo de event codes que el Auth Service puede emitir en webhooks (REQ-WH-07 LOCKED:
-   * 11 event codes).
+   * 15 event codes).
    */
   EVENT_CODES,
   /**

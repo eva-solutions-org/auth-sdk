@@ -11,8 +11,11 @@
 import { createMiddleware } from 'hono/factory'
 import { cloneRawRequest } from 'hono/request'
 import { verifyS2SRequest } from '../s2s/verify'
-import { verifyServiceJwt } from '../s2s/service-jwt'
-import type { ServiceJwtVerifyOptions } from '../s2s/service-jwt'
+import {
+  assertServiceTokenOptions,
+  verifyServiceToken,
+} from '../s2s/service-token'
+import type { ServiceTokenVerifyOptions } from '../s2s/service-token'
 import type { S2SVerifyOptions } from '../s2s/types'
 
 // ---------------------------------------------------------------------------
@@ -233,11 +236,14 @@ export function requireScope(
   }
 
   return createMiddleware<{ Variables: S2sAuthVariables }>(async (c, next) => {
-    const vars = c.var.s2sScopes
+    // Tras `s2sAuth` (HMAC) vive en `s2sScopes`; tras `serviceTokenAuth` (Bearer), en `serviceScopes`.
+    const vars =
+      c.var.s2sScopes ??
+      (c.var as unknown as { serviceScopes?: readonly string[] }).serviceScopes
 
     if (vars === undefined) {
       throw new Error(
-        '[eva-auth-sdk] requireScope: s2sAuth middleware not applied — apply s2sAuth() before requireScope()',
+        '[eva-auth-sdk] requireScope: no auth middleware applied — apply s2sAuth() or serviceTokenAuth() before requireScope()',
       )
     }
 
@@ -282,51 +288,73 @@ export function requireScope(
 }
 
 // ---------------------------------------------------------------------------
-// JWT de servicio (Auth Service -> este servicio)
+// Token de servicio (Bearer de otro servicio, o del propio Auth en el OTP)
 // ---------------------------------------------------------------------------
 
-/** Options for `serviceJwtAuth`: those of `verifyServiceJwt` (the middleware provides the request). */
-export type ServiceJwtAuthOptions = ServiceJwtVerifyOptions
+/** Options for `serviceTokenAuth`: those of `verifyServiceToken` (the middleware provides the token). */
+export type ServiceTokenAuthOptions = ServiceTokenVerifyOptions
 
 /**
- * Hono context variables set by `serviceJwtAuth`.
+ * Hono context variables set by `serviceTokenAuth`.
  */
-export type ServiceJwtAuthVariables = {
-  serviceJwtId: string
-  serviceJwtScopes: readonly string[]
+export type ServiceTokenAuthVariables = {
+  /** `sub` del token: id interno estable del service client. Es la identidad. */
+  serviceClientId: string
+  /** `client_id` del token: slug del service client. Dato visible, no identidad. */
+  serviceClientSlug: string
+  serviceScopes: readonly string[]
 }
 
+// El esquema se compara sin distinguir mayúsculas (RFC 9110 §11.1: `bearer` también es válido).
+const BEARER_REGEX =
+  /^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i
+
 /**
- * Hono middleware that verifies inbound requests signed by the Auth Service with a service JWT
- * (ES256, `typ: 'svc+jwt'`, `aud` of this service, `scope`, `jti`, `bsha`). Counterpart of
- * `s2sAuth` for the Auth -> service direction; see `verifyServiceJwt` for the token contract.
+ * Hono middleware that verifies the service token (ES256, `typ: 'svc-at+jwt'`, `kid` `svc-…`, `aud`
+ * of this service, `scope`) sent as `Authorization: Bearer`. See `verifyServiceToken` for the
+ * token contract.
  *
- * On **success**: sets `c.var.serviceJwtId` and `c.var.serviceJwtScopes`, then calls `next()`.
- * On **failure**: HTTP 401 `{ error: { code: <ServiceJwtVerifyReason>, message } }`, or HTTP 403
- * with code `insufficient_scope` when the token is valid but lacks `requiredScope`.
+ * On **success**: sets `c.var.serviceClientId` (`sub`), `c.var.serviceClientSlug` (`client_id`) and
+ * `c.var.serviceScopes`, then calls `next()`.
+ * On **failure**: HTTP 401 `{ error: { code: <ServiceTokenVerifyReason>, message } }`, or HTTP 403
+ * with code `insufficient_scope` when the token is valid but lacks the required scope.
  *
- * The request is cloned before reading the body (`cloneRawRequest`), so route handlers can still
- * read it. JWKS/config failures are not rejections: they propagate and Hono answers 500.
+ * JWKS/config failures are not rejections: they propagate and Hono answers 500.
+ *
+ * With `scopeCheck: 'deferred'` the token is authenticated but no permission is required here; mount
+ * `requireScope(...)` per route afterwards (it reads `serviceScopes` when `s2sScopes` is absent).
+ *
+ * @throws `TypeError` when the middleware is built with options that are not valid for the
+ *   catalog (unknown audience, a permission of another audience, no permission rule).
  *
  * @example
  * ```ts
  * app.use(
  *   '/v1/internal/messages/*',
- *   serviceJwtAuth({
- *     audience: 'whatsapp-api',
- *     requiredScope: 'messages:send',
- *     replayCache: { setIfAbsent: (key, ttl) => store.setNx(key, ttl) },
- *   }),
+ *   serviceTokenAuth({ audience: 'whatsapp-api', requiredScope: 'messages:send:text' }),
  * )
  * ```
  */
-export function serviceJwtAuth(
-  opts: ServiceJwtAuthOptions,
-): ReturnType<typeof createMiddleware<{ Variables: ServiceJwtAuthVariables }>> {
-  return createMiddleware<{ Variables: ServiceJwtAuthVariables }>(
+export function serviceTokenAuth(
+  opts: ServiceTokenAuthOptions,
+): ReturnType<
+  typeof createMiddleware<{ Variables: ServiceTokenAuthVariables }>
+> {
+  // Las opciones se validan al construir el middleware (falla al arrancar), no en cada request.
+  assertServiceTokenOptions(opts)
+  return createMiddleware<{ Variables: ServiceTokenAuthVariables }>(
     async (c, next) => {
-      const clonedRequest = await cloneRawRequest(c.req)
-      const result = await verifyServiceJwt(clonedRequest, opts)
+      const bearer = c.req.header('authorization')?.match(BEARER_REGEX)
+      const result = bearer
+        ? await verifyServiceToken(bearer[1] as string, opts)
+        : ({
+            ok: false,
+            error: {
+              reason: 'token_missing',
+              message:
+                opts.messages?.token_missing ?? 'Bearer token is missing',
+            },
+          } as const)
 
       if (!result.ok) {
         if (result.error.reason === 'scope_insufficient') {
@@ -348,8 +376,9 @@ export function serviceJwtAuth(
         )
       }
 
-      c.set('serviceJwtId', result.data.jti)
-      c.set('serviceJwtScopes', result.data.scopes)
+      c.set('serviceClientId', result.data.serviceClientId)
+      c.set('serviceClientSlug', result.data.serviceClientSlug)
+      c.set('serviceScopes', result.data.scopes)
       await next()
     },
   )

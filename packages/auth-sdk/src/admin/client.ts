@@ -5,8 +5,9 @@
  * REQ-ADMIN-01, REQ-ADMIN-02, REQ-ADMIN-03, REQ-ADMIN-04, REQ-ADMIN-05 LOCKED.
  * REQ-RESTORE-01 LOCKED: endpoint POST /admin/users/:id/restore.
  *
- * Autenticación: firma HMAC S2S (la misma de `createS2SClient`) de un service client con scope
- * `admin`. Una persona, un client: el API registra el slug que firmó como `actor`.
+ * Autenticación: firma HMAC S2S de un service client con la marca `esAdmin` (la superficie
+ * `/admin` de Auth es la única, junto con el pedido de token, que conserva la firma). Una persona,
+ * un client: el API registra el slug que firmó como `actor`.
  *
  * Endpoints:
  *   POST   /admin/service-clients                       → createServiceClient
@@ -15,6 +16,9 @@
  *   PATCH  /admin/service-clients/:slug                 → updateServiceClient
  *   DELETE /admin/service-clients/:slug                 → deleteServiceClient (204)
  *   POST   /admin/service-clients/:slug/rotate-secret   → rotateServiceClientSecret
+ *   GET    /admin/service-clients/:slug/grants          → listServiceClientGrants
+ *   PUT    /admin/service-clients/:slug/grants          → setServiceClientGrant
+ *   DELETE /admin/service-clients/:slug/grants/:audience → deleteServiceClientGrant (204)
  *   POST   /admin/users/:id/restore                     → restoreUser
  *   POST   /admin/webhooks/republish-pending            → republishPendingWebhooks
  *   POST   /admin/maintenance/cleanup                   → maintenanceCleanup
@@ -37,6 +41,9 @@ import type {
   ServiceClientPublic,
   CreateServiceClientInput,
   CreateServiceClientResult,
+  ListServiceClientGrantsResult,
+  ServiceClientGrant,
+  SetServiceClientGrantInput,
   UpdateServiceClientInput,
   UpdateServiceClientResult,
   RotateSecretResult,
@@ -66,6 +73,18 @@ export type AdminClient = {
   ): Promise<Result<UpdateServiceClientResult>>
   deleteServiceClient(slug: string): Promise<Result<void>>
   rotateServiceClientSecret(slug: string): Promise<Result<RotateSecretResult>>
+  listServiceClientGrants(
+    slug: string,
+  ): Promise<Result<ListServiceClientGrantsResult>>
+  /** Crea o reemplaza la concesión del client sobre una audiencia. */
+  setServiceClientGrant(
+    slug: string,
+    input: SetServiceClientGrantInput,
+  ): Promise<Result<{ grant: ServiceClientGrant }>>
+  deleteServiceClientGrant(
+    slug: string,
+    audience: string,
+  ): Promise<Result<void>>
   restoreUser(userId: string): Promise<Result<RestoreUserResult>>
   republishPendingWebhooks(
     query?: RepublishPendingWebhooksQuery,
@@ -189,7 +208,7 @@ function invalidParamResult(method: string, param: string): Result<never> {
  *   secretHex: process.env.AUTH_ADMIN_SECRET,
  *   baseUrl: 'https://auth.miapp.com',
  * })
- * const result = await admin.createServiceClient({ slug: 'mi-servicio', scopes: ['users:read'] })
+ * const result = await admin.createServiceClient({ slug: 'mi-servicio' })
  * if (!result.ok) return handleError(result.error)
  * console.log('Secret (guardar ahora):', result.data.secret)
  * ```
@@ -271,6 +290,62 @@ export function createAdminClient(config: AdminClientConfig): AdminClient {
         method: 'POST',
         pathname: apiPath(ADMIN_ROUTES.rotateServiceClientSecret, {
           slug: segment,
+        }),
+      })
+    },
+
+    async listServiceClientGrants(
+      slug: string,
+    ): Promise<Result<ListServiceClientGrantsResult>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('listServiceClientGrants', 'slug')
+      }
+      return adminFetch<ListServiceClientGrantsResult>({
+        config,
+        method: 'GET',
+        pathname: apiPath(ADMIN_ROUTES.listServiceClientGrants, {
+          slug: segment,
+        }),
+      })
+    },
+
+    async setServiceClientGrant(
+      slug: string,
+      input: SetServiceClientGrantInput,
+    ): Promise<Result<{ grant: ServiceClientGrant }>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('setServiceClientGrant', 'slug')
+      }
+      return adminFetch<{ grant: ServiceClientGrant }>({
+        config,
+        method: 'PUT',
+        pathname: apiPath(ADMIN_ROUTES.setServiceClientGrant, {
+          slug: segment,
+        }),
+        body: input,
+      })
+    },
+
+    async deleteServiceClientGrant(
+      slug: string,
+      audience: string,
+    ): Promise<Result<void>> {
+      const segment = encodePathSegment(slug)
+      if (segment === null) {
+        return invalidParamResult('deleteServiceClientGrant', 'slug')
+      }
+      const audienceSegment = encodePathSegment(audience)
+      if (audienceSegment === null) {
+        return invalidParamResult('deleteServiceClientGrant', 'audience')
+      }
+      return adminFetch<void>({
+        config,
+        method: 'DELETE',
+        pathname: apiPath(ADMIN_ROUTES.deleteServiceClientGrant, {
+          slug: segment,
+          audience: audienceSegment,
         }),
       })
     },

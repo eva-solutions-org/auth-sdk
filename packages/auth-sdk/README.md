@@ -19,7 +19,7 @@ It ships as tree-shakeable ESM + CJS with TypeScript declarations, sourcemaps, a
 
 ## Features
 
-- JWT verification with ES256 + automatic JWKS rotation (24 h cache, 30 s refetch cooldown)
+- JWT verification with ES256 + automatic JWKS rotation (10 min cache, 30 s refetch cooldown)
 - Secure HttpOnly cookie session management — no tokens exposed to JavaScript
 - React hooks for client-side auth state (`useAuth`, `useUser`, `useSessions`, `useEmpresas`)
 - Hono middleware and pre-built auth routes for server-side route protection
@@ -159,20 +159,36 @@ const { payload, newCookies } = result.data;
 // newCookies: string[] | undefined — forward to Set-Cookie if present
 ```
 
-### Service-to-Service (S2S signing)
+### Service-to-Service (service tokens)
 
 ```ts
-import { createS2SClient } from '@eva_solutions/auth-sdk/s2s';
+import { createS2SClient, createServiceTokenProvider } from '@eva_solutions/auth-sdk/s2s';
 
-const s2s = createS2SClient({
+// The provider asks Auth for a service token (HMAC-signed request), caches it,
+// renews it 30 s early and de-duplicates concurrent requests.
+const tokenProvider = createServiceTokenProvider({
+  authUrl: 'https://auth.example.com',
   clientId: 'my-service',
-  secretHex: process.env.S2S_SECRET!,
-  baseUrl: 'https://auth.example.com',
+  secretHex: process.env.AUTH_CLIENT_SECRET_HEX!,
+  audience: 'auth-api',
 });
 
-// All requests are automatically signed with HMAC
+// Every call goes out as `Authorization: Bearer <token>`; after a 401 the token is
+// invalidated and the call is retried once.
+const s2s = createS2SClient({ baseUrl: 'https://auth.example.com', tokenProvider });
 const user = await s2s.getUser('user-id-123');
 ```
+
+Verifying a service token you receive (no `product` needed):
+
+```ts
+import { serviceTokenAuth } from '@eva_solutions/auth-sdk/hono';
+
+app.use('/v1/internal/*', serviceTokenAuth({ audience: 'whatsapp-api', requiredScope: 'messages:send:text' }));
+// c.var.serviceClientId (sub), c.var.serviceClientSlug (client_id), c.var.serviceScopes
+```
+
+User sessions are per product: call `configureEvaAuth({ authUrl, product: 'whatsapp-panel' })` at boot. Cookies become `eva_<product>_access_token` / `eva_<product>_refresh_token`.
 
 Low-level signing (when you need manual control). `signS2SHeaders` returns the four
 required headers (`x-eva-client-id`, `x-eva-timestamp`, `x-eva-nonce`, `x-eva-signature`);
@@ -199,7 +215,7 @@ await fetch('https://auth.example.com/api/v1/internal/users/batch', {
 
 ### Verifying inbound S2S requests
 
-If your service receives requests signed via `createS2SClient`, `signS2SHeaders` or `signS2SRequest`,
+If your service receives requests signed via `signS2SHeaders` or `signS2SRequest` (only the Auth token endpoint and `/admin` still use HMAC),
 use the server-side verification primitives to authenticate them.
 
 #### Hono middleware (recommended for Hono apps)
@@ -383,7 +399,7 @@ The SDK exports 9 independent entry points. Import only what your runtime needs.
 
 ## JWT Configuration
 
-The SDK verifies tokens issued by the EVA Auth Service. The JWT `iss` and `aud` claim values are fixed to the values emitted by the official service (`iss: 'auth-service'`, `aud: 'proyecto-global'`). These values are not configurable — they reflect the Auth Service contract and are intentional.
+The SDK verifies tokens issued by the EVA Auth Service. The JWT `iss` claim is fixed to the value emitted by the official service (`iss: 'auth-service'`), and the user access token `aud` must equal the product you set with `configureEvaAuth({ product })`. Service tokens must carry `typ: 'svc-at+jwt'`, a `svc-` key id and the `aud` of the receiving service. These values reflect the Auth Service contract and are intentional.
 
 ---
 

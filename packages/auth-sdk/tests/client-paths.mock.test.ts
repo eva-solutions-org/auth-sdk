@@ -20,6 +20,7 @@ vi.mock('../src/config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/config')>()),
   getAuthUrl: getAuthUrlMock,
   getCookieDomain: () => undefined,
+  getProduct: () => 'whatsapp-panel',
   configureEvaAuth: vi.fn(),
 }))
 
@@ -104,9 +105,8 @@ describe('client_paths_equal_prefixed_descriptors', () => {
 
   it('client_paths_prefixed_jwks_health_root: internal users and admin list are prefixed', async () => {
     const s2s = createS2SClient({
-      clientId: 'svc',
-      secretHex: 'a'.repeat(64),
       baseUrl: 'https://auth.example',
+      tokenProvider: { getToken: async () => 'svc-token', invalidate() {} },
     })
     const admin = createAdminClient({
       clientId: 'admin-test',
@@ -208,9 +208,8 @@ describe('client_paths_equal_prefixed_descriptors: users and sessions', () => {
 
 describe('client_paths_equal_prefixed_descriptors: internal users', () => {
   const s2s = createS2SClient({
-    clientId: 'svc',
-    secretHex: 'a'.repeat(64),
     baseUrl: 'https://auth.example',
+    tokenProvider: { getToken: async () => 'svc-token', invalidate() {} },
   })
 
   it('getUser uses the internal user descriptor', async () => {
@@ -234,9 +233,8 @@ describe('client_paths_equal_prefixed_descriptors: internal users', () => {
 
 describe('client_paths_equal_prefixed_descriptors: webhooks', () => {
   const s2s = createS2SClient({
-    clientId: 'svc',
-    secretHex: 'a'.repeat(64),
     baseUrl: 'https://auth.example',
+    tokenProvider: { getToken: async () => 'svc-token', invalidate() {} },
   })
   const ID = '550e8400-e29b-41d4-a716-446655440000'
   const fill = (path: string) => path.replace('{id}', ID)

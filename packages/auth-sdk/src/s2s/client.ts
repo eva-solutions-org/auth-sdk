@@ -1,6 +1,7 @@
 /**
- * Cliente S2S (service-to-service) para comunicación autenticada con el Auth Service
- * desde services backend usando firma HMAC-SHA-256 SigV4-style.
+ * Cliente S2S (service-to-service) para llamar a la API interna del Auth Service desde servicios
+ * backend. Autentica cada llamada con `Authorization: Bearer <token de servicio>` (audiencia
+ * `auth-api`) que entrega un `ServiceTokenProvider`; ante un 401 invalida el token y reintenta UNA vez.
  *
  * REQ-S2S-01, REQ-S2S-04, REQ-INT-01, REQ-INT-02 LOCKED.
  *
@@ -14,11 +15,18 @@
  *   DELETE /internal/webhooks/subscriptions/:id
  *   POST /internal/webhooks/subscriptions/:id/rotate-secret
  *   GET  /internal/webhooks/deliveries
+ *   POST /internal/empresas
+ *   GET  /internal/empresas/:id
+ *   POST /internal/empresas/:id/miembros
+ *   DELETE /internal/empresas/:id/miembros/:userId
+ *   POST /internal/empresas/:id/sucursales
  *
- * Los paths salen de `INTERNAL_USER_ROUTES` y `WEBHOOK_ROUTES` (contrato compartido) vía `apiPath`.
+ * Los paths salen de `INTERNAL_USER_ROUTES`, `WEBHOOK_ROUTES` e `INTERNAL_EMPRESA_ROUTES`
+ * (contrato compartido) vía `apiPath`.
  */
 
 import {
+  INTERNAL_EMPRESA_ROUTES,
   INTERNAL_USER_ROUTES,
   USERS_BATCH_MAX_IDS,
   WEBHOOK_ROUTES,
@@ -28,7 +36,6 @@ import { validateHttpsUrl } from '../config'
 import { parseErrorResponse } from '../parse-error-response'
 import { encodePathSegment } from '../path-segment'
 import type { Result } from '../types'
-import { signS2SHeaders } from './sign'
 import type {
   S2SClientConfig,
   S2SGetUserResult,
@@ -37,15 +44,20 @@ import type {
   CreateWebhookSubscriptionInput,
   UpdateWebhookSubscriptionInput,
   ListWebhookDeliveriesQuery,
+  CreateEmpresaInput,
+  CreateSucursalInput,
+  EmpresaResult,
+  EmpresaDetailResult,
+  EmpresaMemberResult,
+  SucursalResult,
 } from './types'
+import { ServiceTokenRequestError } from './token-provider'
 import type {
   WebhookSubscription,
   WebhookSubscriptionWithSecret,
   WebhookDelivery,
   RotateWebhookSecretResult,
 } from '../webhooks/types'
-
-const encoder = new TextEncoder()
 
 /**
  * Tipo del cliente S2S retornado por `createS2SClient`.
@@ -71,6 +83,22 @@ export type S2SClient = {
   listWebhookDeliveries(
     query?: ListWebhookDeliveriesQuery,
   ): Promise<Result<{ deliveries: WebhookDelivery[] }>>
+  /** Crea la empresa y su primer miembro en una sola operación (`empresas:escribir`). */
+  createEmpresa(input: CreateEmpresaInput): Promise<Result<EmpresaResult>>
+  /** Empresa con sus sucursales y miembros (`empresas:leer`). */
+  getEmpresa(empresaId: string): Promise<Result<EmpresaDetailResult>>
+  /** Agrega un miembro; si ya lo es, 409 `conflict` (`empresas:escribir`). */
+  addEmpresaMember(
+    empresaId: string,
+    userId: string,
+  ): Promise<Result<EmpresaMemberResult>>
+  /** Quita un miembro; si no lo es, 404 `not_found` (`empresas:escribir`). */
+  removeEmpresaMember(empresaId: string, userId: string): Promise<Result<void>>
+  /** Crea una sucursal de la empresa (`empresas:escribir`). */
+  createSucursal(
+    empresaId: string,
+    input: CreateSucursalInput,
+  ): Promise<Result<SucursalResult>>
 }
 
 // ---------------------------------------------------------------------------
@@ -108,8 +136,8 @@ function invalidIdResult(method: string): Result<never> {
 }
 
 /**
- * Realiza un fetch autenticado S2S firmando el request con HMAC-SHA-256.
- * Retorna `Result<T>` con la propiedad `data` del body de respuesta.
+ * Realiza un fetch autenticado con el token de servicio del proveedor. Un 401 invalida el token y
+ * reintenta una sola vez con uno nuevo. Retorna `Result<T>` con la propiedad `data` del body.
  */
 async function s2sFetch<T>({
   config,
@@ -125,38 +153,35 @@ async function s2sFetch<T>({
   body?: unknown
 }): Promise<Result<T>> {
   try {
-    const bodyBytes: Uint8Array =
-      body !== undefined
-        ? encoder.encode(JSON.stringify(body))
-        : new Uint8Array(0)
-
+    const bodyText = body !== undefined ? JSON.stringify(body) : undefined
     const url = rawQuery
       ? `${config.baseUrl}${pathname}?${rawQuery}`
       : `${config.baseUrl}${pathname}`
 
-    // Se firma el pathname y el query de la URL FINAL (incluido el prefijo de `baseUrl`,
-    // p. ej. `https://host/auth`), que es lo que el verificador lee en `request.url`.
-    const target = new URL(url)
-    const authHeaders = await signS2SHeaders({
-      method,
-      path: target.pathname,
-      rawQuery: target.search.slice(1),
-      bodyBytes,
-      clientId: config.clientId,
-      secretHex: config.secretHex,
-    })
-
-    const headers: Record<string, string> = {
-      'content-type': 'application/json',
-      ...authHeaders,
+    let usedToken = ''
+    const send = async (): Promise<Response> => {
+      const token = await config.tokenProvider.getToken()
+      usedToken = token
+      return fetch(url, {
+        method,
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${token}`,
+        },
+        body: bodyText,
+        signal: AbortSignal.timeout(10_000),
+      })
     }
 
-    const res = await fetch(url, {
-      method,
-      headers,
-      body: bodyBytes.length > 0 ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(10_000),
-    })
+    let res = await send()
+    if (res.status === 401) {
+      // El token pudo vencer o revocarse antes de lo que creía el proveedor: se descarta y se
+      // reintenta UNA vez. Un segundo 401 es definitivo.
+      // Se pasa el token rechazado: con N 401 simultáneos solo el primero descarta; el resto
+      // comparte el token renovado en vez de provocar un pedido por cada uno.
+      config.tokenProvider.invalidate(usedToken)
+      res = await send()
+    }
 
     if (!res.ok) {
       const responseBody = await res.json().catch(() => null)
@@ -171,6 +196,19 @@ async function s2sFetch<T>({
     const json = (await res.json()) as { data: T }
     return { ok: true, data: json.data }
   } catch (err) {
+    // El Auth Service rechazó el pedido de token (firma inválida, client deshabilitado, sin
+    // concesión): es un error de API con su `error` RFC 6749 como code.
+    if (err instanceof ServiceTokenRequestError) {
+      return {
+        ok: false,
+        error: {
+          kind: 'api',
+          code: err.code,
+          message: err.message,
+          status: err.status,
+        },
+      }
+    }
     const message = err instanceof Error ? err.message : 'Network error'
     return {
       ok: false,
@@ -189,15 +227,17 @@ async function s2sFetch<T>({
 // ---------------------------------------------------------------------------
 
 /**
- * Crea un cliente S2S autenticado para comunicarse con el Auth Service.
+ * Crea un cliente S2S autenticado para comunicarse con la API interna del Auth Service.
  *
  * @example
  * ```ts
- * const s2s = createS2SClient({
+ * const tokenProvider = createServiceTokenProvider({
+ *   authUrl: 'https://auth.miapp.com',
  *   clientId: 'mi-servicio',
- *   secretHex: process.env.EVA_S2S_SECRET,
- *   baseUrl: 'https://auth.miapp.com',
+ *   secretHex: env.AUTH_CLIENT_SECRET_HEX,
+ *   audience: 'auth-api',
  * })
+ * const s2s = createS2SClient({ baseUrl: 'https://auth.miapp.com', tokenProvider })
  * const result = await s2s.getUser(userId)
  * if (!result.ok) return handleError(result.error)
  * return result.data // perfil del usuario
@@ -354,6 +394,76 @@ export function createS2SClient(config: S2SClientConfig): S2SClient {
         method: 'GET',
         pathname: apiPath(WEBHOOK_ROUTES.listDeliveries),
         rawQuery,
+      })
+    },
+
+    async createEmpresa(
+      input: CreateEmpresaInput,
+    ): Promise<Result<EmpresaResult>> {
+      return s2sFetch<EmpresaResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(INTERNAL_EMPRESA_ROUTES.create),
+        body: input,
+      })
+    },
+
+    async getEmpresa(empresaId: string): Promise<Result<EmpresaDetailResult>> {
+      const segment = encodePathSegment(empresaId)
+      if (segment === null) return invalidIdResult('getEmpresa')
+      return s2sFetch<EmpresaDetailResult>({
+        config,
+        method: 'GET',
+        pathname: apiPath(INTERNAL_EMPRESA_ROUTES.get, { id: segment }),
+      })
+    },
+
+    async addEmpresaMember(
+      empresaId: string,
+      userId: string,
+    ): Promise<Result<EmpresaMemberResult>> {
+      const segment = encodePathSegment(empresaId)
+      if (segment === null) return invalidIdResult('addEmpresaMember')
+      return s2sFetch<EmpresaMemberResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(INTERNAL_EMPRESA_ROUTES.addMember, { id: segment }),
+        body: { userId },
+      })
+    },
+
+    async removeEmpresaMember(
+      empresaId: string,
+      userId: string,
+    ): Promise<Result<void>> {
+      const segment = encodePathSegment(empresaId)
+      const userSegment = encodePathSegment(userId)
+      if (segment === null || userSegment === null) {
+        return invalidIdResult('removeEmpresaMember')
+      }
+      return s2sFetch<void>({
+        config,
+        method: 'DELETE',
+        pathname: apiPath(INTERNAL_EMPRESA_ROUTES.removeMember, {
+          id: segment,
+          userId: userSegment,
+        }),
+      })
+    },
+
+    async createSucursal(
+      empresaId: string,
+      input: CreateSucursalInput,
+    ): Promise<Result<SucursalResult>> {
+      const segment = encodePathSegment(empresaId)
+      if (segment === null) return invalidIdResult('createSucursal')
+      return s2sFetch<SucursalResult>({
+        config,
+        method: 'POST',
+        pathname: apiPath(INTERNAL_EMPRESA_ROUTES.createBranch, {
+          id: segment,
+        }),
+        body: input,
       })
     },
   }

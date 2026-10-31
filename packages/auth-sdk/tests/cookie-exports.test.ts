@@ -1,13 +1,14 @@
 /**
- * T-43: Verifica que readTokensFromCookies, COOKIES, COOKIE_MAX_AGE, HEADERS
+ * T-43: Verifica que readTokensFromCookies, getCookieNames, COOKIE_MAX_AGE, HEADERS
  * son re-exportados desde los 4 entry points y referencian el mismo binding.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
+import { configureEvaAuth } from '../src/config'
 
 // Importar desde cada entry point (src directo para tests)
 import {
   readTokensFromCookies as rootReadTokens,
-  COOKIES as rootCOOKIES,
+  getCookieNames as rootGetCookieNames,
   COOKIE_MAX_AGE as rootCOOKIE_MAX_AGE,
   HEADERS as rootHEADERS,
   DEFAULT_ERROR_MESSAGES as rootDEFAULT,
@@ -15,7 +16,7 @@ import {
 
 import {
   readTokensFromCookies as honoReadTokens,
-  COOKIES as honoCOOKIES,
+  getCookieNames as honoGetCookieNames,
   COOKIE_MAX_AGE as honoCOOKIE_MAX_AGE,
   HEADERS as honoHEADERS,
   DEFAULT_ERROR_MESSAGES as honoDEFAULT,
@@ -23,7 +24,7 @@ import {
 
 import {
   readTokensFromCookies as genericReadTokens,
-  COOKIES as genericCOOKIES,
+  getCookieNames as genericGetCookieNames,
   COOKIE_MAX_AGE as genericCOOKIE_MAX_AGE,
   HEADERS as genericHEADERS,
   DEFAULT_ERROR_MESSAGES as genericDEFAULT,
@@ -31,11 +32,15 @@ import {
 
 import {
   readTokensFromCookies as reactReadTokens,
-  COOKIES as reactCOOKIES,
+  getCookieNames as reactGetCookieNames,
   COOKIE_MAX_AGE as reactCOOKIE_MAX_AGE,
   HEADERS as reactHEADERS,
   DEFAULT_ERROR_MESSAGES as reactDEFAULT,
 } from '../src/react/index'
+
+beforeAll(() => {
+  configureEvaAuth({ product: 'whatsapp-panel' })
+})
 
 describe('readTokensFromCookies re-exports', () => {
   it('root, /hono, /generic, /react referencian la misma función', () => {
@@ -46,23 +51,27 @@ describe('readTokensFromCookies re-exports', () => {
 
   it('funciona correctamente al parsear cookies', () => {
     const result = rootReadTokens(
-      'eva_access_token=mytoken; eva_refresh_token=myrefresh',
+      'eva_whatsapp-panel_access_token=mytoken; eva_whatsapp-panel_refresh_token=myrefresh',
     )
     expect(result.accessToken).toBe('mytoken')
     expect(result.refreshToken).toBe('myrefresh')
   })
 })
 
-describe('COOKIES re-exports', () => {
-  it('todos los entry points referencian el mismo objeto', () => {
-    expect(honoCOOKIES).toBe(rootCOOKIES)
-    expect(genericCOOKIES).toBe(rootCOOKIES)
-    expect(reactCOOKIES).toBe(rootCOOKIES)
+describe('getCookieNames re-exports', () => {
+  it('todos los entry points referencian la misma función', () => {
+    expect(honoGetCookieNames).toBe(rootGetCookieNames)
+    expect(genericGetCookieNames).toBe(rootGetCookieNames)
+    expect(reactGetCookieNames).toBe(rootGetCookieNames)
   })
 
-  it('tiene ACCESS_TOKEN y REFRESH_TOKEN', () => {
-    expect(rootCOOKIES.ACCESS_TOKEN).toBe('eva_access_token')
-    expect(rootCOOKIES.REFRESH_TOKEN).toBe('eva_refresh_token')
+  it('devuelve ACCESS_TOKEN y REFRESH_TOKEN con el producto configurado', () => {
+    expect(rootGetCookieNames().ACCESS_TOKEN).toBe(
+      'eva_whatsapp-panel_access_token',
+    )
+    expect(rootGetCookieNames().REFRESH_TOKEN).toBe(
+      'eva_whatsapp-panel_refresh_token',
+    )
   })
 })
 

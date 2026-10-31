@@ -24,7 +24,7 @@ export const ADMIN_ERROR_CODES = {
     'service_client_secret_rotation_conflict',
   /**
    * La operación dejaría al sistema sin ningún service client admin habilitado (409): borrar,
-   * deshabilitar o quitarle el scope `admin` al último. No se aplica; habilita o crea otro admin.
+   * deshabilitar o quitarle `esAdmin` al último. No se aplica; habilita o crea otro admin.
    */
   last_admin_client: 'last_admin_client',
 } as const

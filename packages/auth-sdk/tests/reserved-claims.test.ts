@@ -18,8 +18,11 @@ vi.mock('../src/jwks', () => ({
 
 import { jwtVerify } from 'jose'
 import { getJwksKeyFn } from '../src/jwks'
+import { configureEvaAuth } from '../src/config'
 
 const jwtVerifyMock = vi.mocked(jwtVerify)
+
+configureEvaAuth({ product: 'whatsapp-panel' })
 const getJwksKeyFnMock = vi.mocked(getJwksKeyFn)
 
 beforeEach(() => {
@@ -33,13 +36,18 @@ describe('RESERVED_JWT_CLAIMS — sin schema', () => {
   for (const claim of RESERVED_JWT_CLAIMS) {
     it(`claim "${claim}": NO aparece en payload cuando no hay schema`, async () => {
       // 'sub' es especial: es la fuente de 'id' en el SDK (REQ-TE-022).
-      // Cuando el JWT tiene solo { sub: 'u1', sessionId: 's1' } y no hay extras,
-      // el payload retornado es { id: 'u1', sessionId: 's1' } — 'sub' no aparece.
+      // Cuando el JWT tiene solo { sub: 'u1', sessionId: 's1', client_id: 'whatsapp-panel' } y no hay extras,
+      // el payload retornado es { id: 'u1', sessionId: 's1', clientId: 'whatsapp-panel' } — 'sub' no aparece.
       // Para cualquier otro reserved claim, el valor del claim no aparece en payload.
       const jwtPayload: Record<string, unknown> =
         claim === 'sub'
-          ? { sub: 'u1', sessionId: 's1' } // sub ya está en el payload base
-          : { sub: 'u1', sessionId: 's1', [claim]: 'valor-reservado' }
+          ? { sub: 'u1', sessionId: 's1', client_id: 'whatsapp-panel' } // sub ya está en el payload base
+          : {
+              sub: 'u1',
+              sessionId: 's1',
+              client_id: 'whatsapp-panel',
+              [claim]: 'valor-reservado',
+            }
 
       jwtVerifyMock.mockResolvedValue({
         payload: jwtPayload,
@@ -53,7 +61,11 @@ describe('RESERVED_JWT_CLAIMS — sin schema', () => {
       // El claim reservado NO aparece como propiedad en el payload.
       expect(result.data).not.toHaveProperty(claim)
       // El payload es exactamente { id, sessionId } (REQ-TE-012).
-      expect(result.data).toEqual({ id: 'u1', sessionId: 's1' })
+      expect(result.data).toEqual({
+        id: 'u1',
+        sessionId: 's1',
+        clientId: 'whatsapp-panel',
+      })
     })
   }
 })
@@ -66,6 +78,7 @@ describe('RESERVED_JWT_CLAIMS — con schema z.object({})', () => {
       const jwtPayload: Record<string, unknown> = {
         sub: 'u1',
         sessionId: 's1',
+        client_id: 'whatsapp-panel',
         [claim]: 'valor-reservado',
       }
 
@@ -92,7 +105,7 @@ describe('RESERVED_JWT_CLAIMS — schema que declara claim reservado → fail-fa
   for (const claim of RESERVED_JWT_CLAIMS) {
     it(`schema con "${claim}": lanza error con mensaje sobre claim reservado`, async () => {
       jwtVerifyMock.mockResolvedValue({
-        payload: { sub: 'u1', sessionId: 's1' },
+        payload: { sub: 'u1', sessionId: 's1', client_id: 'whatsapp-panel' },
         protectedHeader: { alg: 'ES256' },
       } as any)
 
@@ -114,7 +127,12 @@ describe('RESERVED_JWT_CLAIMS — schema que declara claim reservado → fail-fa
 describe('Claims similares a reservados — NO son reservados', () => {
   it('claim "expirationTime" (no reservado): permitido en schema', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1', expirationTime: 1800000000 },
+      payload: {
+        sub: 'u1',
+        sessionId: 's1',
+        client_id: 'whatsapp-panel',
+        expirationTime: 1800000000,
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -128,13 +146,19 @@ describe('Claims similares a reservados — NO son reservados', () => {
     expect(result.data).toEqual({
       id: 'u1',
       sessionId: 's1',
+      clientId: 'whatsapp-panel',
       expirationTime: 1800000000,
     })
   })
 
   it('claim "issuer" (no reservado): permitido en schema', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1', issuer: 'custom-issuer' },
+      payload: {
+        sub: 'u1',
+        sessionId: 's1',
+        client_id: 'whatsapp-panel',
+        issuer: 'custom-issuer',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -148,6 +172,7 @@ describe('Claims similares a reservados — NO son reservados', () => {
     expect(result.data).toEqual({
       id: 'u1',
       sessionId: 's1',
+      clientId: 'whatsapp-panel',
       issuer: 'custom-issuer',
     })
   })

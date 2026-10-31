@@ -14,6 +14,7 @@ vi.mock('../src/config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/config')>()),
   getAuthUrl: () => 'http://auth.test',
   getCookieDomain: () => undefined,
+  getProduct: () => 'whatsapp-panel',
 }))
 
 const mockFetch = vi.fn()
@@ -49,7 +50,7 @@ const EMPRESAS = [
   { id: 'e2', ruc: '20100000002', razonSocial: 'Dos SAC', slug: 'dos' },
 ]
 
-const COOKIE = 'eva_access_token=access-abc'
+const COOKIE = 'eva_whatsapp-panel_access_token=access-abc'
 
 describe('createHttpClient — respuestas array', () => {
   it('getSessions devuelve un array real, con sus elementos intactos', async () => {

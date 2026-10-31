@@ -5,8 +5,14 @@
  */
 
 import type {
+  CreateEmpresaRequest,
   CreateSubscriptionRequest,
+  CreateSucursalRequest,
+  EmpresaDetailResponse,
+  EmpresaMemberResponse,
+  EmpresaResponse,
   ProfileResponse,
+  SucursalResponse,
   UpdateSubscriptionRequest,
   UsersBatchRequest,
   UsersBatchResponse,
@@ -17,6 +23,7 @@ import type {
   WebhookDelivery,
   RotateWebhookSecretResult,
 } from '../webhooks/types'
+import type { ServiceTokenProvider } from './token-provider'
 
 // Re-exportar tipos de webhooks para que sean accesibles desde el barrel s2s
 export type {
@@ -30,18 +37,16 @@ export type {
  * Configuración del cliente S2S.
  */
 export type S2SClientConfig = {
-  /** Slug del service client (clientId). */
-  clientId: string
-  /**
-   * Secret del service client en formato hex (64 chars = 32 bytes).
-   * Es el valor que devuelve el Admin al crear/rotar el service client.
-   */
-  secretHex: string
   /**
    * URL base del Auth Service API (sin trailing slash).
    * Validada en `createS2SClient`: se requiere https (o http con host loopback para tests).
    */
   baseUrl: string
+  /**
+   * Proveedor del token de servicio con audiencia `auth-api` (`createServiceTokenProvider`). El
+   * cliente lo usa en cada llamada y, ante un 401, lo invalida y reintenta una vez.
+   */
+  tokenProvider: ServiceTokenProvider
 }
 
 /**
@@ -110,6 +115,24 @@ export type ListWebhookDeliveriesQuery = {
   limit?: number
   offset?: number
 }
+
+/** Input para crear una empresa y su primer miembro (alias del request del contrato). */
+export type CreateEmpresaInput = CreateEmpresaRequest
+
+/** Input para crear una sucursal (alias del request del contrato). */
+export type CreateSucursalInput = CreateSucursalRequest
+
+/** Empresa creada (`data` de la respuesta 201). */
+export type EmpresaResult = EmpresaResponse['data']
+
+/** Empresa con sucursales y miembros (`data` de la respuesta). */
+export type EmpresaDetailResult = EmpresaDetailResponse['data']
+
+/** Miembro agregado (`data` de la respuesta 201). */
+export type EmpresaMemberResult = EmpresaMemberResponse['data']
+
+/** Sucursal creada (`data` de la respuesta 201). */
+export type SucursalResult = SucursalResponse['data']
 
 // ===== v1.1.0: Server-side verification types =====
 

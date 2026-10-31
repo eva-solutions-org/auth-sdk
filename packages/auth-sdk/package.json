@@ -146,7 +146,7 @@
     "docs": "typedoc",
     "attw": "attw --pack . --ignore-rules no-resolution",
     "check:self-contained": "node scripts/check-self-contained.mjs dist",
-    "check:react-closure": "node scripts/react-closure-size.mjs dist --max 11272 --max-cjs 12380 --forbid \"\\.meta\\(\"",
+    "check:react-closure": "node scripts/react-closure-size.mjs dist --max 11800 --max-cjs 12380 --forbid \"\\.meta\\(\"",
     "prepack": "pnpm -w run build:contracts && pnpm run build && pnpm run check:self-contained && pnpm run check:react-closure"
   },
   "peerDependencies": {

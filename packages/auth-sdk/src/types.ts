@@ -22,6 +22,10 @@ export type EvaEmpresa = Company
 export type EvaTokenPayload<TExtra extends Record<string, unknown> = {}> = {
   id: string
   sessionId: string
+  /** `client_id` del access token (RFC 9068): el producto. */
+  clientId: string
+  /** Empresa activa de la sesión (claim `empresa`); ausente si no hay. */
+  empresaId?: string
 } & TExtra
 
 /**

@@ -259,9 +259,8 @@ describe('S2SClient', () => {
   })
 
   const mockConfig = {
-    clientId: CLIENT_ID,
-    secretHex: SECRET_HEX,
     baseUrl: BASE_URL,
+    tokenProvider: { getToken: async () => 'svc-token', invalidate() {} },
   }
 
   const mockUser = {
@@ -337,7 +336,7 @@ describe('S2SClient', () => {
     expect(matchError(result.error, 'user_not_found')).toBe(true)
   })
 
-  it('getUser: envía headers S2S correctos (client-id, timestamp, signature)', async () => {
+  it('getUser: envía Authorization Bearer con el token del proveedor y ninguna firma HMAC', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
@@ -349,42 +348,14 @@ describe('S2SClient', () => {
 
     expect(fetchMock).toHaveBeenCalledOnce()
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const headers = options.headers as Record<string, string>
 
     expect(url).toContain('/api/v1/internal/users/user-1')
     expect(options.method).toBe('GET')
-    expect((options.headers as Record<string, string>)['x-eva-client-id']).toBe(
-      CLIENT_ID,
+    expect(headers.authorization).toBe('Bearer svc-token')
+    expect(Object.keys(headers).filter((h) => h.startsWith('x-eva-'))).toEqual(
+      [],
     )
-    expect(
-      (options.headers as Record<string, string>)['x-eva-timestamp'],
-    ).toMatch(/^\d+$/)
-    expect((options.headers as Record<string, string>)['x-eva-nonce']).toMatch(
-      /^[0-9a-f]{32}$/,
-    )
-    expect(
-      (options.headers as Record<string, string>)['x-eva-signature'],
-    ).toMatch(/^sha256=[0-9a-f]{64}$/)
-  })
-
-  it('cada llamada envía un nonce distinto', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ data: mockUser }),
-    })
-
-    const s2s = createS2SClient(mockConfig)
-    await s2s.getUser('user-1')
-    await s2s.getUser('user-1')
-
-    const nonces = fetchMock.mock.calls.map(
-      ([, options]) =>
-        ((options as RequestInit).headers as Record<string, string>)[
-          'x-eva-nonce'
-        ],
-    )
-    expect(nonces).toHaveLength(2)
-    expect(nonces[0]).not.toBe(nonces[1])
   })
 
   it('getUser: error HTTP 401 → Result ok:false EvaApiError', async () => {
@@ -583,31 +554,6 @@ describe('S2SClient', () => {
     )
   })
 
-  // ─── Ventana de timestamp: firma incluye timestamp reciente ──────────────
-
-  it('firma incluye timestamp de los últimos 120s (REQ-S2S-05)', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ data: mockUser }),
-    })
-
-    const beforeCall = Math.floor(Date.now() / 1000)
-
-    const s2s = createS2SClient(mockConfig)
-    await s2s.getUser('user-1')
-
-    const afterCall = Math.floor(Date.now() / 1000)
-
-    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit]
-    const sentTimestamp = parseInt(
-      (options.headers as Record<string, string>)['x-eva-timestamp'],
-    )
-
-    expect(sentTimestamp).toBeGreaterThanOrEqual(beforeCall)
-    expect(sentTimestamp).toBeLessThanOrEqual(afterCall + 1)
-  })
-
   // ─── Batch-14 G5: batchUsers — validación client-side ────────────────────
 
   it('batchUsers: 101 IDs → error-result sin fetch (Batch-14 G5)', async () => {
@@ -730,7 +676,9 @@ describe('S2SClient', () => {
 // ---------------------------------------------------------------------------
 
 describe('createS2SClient — validación baseUrl', () => {
-  const validConfig = { clientId: CLIENT_ID, secretHex: SECRET_HEX }
+  const validConfig = {
+    tokenProvider: { getToken: async () => 'svc-token', invalidate() {} },
+  }
 
   it('baseUrl https válido no lanza (REQ-S2S-01)', () => {
     expect(() =>
@@ -821,9 +769,8 @@ describe('createS2SClient — validación baseUrl', () => {
 
 describe('batchUsers cap comes from the contract (REQ-SDK-13)', () => {
   const config = {
-    clientId: CLIENT_ID,
-    secretHex: SECRET_HEX,
     baseUrl: BASE_URL,
+    tokenProvider: { getToken: async () => 'svc-token', invalidate() {} },
   }
 
   it('users_batch_over_cap_rejected_before_network', async () => {

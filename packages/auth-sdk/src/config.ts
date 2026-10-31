@@ -17,6 +17,7 @@ const ErrorMessagesSchema = z
 // === Estado runtime mutable (NO exportado directamente) ===
 type RuntimeConfig = {
   authUrl?: string
+  product?: string
   cookieDomain?: string
   errorMessages?: Partial<EvaErrorMessages>
   errorWire?: 'api' | 'string'
@@ -108,6 +109,21 @@ function validateAuthUrl(value: unknown): string {
   return parsed.href.replace(/\/$/, '')
 }
 
+// Mismo formato que el slug de producto del contrato (`productoSlugSchema`). Se repite aquí porque
+// config.ts es alcanzable desde `react` y no puede importar módulos de schemas (regla D-35).
+// Que un producto no coincida con una audiencia de servicio lo valida Auth (`isServiceAudience`):
+// un token de usuario nunca lleva una audiencia de servicio, así que aquí no cambiaría nada.
+const PRODUCT_SLUG = /^[a-z][a-z0-9-]{2,63}$/
+
+function validateProduct(value: unknown): string {
+  if (typeof value !== 'string' || !PRODUCT_SLUG.test(value)) {
+    throw new Error(
+      '[eva-auth-sdk] product inválido: debe ser un slug ^[a-z][a-z0-9-]{2,63}$',
+    )
+  }
+  return value
+}
+
 function validateCookieDomain(value: string): void {
   if (/[;\r\n]/.test(value)) {
     throw new Error(
@@ -130,6 +146,17 @@ export interface ConfigureEvaAuthOptions {
    * @throws Error si la URL es inválida o difiere de la ya configurada.
    */
   authUrl?: string
+  /**
+   * Slug del producto de este consumidor (`whatsapp-panel`). Obligatorio **solo** si se usan las
+   * rutas de login, las cookies de sesión o `verifyAccessToken`: da el nombre de las cookies
+   * (`eva_<producto>_access_token`), la audiencia (`aud`) que exige `verifyAccessToken` y el
+   * `producto` que viaja en el login. Un servicio que solo verifica tokens de servicio no lo necesita.
+   * Debe ser un slug (`^[a-z][a-z0-9-]{2,63}$`).
+   * Es inmutable: reconfigurar el mismo valor es no-op; con otro valor lanza Error.
+   * Si se omite (undefined), no valida ni modifica el valor previo.
+   * @throws Error si el slug es inválido o difiere del ya configurado.
+   */
+  product?: string
   /**
    * Domain para Set-Cookie. Validada contra header injection (;, \r, \n).
    * Si se omite (undefined), NO resetea el valor previo.
@@ -189,6 +216,15 @@ function buildConfigPatch(
     }
     patch.authUrl = normalized
   }
+  if (opts.product !== undefined) {
+    const product = validateProduct(opts.product)
+    if (current.product !== undefined && current.product !== product) {
+      throw new Error(
+        '[eva-auth-sdk] product ya fue configurado y no puede cambiar en runtime',
+      )
+    }
+    patch.product = product
+  }
   if (opts.cookieDomain !== undefined) {
     validateCookieDomain(opts.cookieDomain)
     patch.cookieDomain = opts.cookieDomain
@@ -215,7 +251,7 @@ function buildConfigPatch(
  * `authUrl` es inmutable (re-configurar el mismo valor normalizado es no-op). El resto de los
  * campos provistos sobrescriben el valor previo; los omitidos (undefined) no lo resetean.
  *
- * @throws Error si `authUrl` es inválida o distinta de la ya configurada, si cookieDomain contiene
+ * @throws Error si `authUrl` o `product` son inválidos o distintos de los ya configurados, si cookieDomain contiene
  *   caracteres de header injection (;, \r, \n), o si errorMessages / errorWire son inválidos.
  */
 export function configureEvaAuth(opts: ConfigureEvaAuthOptions): void {
@@ -236,6 +272,20 @@ export function getAuthUrl(): string {
     )
   }
   return _runtimeConfig.authUrl
+}
+
+/**
+ * Retorna el producto configurado vía `configureEvaAuth({ product })`.
+ * @throws Error de configuración (`name === 'EvaAuthConfigError'`) si aún no se configuró: lo
+ *   propagan las cookies, el login y `verifyAccessToken` (el consumidor ve un 500, nunca un 401).
+ */
+export function getProduct(): string {
+  if (_runtimeConfig.product === undefined) {
+    throw createEvaAuthConfigError(
+      '[eva-auth-sdk] product no configurado: llama configureEvaAuth({ product }) al arrancar',
+    )
+  }
+  return _runtimeConfig.product
 }
 
 /**

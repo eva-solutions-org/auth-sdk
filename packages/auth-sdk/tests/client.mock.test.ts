@@ -17,6 +17,7 @@ vi.mock('../src/config', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/config')>()),
   getAuthUrl: getAuthUrlMock,
   getCookieDomain: () => undefined,
+  getProduct: () => 'whatsapp-panel',
   configureEvaAuth: vi.fn(),
 }))
 
@@ -143,6 +144,7 @@ describe('login', () => {
           phone: '+51999999999',
           code: '123456',
           challengeId: CHALLENGE_ID,
+          producto: 'whatsapp-panel',
           deviceType: deviceInfo.deviceType,
           os: deviceInfo.os,
           browser: deviceInfo.browser,

@@ -21,7 +21,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
-import { SERVICE_CLIENT_SCOPES } from '@eva_solutions/auth-contracts'
+import { SERVICE_AUDIENCE_SCOPES } from '@eva_solutions/auth-contracts'
 import {
   // Runtime values — nuevos
   ERROR_CODES,
@@ -53,7 +53,7 @@ import {
   ACCOUNT_STATES,
   // Runtime values — preexistentes (regresión: no deben haberse roto)
   HEADERS,
-  COOKIES,
+  getCookieNames,
   COOKIE_MAX_AGE,
   JWT_CONFIG,
   DEFAULT_ERROR_MESSAGES,
@@ -189,9 +189,14 @@ describe('exports preexistentes — regresión (T-035 no rompió nada)', () => {
     expect(typeof HEADERS.AUTHORIZATION).toBe('string')
   })
 
-  it('COOKIES existe y tiene ACCESS_TOKEN y REFRESH_TOKEN', () => {
-    expect(COOKIES.ACCESS_TOKEN).toBe('eva_access_token')
-    expect(COOKIES.REFRESH_TOKEN).toBe('eva_refresh_token')
+  it('getCookieNames devuelve ACCESS_TOKEN y REFRESH_TOKEN con el producto configurado', () => {
+    configureEvaAuth({ product: 'whatsapp-panel' })
+    expect(getCookieNames().ACCESS_TOKEN).toBe(
+      'eva_whatsapp-panel_access_token',
+    )
+    expect(getCookieNames().REFRESH_TOKEN).toBe(
+      'eva_whatsapp-panel_refresh_token',
+    )
   })
 
   it('COOKIE_MAX_AGE existe y tiene ACCESS_TOKEN y REFRESH_TOKEN', () => {
@@ -366,18 +371,22 @@ describe('S2S_SCOPES export (Batch-14 G3)', () => {
     expect(typeof S2S_SCOPES).toBe('object')
   })
 
-  it('tiene los 4 scopes correctos', () => {
+  it('tiene los 5 permisos de auth-api y ya no tiene admin', () => {
     expect(S2S_SCOPES.USERS_READ).toBe('users:read')
     expect(S2S_SCOPES.WEBHOOKS_READ).toBe('webhooks:read')
     expect(S2S_SCOPES.WEBHOOKS_WRITE).toBe('webhooks:write')
-    expect(S2S_SCOPES.ADMIN).toBe('admin')
+    expect(S2S_SCOPES.EMPRESAS_LEER).toBe('empresas:leer')
+    expect(S2S_SCOPES.EMPRESAS_ESCRIBIR).toBe('empresas:escribir')
+    expect('ADMIN' in S2S_SCOPES).toBe(false)
   })
 
-  it('sus valores son EXACTAMENTE el catálogo SERVICE_CLIENT_SCOPES del contrato', () => {
+  it("sus valores son EXACTAMENTE los permisos de 'auth-api' del contrato", () => {
     // `satisfies` solo prueba que cada valor existe en el contrato, no que estén todos.
     const values = Object.values(S2S_SCOPES)
     expect(new Set(values).size).toBe(values.length)
-    expect([...values].sort()).toEqual([...SERVICE_CLIENT_SCOPES].sort())
+    expect([...values].sort()).toEqual(
+      [...SERVICE_AUDIENCE_SCOPES['auth-api']].sort(),
+    )
   })
 })
 
@@ -617,7 +626,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
   root: [
     'ACCOUNT_STATES',
     'ADMIN_ERROR_CODES',
-    'COOKIES',
+    'getCookieNames',
     'COOKIE_MAX_AGE',
     'DEFAULT_ERROR_MESSAGES',
     'EMPTY_BODY_SHA256_HEX',
@@ -630,6 +639,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'S2S_SCOPES',
     'S2S_TIMESTAMP_WINDOW_SECONDS',
     'SDK_ERROR_REASONS',
+    'ServiceTokenRequestError',
     'USERS_BATCH_MAX_IDS',
     'WEBHOOK_HEADERS',
     'WEBHOOK_TIMESTAMP_WINDOW_SECONDS',
@@ -639,6 +649,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'createEvaAuth',
     'createHttpClient',
     'createS2SClient',
+    'createServiceTokenProvider',
     'generateS2SNonce',
     'getAuthUrl',
     'getCookieDomain',
@@ -670,10 +681,11 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'signS2SRequest',
     'verifyAccessToken',
     'verifyS2SRequest',
+    'verifyServiceToken',
     'verifyWebhookSignature',
   ],
   hono: [
-    'COOKIES',
+    'getCookieNames',
     'COOKIE_MAX_AGE',
     'DEFAULT_ERROR_MESSAGES',
     'HEADERS',
@@ -689,11 +701,11 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'readTokensFromCookies',
     'requireScope',
     's2sAuth',
-    'serviceJwtAuth',
+    'serviceTokenAuth',
     'setTokenCookies',
   ],
   generic: [
-    'COOKIES',
+    'getCookieNames',
     'COOKIE_MAX_AGE',
     'DEFAULT_ERROR_MESSAGES',
     'HEADERS',
@@ -706,7 +718,7 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'verifyRequest',
   ],
   react: [
-    'COOKIES',
+    'getCookieNames',
     'COOKIE_MAX_AGE',
     'DEFAULT_ERROR_MESSAGES',
     'ERROR_CODES',
@@ -762,17 +774,18 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'S2S_RESPONSE_HEADERS',
     'S2S_SCOPES',
     'S2S_TIMESTAMP_WINDOW_SECONDS',
-    'SERVICE_JWT_CLOCK_TOLERANCE_SECONDS',
-    'SERVICE_JWT_MAX_LIFETIME_SECONDS',
-    'SERVICE_JWT_TYP',
+    'SERVICE_TOKEN_CLOCK_TOLERANCE_SECONDS',
+    'SERVICE_TOKEN_RENEW_MARGIN_MS',
+    'ServiceTokenRequestError',
     'USERS_BATCH_MAX_IDS',
     'buildS2SCanonicalString',
     'createS2SClient',
+    'createServiceTokenProvider',
     'generateS2SNonce',
     'signS2SHeaders',
     'signS2SRequest',
     'verifyS2SRequest',
-    'verifyServiceJwt',
+    'verifyServiceToken',
   ],
 }
 
@@ -793,7 +806,9 @@ describe('public_export_names_preserved (REQ-SDK-09)', () => {
     async (entry) => {
       const loaded = await ENTRY_LOADERS[entry]!()
 
-      expect(Object.keys(loaded).sort()).toEqual(PUBLIC_EXPORT_NAMES[entry])
+      expect(Object.keys(loaded).sort()).toEqual(
+        [...PUBLIC_EXPORT_NAMES[entry]!].sort(),
+      )
     },
   )
 })
@@ -900,20 +915,20 @@ describe('S3 constants come from the contract (REQ-SDK-04, REQ-SDK-09)', () => {
     expect(WEBHOOK_TIMESTAMP_WINDOW_SECONDS).toBe(
       contract.WEBHOOK_TIMESTAMP_WINDOW_SECONDS,
     )
-    expect(Object.keys(EVENT_CODES)).toHaveLength(11)
+    expect(Object.keys(EVENT_CODES)).toHaveLength(15)
   })
 
   it('S2S_SCOPES stays an SDK object whose values are the contract scope catalog (D-27)', async () => {
     const contract = await import('@eva_solutions/auth-contracts')
 
     expect(Object.values(S2S_SCOPES).sort()).toEqual(
-      [...contract.SERVICE_CLIENT_SCOPES].sort(),
+      [...contract.SERVICE_AUDIENCE_SCOPES['auth-api']].sort(),
     )
     expect(S2S_SCOPES.USERS_READ).toBe('users:read')
     expect(S2S_SCOPES.WEBHOOKS_READ).toBe('webhooks:read')
     expect(S2S_SCOPES.WEBHOOKS_WRITE).toBe('webhooks:write')
     expect(read('../src/s2s/constants.ts')).toMatch(
-      /satisfies Record<string, ServiceClientScope>/,
+      /satisfies Record<string, ServiceScope<'auth-api'>>/,
     )
   })
 

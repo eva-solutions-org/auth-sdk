@@ -28,6 +28,8 @@ export const LoginSchema = z.object({
   phone: z.string().min(1),
   code: z.string().min(1),
   challengeId: z.string().min(1),
+  // Empresa que queda activa (opcional). El `producto` NO viene del navegador: lo pone el SDK.
+  empresaId: z.string().min(1).optional(),
 })
 
 /**

@@ -14,9 +14,11 @@ vi.mock('../src/jwks', () => ({
 
 import { jwtVerify } from 'jose'
 import { getJwksKeyFn } from '../src/jwks'
-import { getAuthUrl } from '../src/config'
+import { configureEvaAuth, getAuthUrl } from '../src/config'
 
 const jwtVerifyMock = vi.mocked(jwtVerify)
+
+configureEvaAuth({ product: 'whatsapp-panel' })
 const getJwksKeyFnMock = vi.mocked(getJwksKeyFn)
 
 beforeEach(() => {
@@ -29,7 +31,11 @@ describe('verifyAccessToken', () => {
 
   it('retorna ok con payload cuando el token es válido', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'user-123', sessionId: 'sess-456' },
+      payload: {
+        sub: 'user-123',
+        sessionId: 'sess-456',
+        client_id: 'whatsapp-panel',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -37,7 +43,11 @@ describe('verifyAccessToken', () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { id: 'user-123', sessionId: 'sess-456' },
+      data: {
+        id: 'user-123',
+        sessionId: 'sess-456',
+        clientId: 'whatsapp-panel',
+      },
     })
   })
 
@@ -95,9 +105,13 @@ describe('verifyAccessToken', () => {
     expect(result.error.status).toBe(401)
   })
 
-  it('pasa issuer, audience y algorithms correctos a jwtVerify', async () => {
+  it('pasa issuer, audience (el producto), typ at+jwt y algorithms a jwtVerify', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'user-1', sessionId: 'sess-1' },
+      payload: {
+        sub: 'user-1',
+        sessionId: 'sess-1',
+        client_id: 'whatsapp-panel',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -108,15 +122,21 @@ describe('verifyAccessToken', () => {
       expect.any(Function), // getJwksKeyFn() retorna función (JwksKeyFn), no CryptoKey
       {
         issuer: JWT_CONFIG.ISSUER,
-        audience: JWT_CONFIG.AUDIENCE,
+        audience: 'whatsapp-panel',
         algorithms: [JWT_CONFIG.ALGORITHM],
+        typ: 'at+jwt',
+        requiredClaims: ['exp'],
       },
     )
   })
 
   it('pasa algorithms: [ES256] a jwtVerify (P4 — defense-in-depth)', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'user-1', sessionId: 'sess-1' },
+      payload: {
+        sub: 'user-1',
+        sessionId: 'sess-1',
+        client_id: 'whatsapp-panel',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -129,7 +149,11 @@ describe('verifyAccessToken', () => {
 
   it('llama getJwksKeyFn una vez por invocación', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'user-1', sessionId: 'sess-1' },
+      payload: {
+        sub: 'user-1',
+        sessionId: 'sess-1',
+        client_id: 'whatsapp-panel',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -220,6 +244,7 @@ describe('verifyAccessToken', () => {
       payload: {
         sub: 'u1',
         sessionId: 's1',
+        client_id: 'whatsapp-panel',
         phone: '+543412345',
         empresaId: 'emp-99',
       },
@@ -230,7 +255,11 @@ describe('verifyAccessToken', () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data).toEqual({ id: 'u1', sessionId: 's1' })
+    expect(result.data).toEqual({
+      id: 'u1',
+      sessionId: 's1',
+      clientId: 'whatsapp-panel',
+    })
     expect(result.data).not.toHaveProperty('phone')
     expect(result.data).not.toHaveProperty('empresaId')
   })
@@ -240,6 +269,7 @@ describe('verifyAccessToken', () => {
       payload: {
         sub: 'u1',
         sessionId: 's1',
+        client_id: 'whatsapp-panel',
         iss: 'auth.x.com',
         aud: 'api',
         iat: 1700000000,
@@ -254,14 +284,23 @@ describe('verifyAccessToken', () => {
 
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect(result.data).toEqual({ id: 'u1', sessionId: 's1' })
+    expect(result.data).toEqual({
+      id: 'u1',
+      sessionId: 's1',
+      clientId: 'whatsapp-panel',
+    })
   })
 
   // ───── Con schema válido ─────
 
   it('con schema válido: extras parseados y mergeados en payload', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1', phone: '+543412345' },
+      payload: {
+        sub: 'u1',
+        sessionId: 's1',
+        client_id: 'whatsapp-panel',
+        phone: '+543412345',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -272,7 +311,12 @@ describe('verifyAccessToken', () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { id: 'u1', sessionId: 's1', phone: '+543412345' },
+      data: {
+        id: 'u1',
+        sessionId: 's1',
+        clientId: 'whatsapp-panel',
+        phone: '+543412345',
+      },
     })
   })
 
@@ -280,7 +324,7 @@ describe('verifyAccessToken', () => {
 
   it('schema mismatch (claim ausente): retorna error 401', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1' },
+      payload: { sub: 'u1', sessionId: 's1', client_id: 'whatsapp-panel' },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -300,7 +344,12 @@ describe('verifyAccessToken', () => {
 
   it('schema mismatch (tipo incorrecto): retorna error 401', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1', phone: 12345 },
+      payload: {
+        sub: 'u1',
+        sessionId: 's1',
+        client_id: 'whatsapp-panel',
+        phone: 12345,
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -322,7 +371,7 @@ describe('verifyAccessToken', () => {
 
   it('schema con claim reservado (exp): lanza error fail-fast', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1' },
+      payload: { sub: 'u1', sessionId: 's1', client_id: 'whatsapp-panel' },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -341,7 +390,7 @@ describe('verifyAccessToken', () => {
 
   it('schema con claim "id": lanza error fail-fast (colisión con shape base)', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1' },
+      payload: { sub: 'u1', sessionId: 's1', client_id: 'whatsapp-panel' },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -359,7 +408,7 @@ describe('verifyAccessToken', () => {
 
   it('schema con claim "sessionId": lanza error fail-fast (colisión con shape base)', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1' },
+      payload: { sub: 'u1', sessionId: 's1', client_id: 'whatsapp-panel' },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -379,7 +428,7 @@ describe('verifyAccessToken', () => {
 
   it('schema con campo opcional: JWT sin ese campo no falla', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1' },
+      payload: { sub: 'u1', sessionId: 's1', client_id: 'whatsapp-panel' },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -398,7 +447,12 @@ describe('verifyAccessToken', () => {
 
   it('schema async (refine async): safeParseAsync funciona correctamente', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'u1', sessionId: 's1', phone: '+543412345' },
+      payload: {
+        sub: 'u1',
+        sessionId: 's1',
+        client_id: 'whatsapp-panel',
+        phone: '+543412345',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -413,7 +467,12 @@ describe('verifyAccessToken', () => {
 
     expect(result).toEqual({
       ok: true,
-      data: { id: 'u1', sessionId: 's1', phone: '+543412345' },
+      data: {
+        id: 'u1',
+        sessionId: 's1',
+        clientId: 'whatsapp-panel',
+        phone: '+543412345',
+      },
     })
   })
 
@@ -421,7 +480,12 @@ describe('verifyAccessToken', () => {
 
   it('JWT con claim "id" distinto a sub: SDK usa sub como id, descarta claim "id"', async () => {
     jwtVerifyMock.mockResolvedValue({
-      payload: { sub: 'real-id', sessionId: 's1', id: 'fake-id' },
+      payload: {
+        sub: 'real-id',
+        sessionId: 's1',
+        client_id: 'whatsapp-panel',
+        id: 'fake-id',
+      },
       protectedHeader: { alg: 'ES256' },
     } as any)
 
@@ -439,6 +503,7 @@ describe('verifyAccessToken', () => {
       payload: {
         sub: 'u1',
         sessionId: 's1',
+        client_id: 'whatsapp-panel',
         iss: 'auth.x.com',
         aud: 'api',
         iat: 1700000000,
@@ -460,6 +525,7 @@ describe('verifyAccessToken', () => {
     expect(result.data).toEqual({
       id: 'u1',
       sessionId: 's1',
+      clientId: 'whatsapp-panel',
       phone: '+543412345',
     })
     expect(result.data).not.toHaveProperty('iss')

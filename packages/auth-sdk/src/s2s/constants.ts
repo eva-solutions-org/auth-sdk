@@ -5,7 +5,7 @@
  */
 
 import { INTERNAL_HEADERS } from '@eva_solutions/auth-contracts'
-import type { ServiceClientScope } from '@eva_solutions/auth-contracts'
+import type { ServiceScope } from '@eva_solutions/auth-contracts'
 
 /**
  * Ventana máxima (en segundos) para aceptar un request S2S.
@@ -33,28 +33,28 @@ export const S2S_NONCE_REGEX = /^[0-9a-f]{32}$/
 export { USERS_BATCH_MAX_IDS } from '@eva_solutions/auth-contracts'
 
 /**
- * Catálogo de scopes S2S reconocidos por el Auth Service.
+ * Permisos de la audiencia `auth-api`, tal como los concede el Auth Service a un service client.
  *
  * Se mantiene como objeto del SDK (`S2S_SCOPES.USERS_READ`) pero sus valores deben ser miembros del
- * catálogo `SERVICE_CLIENT_SCOPES` del contrato: `satisfies` lo comprueba en compilación.
+ * catálogo `SERVICE_AUDIENCE_SCOPES['auth-api']` del contrato: `satisfies` lo comprueba en
+ * compilación. `admin` no está: la superficie `/admin` de Auth se firma, no usa tokens.
  *
  * @example
  * ```ts
  * import { S2S_SCOPES } from '@eva_solutions/auth-sdk/s2s'
  *
- * const client = await createServiceClient({
- *   scopes: [S2S_SCOPES.USERS_READ, S2S_SCOPES.WEBHOOKS_WRITE],
- * })
+ * const scope = [S2S_SCOPES.USERS_READ, S2S_SCOPES.EMPRESAS_ESCRIBIR].join(' ')
  * ```
  */
 export const S2S_SCOPES = {
   USERS_READ: 'users:read',
   WEBHOOKS_READ: 'webhooks:read',
   WEBHOOKS_WRITE: 'webhooks:write',
-  ADMIN: 'admin',
-} as const satisfies Record<string, ServiceClientScope>
+  EMPRESAS_LEER: 'empresas:leer',
+  EMPRESAS_ESCRIBIR: 'empresas:escribir',
+} as const satisfies Record<string, ServiceScope<'auth-api'>>
 
-/** Unión de literales de todos los scopes S2S reconocidos. */
+/** Unión de literales de todos los permisos de la audiencia `auth-api`. */
 export type S2SScope = (typeof S2S_SCOPES)[keyof typeof S2S_SCOPES]
 
 /**

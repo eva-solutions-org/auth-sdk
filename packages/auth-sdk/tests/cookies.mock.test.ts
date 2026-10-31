@@ -1,14 +1,26 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { COOKIES, COOKIE_MAX_AGE } from '../src/constants'
+import { COOKIE_MAX_AGE, getCookieNames } from '../src/constants'
 import { createTokenPair } from './helpers/fixtures'
 
 const mockConfig = vi.hoisted(() => ({
   cookieDomain: undefined as string | undefined,
+  product: 'whatsapp-panel' as string | undefined,
 }))
+
+// Nombres esperados escritos a mano: el test no los calcula con el código que prueba.
+const COOKIES = {
+  ACCESS_TOKEN: 'eva_whatsapp-panel_access_token',
+  REFRESH_TOKEN: 'eva_whatsapp-panel_refresh_token',
+} as const
 
 vi.mock('../src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
   getCookieDomain: () => mockConfig.cookieDomain,
+  getProduct: () => {
+    if (mockConfig.product === undefined)
+      throw new Error('product no configurado')
+    return mockConfig.product
+  },
   configureEvaAuth: vi.fn(),
 }))
 
@@ -20,6 +32,45 @@ import {
 
 beforeEach(() => {
   mockConfig.cookieDomain = undefined
+  mockConfig.product = 'whatsapp-panel'
+})
+
+describe('cookies por producto', () => {
+  it('nombra las cookies con el producto configurado', () => {
+    expect({ ...getCookieNames() }).toEqual(COOKIES)
+    mockConfig.product = 'gym-panel'
+    expect({ ...getCookieNames() }).toEqual({
+      ACCESS_TOKEN: 'eva_gym-panel_access_token',
+      REFRESH_TOKEN: 'eva_gym-panel_refresh_token',
+    })
+  })
+
+  it('dos productos bajo el mismo dominio no se leen la cookie del otro', () => {
+    const header =
+      'eva_gym-panel_access_token=del-gym; eva_whatsapp-panel_access_token=del-panel'
+    expect(readTokensFromCookies(header)).toEqual({ accessToken: 'del-panel' })
+    mockConfig.product = 'gym-panel'
+    expect(readTokensFromCookies(header)).toEqual({ accessToken: 'del-gym' })
+  })
+
+  it('setTokenCookies y clearTokenCookies usan los nombres del producto', () => {
+    mockConfig.product = 'gym-panel'
+    const set = setTokenCookies(createTokenPair())
+    expect(set[0]).toMatch(/^eva_gym-panel_access_token=/)
+    expect(set[1]).toMatch(/^eva_gym-panel_refresh_token=/)
+    const cleared = clearTokenCookies()
+    expect(cleared[0]).toMatch(/^eva_gym-panel_access_token=;/)
+    expect(cleared[1]).toMatch(/^eva_gym-panel_refresh_token=;/)
+  })
+
+  it('sin producto configurado leer, escribir y limpiar cookies lanza', () => {
+    mockConfig.product = undefined
+    expect(() => readTokensFromCookies('a=b')).toThrow('product no configurado')
+    expect(() => setTokenCookies(createTokenPair())).toThrow(
+      'product no configurado',
+    )
+    expect(() => clearTokenCookies()).toThrow('product no configurado')
+  })
 })
 
 describe('readTokensFromCookies', () => {
@@ -243,7 +294,10 @@ describe('Secure con authUrl http loopback', () => {
     vi.doUnmock('../src/config')
     const { configureEvaAuth } = await import('../src/config')
     const cookies = await import('../src/cookies')
-    configureEvaAuth({ authUrl: 'http://localhost:4000' })
+    configureEvaAuth({
+      authUrl: 'http://localhost:4000',
+      product: 'whatsapp-panel',
+    })
 
     for (const cookie of [
       ...cookies.setTokenCookies(createTokenPair()),

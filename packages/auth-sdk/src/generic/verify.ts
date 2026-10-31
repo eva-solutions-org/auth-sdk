@@ -30,7 +30,9 @@ const client = createHttpClient()
  * @throws Error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` no fue
  *   configurada con `configureEvaAuth({ authUrl })` y la request trae algún token: se necesita
  *   para el JWKS o el refresh. El consumidor debe responder 500, nunca 401 ni limpiar cookies.
- *   Una request sin tokens devuelve `auth_required` (401) sin leer la configuración.
+ *   También lanza si falta `product` y la request trae un header `cookie` (se necesita para nombrar
+ *   las cookies de sesión). Una request sin header `cookie` devuelve `auth_required` (401) sin leer
+ *   la configuración.
  */
 export async function verifyRequest<
   TExtra extends Record<string, unknown> = {},

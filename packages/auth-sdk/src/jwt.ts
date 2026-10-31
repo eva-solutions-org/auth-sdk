@@ -1,8 +1,10 @@
 import { jwtVerify } from 'jose'
 import { z, ZodObject } from 'zod'
 import type { ZodType } from 'zod'
+import { USER_KID_PREFIX, USER_TOKEN_TYP } from '@eva_solutions/auth-contracts'
 import { getJwksKeyFn } from './jwks'
-import { isEvaAuthConfigError } from './config'
+import { withKidPrefix } from './key-resolver'
+import { getProduct, isEvaAuthConfigError } from './config'
 import { JWT_CONFIG } from './constants'
 import { RESERVED_JWT_CLAIMS } from './jwt-claims'
 import type { EvaTokenPayload, Result, EvaSdkError } from './types'
@@ -11,6 +13,10 @@ import type { EvaTokenPayload, Result, EvaSdkError } from './types'
 const BaseClaimsSchema = z.object({
   sub: z.string(),
   sessionId: z.string(),
+  // RFC 9068: el access token lleva `client_id` (el producto).
+  client_id: z.string().min(1),
+  // Empresa activa de la sesión; ausente si no hay.
+  empresa: z.string().min(1).optional(),
 })
 
 // Set de keys excluidas al construir extrasCandidate.
@@ -21,6 +27,10 @@ const EXCLUDED_FROM_EXTRAS = new Set<string>([
   'sub',
   'sessionId',
   'id',
+  'client_id',
+  'clientId',
+  'empresa',
+  'empresaId',
 ])
 
 // WeakMap para cachear validación de schema (no re-inspeccionar por request).
@@ -42,7 +52,7 @@ function assertSchemaNoReservedKeys(schema: ZodType<unknown>): void {
         throw new Error(
           `extraClaimsSchema declara un claim reservado o del shape base: "${key}". ` +
             `Claims reservados (RFC 7519/8725 + OIDC Core 1.0 §2): ${RESERVED_JWT_CLAIMS.join(', ')}. ` +
-            `Shape base del SDK (no permitidos en extraClaimsSchema): id, sessionId.`,
+            `Shape base del SDK (no permitidos en extraClaimsSchema): id, sessionId, clientId, empresaId.`,
         )
       }
     }
@@ -59,12 +69,15 @@ export type VerifyAccessTokenOptions<TExtra extends Record<string, unknown>> = {
 }
 
 /**
- * Verifica un access token (firma ES256 vía JWKS, issuer, audience y claims base).
+ * Verifica un access token de usuario: firma ES256 con una clave de usuario del JWKS (`kid` con
+ * prefijo `usr-`; un token sin `kid` o firmado con una clave de servicio se rechaza), `typ: at+jwt`,
+ * issuer, `aud` igual al producto configurado y claims base. Devuelve `id`, `sessionId`, `clientId`
+ * (`client_id`) y `empresaId` (claim `empresa`, ausente si la sesión no tiene empresa activa).
  * Un token inválido o expirado devuelve `{ ok: false }` (401); no lanza.
  *
- * @throws Error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` no fue
- *   configurada con `configureEvaAuth({ authUrl })`: es un error del consumidor, no un token
- *   inválido, así que se propaga en vez de degradarse a 401. El consumidor ve un 500.
+ * @throws Error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` o `product` no
+ *   fueron configurados con `configureEvaAuth`: es un error del consumidor, no un token inválido,
+ *   así que se propaga en vez de degradarse a 401. El consumidor ve un 500.
  */
 export async function verifyAccessToken<
   TExtra extends Record<string, unknown> = {},
@@ -74,11 +87,17 @@ export async function verifyAccessToken<
 ): Promise<Result<EvaTokenPayload<TExtra>>> {
   try {
     // 1. Verificar firma + standard claims con jose.
-    const { payload } = await jwtVerify(token, getJwksKeyFn(), {
-      issuer: JWT_CONFIG.ISSUER,
-      audience: JWT_CONFIG.AUDIENCE,
-      algorithms: [JWT_CONFIG.ALGORITHM],
-    })
+    const { payload } = await jwtVerify(
+      token,
+      withKidPrefix(getJwksKeyFn(), USER_KID_PREFIX),
+      {
+        issuer: JWT_CONFIG.ISSUER,
+        audience: getProduct(),
+        algorithms: [JWT_CONFIG.ALGORITHM],
+        typ: USER_TOKEN_TYP,
+        requiredClaims: ['exp'],
+      },
+    )
 
     // 2. Validar shape base (sub + sessionId presentes).
     const base = BaseClaimsSchema.safeParse(payload)
@@ -94,15 +113,37 @@ export async function verifyAccessToken<
       }
     }
 
+    // Una sola audiencia y `client_id` igual al producto (así los emite Auth): un token con otra
+    // forma no es un access token de este producto aunque jose haya aceptado el `aud`.
+    if (Array.isArray(payload.aud) || base.data.client_id !== getProduct()) {
+      return {
+        ok: false,
+        error: {
+          kind: 'sdk',
+          reason: 'token_invalid',
+          message: 'Payload del token inválido',
+          status: 401,
+        } satisfies EvaSdkError,
+      }
+    }
+
     const id = base.data.sub
     const sessionId = base.data.sessionId
+    const identity = {
+      id,
+      sessionId,
+      clientId: base.data.client_id,
+      ...(base.data.empresa !== undefined && {
+        empresaId: base.data.empresa,
+      }),
+    }
 
     // 3. Path SIN schema → drop everything excepto id/sessionId.
     //    Defense-in-depth: el SDK NO expone claims que no validó.
     if (!opts.extraClaimsSchema) {
       return {
         ok: true,
-        data: { id, sessionId } as EvaTokenPayload<TExtra>,
+        data: identity as EvaTokenPayload<TExtra>,
       }
     }
 
@@ -135,8 +176,7 @@ export async function verifyAccessToken<
     return {
       ok: true,
       data: {
-        id,
-        sessionId,
+        ...identity,
         ...parsed.data,
       } as EvaTokenPayload<TExtra>,
     }

@@ -14,6 +14,8 @@ import type { GetCodeSchema, LoginSchema } from '../src/schemas'
 import type { EvaHttpClient } from '../src/http-client'
 
 type DeviceKeys = 'deviceType' | 'os' | 'browser' | 'userAgent'
+// `producto` is not a BFF field: the SDK takes it from `configureEvaAuth({ product })`.
+type ProductKey = 'producto'
 
 describe('BFF schema keys follow the contract request types', () => {
   it('GetCodeSchema keys == keyof GetCodeRequest', () => {
@@ -22,15 +24,15 @@ describe('BFF schema keys follow the contract request types', () => {
     >()
   })
 
-  it('LoginSchema keys == LoginRequest keys minus the device fields', () => {
+  it('LoginSchema keys == LoginRequest keys minus the device fields and producto', () => {
     expectTypeOf<keyof z.infer<typeof LoginSchema>>().toEqualTypeOf<
-      Exclude<keyof LoginRequest, DeviceKeys>
+      Exclude<keyof LoginRequest, DeviceKeys | ProductKey>
     >()
   })
 
-  it('http-client login params keys == keyof LoginRequest', () => {
+  it('http-client login params keys == keyof LoginRequest minus producto', () => {
     expectTypeOf<keyof Parameters<EvaHttpClient['login']>[0]>().toEqualTypeOf<
-      keyof LoginRequest
+      Exclude<keyof LoginRequest, ProductKey>
     >()
   })
 

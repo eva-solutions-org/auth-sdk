@@ -129,7 +129,7 @@ describe('secretStore devuelve un secreto no hex', () => {
 // 3. baseUrl con y sin prefijo de path
 // ---------------------------------------------------------------------------
 
-describe('createS2SClient firma el pathname final (con prefijo de baseUrl)', () => {
+describe('createS2SClient conserva el prefijo de path de baseUrl', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -141,21 +141,7 @@ describe('createS2SClient firma el pathname final (con prefijo de baseUrl)', () 
     global.fetch = fetchMock as unknown as typeof fetch
   })
 
-  /** Reconstruye el request que salió por fetch y lo pasa por el verificador real. */
-  async function verifyCaptured() {
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
-    const request = new Request(url, {
-      method: init.method,
-      headers: init.headers as Record<string, string>,
-      body: init.body as string | undefined,
-    })
-    return {
-      url,
-      result: await verifyS2SRequest(request, {
-        secretStore: async (id) => (id === CLIENT_ID ? SECRET_HEX : null),
-      }),
-    }
-  }
+  const tokenProvider = { getToken: async () => 'svc-token', invalidate() {} }
 
   const cases = [
     [
@@ -170,45 +156,26 @@ describe('createS2SClient firma el pathname final (con prefijo de baseUrl)', () 
     ],
   ] as const
 
-  it.each(cases)(
-    'getUser %s verifica OK',
-    async (_label, baseUrl, expectedUrl) => {
-      const s2s = createS2SClient({
-        clientId: CLIENT_ID,
-        secretHex: SECRET_HEX,
-        baseUrl,
-      })
-      await s2s.getUser('u1')
+  it.each(cases)('getUser %s', async (_label, baseUrl, expectedUrl) => {
+    await createS2SClient({ baseUrl, tokenProvider }).getUser('u1')
 
-      const { url, result } = await verifyCaptured()
-      expect(url).toBe(expectedUrl)
-      expect(result).toEqual({ ok: true, data: { clientId: CLIENT_ID } })
-    },
-  )
-
-  it('POST con body y prefijo verifica OK', async () => {
-    const s2s = createS2SClient({
-      clientId: CLIENT_ID,
-      secretHex: SECRET_HEX,
-      baseUrl: 'https://auth.test/auth',
-    })
-    await s2s.batchUsers({ ids: ['a', 'b'] })
-
-    const { result } = await verifyCaptured()
-    expect(result.ok).toBe(true)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe(expectedUrl)
+    expect((init.headers as Record<string, string>).authorization).toBe(
+      'Bearer svc-token',
+    )
   })
 
-  it('query + prefijo verifica OK', async () => {
-    const s2s = createS2SClient({
-      clientId: CLIENT_ID,
-      secretHex: SECRET_HEX,
+  it('query + prefijo', async () => {
+    await createS2SClient({
       baseUrl: 'https://auth.test/auth',
-    })
-    await s2s.listWebhookDeliveries({ limit: 5, offset: 10 })
+      tokenProvider,
+    }).listWebhookDeliveries({ limit: 5, offset: 10 })
 
-    const { url, result } = await verifyCaptured()
-    expect(url).toContain('/auth/api/v1/internal/webhooks/deliveries?')
-    expect(result.ok).toBe(true)
+    const [url] = fetchMock.mock.calls[0] as [string]
+    expect(url).toBe(
+      'https://auth.test/auth/api/v1/internal/webhooks/deliveries?limit=5&offset=10',
+    )
   })
 })
 
@@ -336,9 +303,8 @@ describe('createS2SClient valida y codifica los ids en el path', () => {
   })
 
   const s2s = createS2SClient({
-    clientId: CLIENT_ID,
-    secretHex: SECRET_HEX,
     baseUrl: 'https://auth.test',
+    tokenProvider: { getToken: async () => 'svc-token', invalidate() {} },
   })
 
   const UUID = '3f2b8c1e-9a4d-4e6b-8c1a-2d3e4f5a6b7c'
@@ -403,19 +369,13 @@ describe('createS2SClient valida y codifica los ids en el path', () => {
       expect(parsed.hash).toBe('')
     })
 
-    it('un UUID pasa intacto y verifica con verifyS2SRequest real', async () => {
+    it('un UUID pasa intacto y viaja con el Bearer del proveedor', async () => {
       await call(UUID)
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
       expect(new URL(url).pathname).toBe(`${prefix}${UUID}${suffix}`)
-      const result = await verifyS2SRequest(
-        new Request(url, {
-          method: init.method,
-          headers: init.headers as Record<string, string>,
-          body: init.body as string | undefined,
-        }),
-        { secretStore: async () => SECRET_HEX },
+      expect((init.headers as Record<string, string>).authorization).toBe(
+        'Bearer svc-token',
       )
-      expect(result.ok).toBe(true)
     })
   })
 })

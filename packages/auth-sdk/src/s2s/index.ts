@@ -38,6 +38,12 @@ export type {
   CreateWebhookSubscriptionInput,
   UpdateWebhookSubscriptionInput,
   ListWebhookDeliveriesQuery,
+  CreateEmpresaInput,
+  CreateSucursalInput,
+  EmpresaResult,
+  EmpresaDetailResult,
+  EmpresaMemberResult,
+  SucursalResult,
   WebhookSubscription,
   WebhookSubscriptionWithSecret,
   WebhookDelivery,
@@ -53,17 +59,25 @@ export type {
   S2SVerifyOptions,
 } from './types'
 
-// Service JWT verify (Auth Service -> this service)
+// Service token (client credentials): obtain and verify
 export {
-  verifyServiceJwt,
-  SERVICE_JWT_TYP,
-  SERVICE_JWT_MAX_LIFETIME_SECONDS,
-  SERVICE_JWT_CLOCK_TOLERANCE_SECONDS,
-} from './service-jwt'
+  createServiceTokenProvider,
+  ServiceTokenRequestError,
+  SERVICE_TOKEN_RENEW_MARGIN_MS,
+} from './token-provider'
 export type {
-  ServiceJwtVerifyOptions,
-  ServiceJwtVerifyResult,
-  ServiceJwtVerifyError,
-  ServiceJwtVerifyReason,
-  ServiceJwtClaims,
-} from './service-jwt'
+  ServiceTokenProvider,
+  ServiceTokenProviderConfig,
+} from './token-provider'
+export {
+  verifyServiceToken,
+  SERVICE_TOKEN_CLOCK_TOLERANCE_SECONDS,
+} from './service-token'
+export type {
+  ServiceTokenVerifyOptions,
+  ServiceTokenVerifyResult,
+  ServiceTokenVerifyError,
+  ServiceTokenVerifyReason,
+  ServiceTokenClaims,
+  ServiceTokenScopeRequirement,
+} from './service-token'

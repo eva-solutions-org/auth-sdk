@@ -5,7 +5,7 @@ import {
   USER_ROUTES,
 } from '@eva_solutions/auth-contracts'
 import { apiPath } from './api-path'
-import { isEvaAuthConfigError } from './config'
+import { getProduct, isEvaAuthConfigError } from './config'
 import { HEADERS, getAuthServiceUrl } from './constants'
 import { parseErrorResponse } from './parse-error-response'
 import type {
@@ -28,6 +28,8 @@ type FetchOptions = {
   accessToken?: string
   refreshToken?: string
   body?: unknown
+  /** La respuesta reemite solo el access token (`x-eva-new-access-token`); el refresh no rota. */
+  reissuesAccessTokenOnly?: boolean
 }
 
 const extractTokens = (headers: Headers): TokenPair | undefined => {
@@ -83,6 +85,14 @@ const authFetch = async <T>(
     if (Array.isArray(data))
       return { ok: true, data: data as T & { tokens?: TokenPair } }
 
+    if (options.reissuesAccessTokenOnly) {
+      const accessToken = res.headers.get(HEADERS.NEW_ACCESS_TOKEN)
+      return {
+        ok: true,
+        data: { ...data, ...(accessToken ? { accessToken } : {}) },
+      }
+    }
+
     const tokens = extractTokens(res.headers)
 
     return { ok: true, data: { ...data, ...(tokens ? { tokens } : {}) } }
@@ -115,17 +125,62 @@ const getCode = (params: {
  * Verifica el código OTP. `challengeId` es obligatorio: debe ser el que
  * devolvió el `getCode` que originó el código; sin el desafío vigente el Auth
  * Service responde 401 sin consumir intentos.
+ *
+ * El `producto` del login sale SIEMPRE de `configureEvaAuth({ product })`, nunca del llamador: el
+ * access token queda emitido para ese producto. `empresaId` (opcional) deja esa empresa activa en
+ * la sesión si la persona pertenece a ella.
+ *
+ * @throws Error de configuración (`EvaAuthConfigError`) si falta `configureEvaAuth({ product })`.
  */
 const login = (
-  params: { phone: string; code: string; challengeId: string } & DeviceInfo,
+  params: {
+    phone: string
+    code: string
+    challengeId: string
+    empresaId?: string
+  } & DeviceInfo,
 ): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> => {
-  const { phone, code, challengeId, deviceType, os, browser, userAgent } =
-    params
+  const {
+    phone,
+    code,
+    challengeId,
+    empresaId,
+    deviceType,
+    os,
+    browser,
+    userAgent,
+  } = params
   return authFetch(apiPath(AUTH_ROUTES.login), {
     method: 'POST',
-    body: { phone, code, challengeId, deviceType, os, browser, userAgent },
+    body: {
+      phone,
+      code,
+      challengeId,
+      producto: getProduct(),
+      ...(empresaId !== undefined && { empresaId }),
+      deviceType,
+      os,
+      browser,
+      userAgent,
+    },
   })
 }
+
+/**
+ * Cambia la empresa activa de la sesión (`null` la deja sin empresa). Auth reemite SOLO el access
+ * token (`x-eva-new-access-token`; el refresh no rota): llega en `accessToken`. Auth valida la
+ * pertenencia; si la persona no pertenece, responde error.
+ */
+const setActiveEmpresa = (params: {
+  accessToken: string
+  empresaId: string | null
+}): Promise<Result<{ empresaId: string | null; accessToken?: string }>> =>
+  authFetch(apiPath(AUTH_ROUTES.setActiveEmpresa), {
+    method: 'POST',
+    accessToken: params.accessToken,
+    body: { empresaId: params.empresaId },
+    reissuesAccessTokenOnly: true,
+  })
 
 const refresh = (params: {
   refreshToken: string
@@ -216,6 +271,7 @@ export function createHttpClient() {
   return {
     getCode,
     login,
+    setActiveEmpresa,
     refresh,
     logout,
     getUser,

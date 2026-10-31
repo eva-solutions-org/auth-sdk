@@ -5,21 +5,26 @@
  */
 
 import type {
+  CreateServiceClientRequest,
   CreateServiceClientResponse,
+  ListServiceClientGrantsResponse,
   MaintenanceCleanupResponse,
   RepublishPendingResponse,
   RotateServiceClientSecretResponse,
+  ServiceClientGrant as ContractServiceClientGrant,
   ServiceClientPublic as ContractServiceClientPublic,
+  SetServiceClientGrantRequest,
+  UpdateServiceClientRequest,
   UpdateServiceClientResponse,
 } from '@eva_solutions/auth-contracts'
 import type { AccountState } from '../account-states'
 
 /**
- * Configuración del cliente Admin: las credenciales de un service client con scope `admin`.
+ * Configuración del cliente Admin: las credenciales de un service client con la marca `esAdmin`.
  * Cada request se firma con HMAC S2S; el secret nunca viaja.
  */
 export type AdminClientConfig = {
-  /** Slug del service client con scope `admin` (clientId). */
+  /** Slug del service client con la marca `esAdmin` (clientId). */
   clientId: string
   /** Secret del service client admin en hex (64 chars), el que devuelve su creación o rotación. */
   secretHex: string
@@ -38,19 +43,23 @@ export type AdminClientConfig = {
 export type ServiceClientPublic = ContractServiceClientPublic
 
 /**
- * Input para crear un nuevo service client.
- *
- * Tipo propio del SDK, no alias del contrato: `scopes` acepta cualquier string y es el API quien lo
- * valida contra el catálogo (`SERVICE_CLIENT_SCOPES`).
+ * Input para crear un nuevo service client (alias del request del contrato). Nace sin
+ * concesiones: se asignan con `setServiceClientGrant`. `auth-service` es un slug reservado.
  */
-export type CreateServiceClientInput = {
-  /** Slug único del service client (lowercase, sin espacios). */
-  slug: string
-  /** Nombre descriptivo del service client. Opcional. */
-  name?: string
-  /** Lista de scopes a asignar. Default: [] en el API. */
-  scopes?: string[]
-}
+export type CreateServiceClientInput = CreateServiceClientRequest
+
+/** Concesión de un service client sobre una audiencia: los permisos que puede pedir en su token. */
+export type ServiceClientGrant = ContractServiceClientGrant
+
+/**
+ * Input de `setServiceClientGrant`: audiencia y permisos del catálogo de `auth-contracts`.
+ * Un permiso que no es de esa audiencia (p. ej. `admin` en `auth-api`) no compila y el API lo rechaza.
+ */
+export type SetServiceClientGrantInput = SetServiceClientGrantRequest
+
+/** Resultado de `listServiceClientGrants`. */
+export type ListServiceClientGrantsResult =
+  ListServiceClientGrantsResponse['data']
 
 /**
  * Resultado de crear un service client.
@@ -59,19 +68,13 @@ export type CreateServiceClientInput = {
 export type CreateServiceClientResult = CreateServiceClientResponse['data']
 
 /**
- * Input para actualizar un service client (patch parcial).
- * Al menos un campo debe estar presente. Tipo propio del SDK por la misma razón que
- * {@link CreateServiceClientInput}.
+ * Input para actualizar un service client (patch parcial; alias del request del contrato).
+ * Al menos un campo debe estar presente.
  */
-export type UpdateServiceClientInput = {
-  enabled?: boolean
-  scopes?: string[]
-  name?: string
-}
+export type UpdateServiceClientInput = UpdateServiceClientRequest
 
 /**
  * Resultado de actualizar un service client.
- * Incluye `warning` cuando se modifican los scopes.
  */
 export type UpdateServiceClientResult = UpdateServiceClientResponse['data']
 

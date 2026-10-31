@@ -32,7 +32,8 @@ const mockServiceClient = {
   slug: 'mi-servicio',
   name: 'Mi Servicio',
   enabled: true,
-  scopes: ['users:read'],
+  esAdmin: false,
+  grants: [],
   lastUsedAt: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -61,7 +62,7 @@ describe('AdminClient', () => {
     })
 
     const admin = createAdminClient(mockConfig)
-    await admin.createServiceClient({ slug: 'mi-servicio', scopes: ['admin'] })
+    await admin.createServiceClient({ slug: 'mi-servicio', esAdmin: true })
 
     expect(fetchMock).toHaveBeenCalledOnce()
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit]
@@ -84,7 +85,7 @@ describe('AdminClient', () => {
       new Request(url, {
         method: options.method,
         headers,
-        body: JSON.stringify({ slug: 'otro', scopes: ['admin'] }),
+        body: JSON.stringify({ slug: 'otro', esAdmin: true }),
       }),
       { secretStore: async () => ADMIN_SECRET_HEX },
     )
@@ -123,7 +124,7 @@ describe('AdminClient', () => {
           id: 'sc-id-1',
           slug: 'mi-servicio',
           name: 'Mi Servicio',
-          scopes: ['users:read'],
+          esAdmin: false,
           enabled: true,
           secret: 'hex-secret-value',
           warning: 'Guarda este secreto ahora',
@@ -134,7 +135,7 @@ describe('AdminClient', () => {
     const admin = createAdminClient(mockConfig)
     const result = await admin.createServiceClient({
       slug: 'mi-servicio',
-      scopes: ['users:read'],
+      esAdmin: false,
     })
 
     expect(result.ok).toBe(true)
@@ -147,7 +148,7 @@ describe('AdminClient', () => {
     expect(options.method).toBe('POST')
     expect(JSON.parse(options.body as string)).toEqual({
       slug: 'mi-servicio',
-      scopes: ['users:read'],
+      esAdmin: false,
     })
   })
 
@@ -537,7 +538,7 @@ describe('AdminClient', () => {
       ok: false,
       status: 403,
       json: async () => ({
-        error: { code: 'forbidden', message: 'Sin scope admin' },
+        error: { code: 'forbidden', message: 'Sin marca esAdmin' },
       }),
     })
 
@@ -733,4 +734,143 @@ describe('createAdminClient — validación baseUrl', () => {
       createAdminClient({ ...validConfig, baseUrl: 'not-a-url' }),
     ).toThrow(/malformada/)
   })
+})
+
+describe('AdminClient grants', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    global.fetch = fetchMock as unknown as typeof fetch
+  })
+
+  const lastRequest = () => {
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    return { url, init }
+  }
+
+  it('listServiceClientGrants gets the grants of the client, HMAC signed', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: { grants: [{ audience: 'whatsapp-api', scopes: ['admin'] }] },
+      }),
+    })
+
+    const result = await createAdminClient({
+      clientId: ADMIN_SLUG,
+      secretHex: ADMIN_SECRET_HEX,
+      baseUrl: BASE_URL,
+    }).listServiceClientGrants('mi-servicio')
+
+    expect(result).toEqual({
+      ok: true,
+      data: { grants: [{ audience: 'whatsapp-api', scopes: ['admin'] }] },
+    })
+    const { url, init } = lastRequest()
+    expect(url).toBe(
+      `${BASE_URL}/api/v1/admin/service-clients/mi-servicio/grants`,
+    )
+    expect(init.method).toBe('GET')
+    const verified = await verifyS2SRequest(
+      new Request(url, {
+        method: init.method,
+        headers: init.headers as Record<string, string>,
+      }),
+      { secretStore: async () => ADMIN_SECRET_HEX },
+    )
+    expect(verified.ok).toBe(true)
+  })
+
+  it('setServiceClientGrant puts audience and scopes', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          grant: { audience: 'auth-api', scopes: ['empresas:escribir'] },
+        },
+      }),
+    })
+
+    const result = await createAdminClient({
+      clientId: ADMIN_SLUG,
+      secretHex: ADMIN_SECRET_HEX,
+      baseUrl: BASE_URL,
+    }).setServiceClientGrant('mi-servicio', {
+      audience: 'auth-api',
+      scopes: ['empresas:escribir'],
+    })
+
+    expect(result.ok).toBe(true)
+    const { url, init } = lastRequest()
+    expect(url).toBe(
+      `${BASE_URL}/api/v1/admin/service-clients/mi-servicio/grants`,
+    )
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body as string)).toEqual({
+      audience: 'auth-api',
+      scopes: ['empresas:escribir'],
+    })
+  })
+
+  it('setServiceClientGrant does not compile admin for auth-api', () => {
+    const admin = createAdminClient({
+      clientId: ADMIN_SLUG,
+      secretHex: ADMIN_SECRET_HEX,
+      baseUrl: BASE_URL,
+    })
+    // @ts-expect-error - `admin` is not a permission of `auth-api`
+    void admin.setServiceClientGrant('x', {
+      audience: 'auth-api',
+      scopes: ['admin'],
+    })
+  })
+
+  it('deleteServiceClientGrant deletes by audience and accepts the 204', async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 204 })
+
+    const result = await createAdminClient({
+      clientId: ADMIN_SLUG,
+      secretHex: ADMIN_SECRET_HEX,
+      baseUrl: BASE_URL,
+    }).deleteServiceClientGrant('mi-servicio', 'whatsapp-api')
+
+    expect(result).toEqual({ ok: true, data: undefined })
+    const { url, init } = lastRequest()
+    expect(url).toBe(
+      `${BASE_URL}/api/v1/admin/service-clients/mi-servicio/grants/whatsapp-api`,
+    )
+    expect(init.method).toBe('DELETE')
+  })
+
+  it.each(['', '.', '..'])(
+    'rejects the slug %j without a request',
+    async (bad) => {
+      const admin = createAdminClient({
+        clientId: ADMIN_SLUG,
+        secretHex: ADMIN_SECRET_HEX,
+        baseUrl: BASE_URL,
+      })
+
+      const results = [
+        await admin.listServiceClientGrants(bad),
+        await admin.setServiceClientGrant(bad, {
+          audience: 'auth-api',
+          scopes: ['users:read'],
+        }),
+        await admin.deleteServiceClientGrant(bad, 'auth-api'),
+        await admin.deleteServiceClientGrant('mi-servicio', bad),
+      ]
+
+      for (const result of results) {
+        expect(result).toMatchObject({
+          ok: false,
+          error: { kind: 'sdk', reason: 'malformed' },
+        })
+      }
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
 })

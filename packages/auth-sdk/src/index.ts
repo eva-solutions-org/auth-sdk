@@ -23,7 +23,12 @@ export type {
   EvaSdkError,
   EvaError,
 } from './types'
-export { HEADERS, COOKIES, COOKIE_MAX_AGE, JWT_CONFIG } from './constants'
+export {
+  HEADERS,
+  getCookieNames,
+  COOKIE_MAX_AGE,
+  JWT_CONFIG,
+} from './constants'
 // Estados de cuenta (G1 — Batch 14)
 export { ACCOUNT_STATES } from './account-states'
 export type { AccountState } from './account-states'
@@ -84,6 +89,9 @@ export type {
   ServiceClientPublic,
   CreateServiceClientInput,
   CreateServiceClientResult,
+  ServiceClientGrant,
+  SetServiceClientGrantInput,
+  ListServiceClientGrantsResult,
   UpdateServiceClientInput,
   UpdateServiceClientResult,
   RotateSecretResult,
@@ -111,6 +119,9 @@ export {
   S2S_RESPONSE_HEADERS,
   S2S_ERROR_CODES,
   verifyS2SRequest,
+  createServiceTokenProvider,
+  ServiceTokenRequestError,
+  verifyServiceToken,
 } from './s2s'
 export type {
   S2SClient,
@@ -122,6 +133,19 @@ export type {
   CreateWebhookSubscriptionInput,
   UpdateWebhookSubscriptionInput,
   ListWebhookDeliveriesQuery,
+  CreateEmpresaInput,
+  CreateSucursalInput,
+  EmpresaResult,
+  EmpresaDetailResult,
+  EmpresaMemberResult,
+  SucursalResult,
+  ServiceTokenProvider,
+  ServiceTokenProviderConfig,
+  ServiceTokenVerifyOptions,
+  ServiceTokenVerifyResult,
+  ServiceTokenVerifyError,
+  ServiceTokenVerifyReason,
+  ServiceTokenClaims,
   S2SScope,
   S2SErrorCode,
   // v1.1.0: server-side verify types

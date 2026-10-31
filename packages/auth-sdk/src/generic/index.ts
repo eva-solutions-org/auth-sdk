@@ -4,7 +4,7 @@ export {
   setTokenCookies,
   clearTokenCookies,
 } from '../cookies'
-export { HEADERS, COOKIES, COOKIE_MAX_AGE } from '../constants'
+export { HEADERS, getCookieNames, COOKIE_MAX_AGE } from '../constants'
 export {
   configureEvaAuth,
   type ConfigureEvaAuthOptions,

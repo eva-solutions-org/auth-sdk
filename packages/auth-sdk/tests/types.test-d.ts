@@ -17,10 +17,12 @@ import { verifyRequest } from '../src/generic/verify'
 // ───── REQ-TE-002: Sin generic ≡ legacy shape ─────
 
 describe('EvaTokenPayload sin generic', () => {
-  it('es estructuralmente idéntico al tipo previo { id: string; sessionId: string }', () => {
+  it('es { id, sessionId, clientId, empresaId? }', () => {
     expectTypeOf<EvaTokenPayload>().toEqualTypeOf<{
       id: string
       sessionId: string
+      clientId: string
+      empresaId?: string
     }>()
   })
 })
@@ -32,6 +34,8 @@ describe('EvaTokenPayload con generic', () => {
     expectTypeOf<EvaTokenPayload<{ phone: string }>>().branded.toEqualTypeOf<{
       id: string
       sessionId: string
+      clientId: string
+      empresaId?: string
       phone: string
     }>()
   })
@@ -42,6 +46,8 @@ describe('EvaTokenPayload con generic', () => {
     >().branded.toEqualTypeOf<{
       id: string
       sessionId: string
+      clientId: string
+      empresaId?: string
       role: 'admin' | 'user'
     }>()
   })
@@ -260,7 +266,7 @@ describe('WebhookPayload y EventCode (REQ-WH-08)', () => {
     assertType<EventCode>(EVENT_CODES.SESSION_CREATED)
   })
 
-  it('EventCode es la unión de los 11 event codes del catálogo', () => {
+  it('EventCode es la unión de los 15 event codes del catálogo', () => {
     expectTypeOf<EventCode>().toEqualTypeOf<
       | 'user.created'
       | 'user.verified'
@@ -273,6 +279,10 @@ describe('WebhookPayload y EventCode (REQ-WH-08)', () => {
       | 'user.deleted'
       | 'user.restored'
       | 'user.hard_deleted'
+      | 'empresa.created'
+      | 'empresa.member_added'
+      | 'empresa.member_removed'
+      | 'empresa.branch_created'
     >()
   })
 
@@ -289,7 +299,8 @@ describe('Admin types (REQ-ADMIN-06)', () => {
     expectTypeOf<ServiceClientPublic>().toHaveProperty('slug')
     expectTypeOf<ServiceClientPublic>().toHaveProperty('name')
     expectTypeOf<ServiceClientPublic>().toHaveProperty('enabled')
-    expectTypeOf<ServiceClientPublic>().toHaveProperty('scopes')
+    expectTypeOf<ServiceClientPublic>().toHaveProperty('esAdmin')
+    expectTypeOf<ServiceClientPublic>().toHaveProperty('grants')
     expectTypeOf<ServiceClientPublic>().toHaveProperty('createdAt')
     expectTypeOf<ServiceClientPublic>().toHaveProperty('updatedAt')
   })
@@ -300,7 +311,8 @@ describe('Admin types (REQ-ADMIN-06)', () => {
       slug: 'my-service',
       name: 'My Service',
       enabled: true,
-      scopes: ['read:users'],
+      esAdmin: false,
+      grants: [{ audience: 'auth-api', scopes: ['users:read'] }],
       lastUsedAt: null,
       createdAt: '2024-01-01T00:00:00Z',
       updatedAt: '2024-01-01T00:00:00Z',
@@ -319,7 +331,7 @@ describe('Admin types (REQ-ADMIN-06)', () => {
       id: 'svc-001',
       slug: 'my-service',
       name: 'My Service',
-      scopes: [],
+      esAdmin: false,
       enabled: true,
       secret: 'abc123hex',
       warning: 'Store the secret now',
@@ -364,17 +376,16 @@ describe('AdminErrorCode y S2SErrorCode', () => {
 
 // REQ-S2S-06 — S2SClientConfig importable
 describe('S2S types (REQ-S2S-06)', () => {
-  it('S2SClientConfig tiene clientId, secretHex, baseUrl', () => {
-    expectTypeOf<S2SClientConfig>().toHaveProperty('clientId')
-    expectTypeOf<S2SClientConfig>().toHaveProperty('secretHex')
+  it('S2SClientConfig tiene baseUrl y tokenProvider, y ya no las credenciales', () => {
     expectTypeOf<S2SClientConfig>().toHaveProperty('baseUrl')
+    expectTypeOf<S2SClientConfig>().toHaveProperty('tokenProvider')
+    expectTypeOf<S2SClientConfig>().not.toHaveProperty('secretHex')
   })
 
   it('S2SClientConfig es assignable (assertType no falla)', () => {
     assertType<S2SClientConfig>({
-      clientId: 'my-service',
-      secretHex: 'a'.repeat(64),
       baseUrl: 'https://auth.example.com',
+      tokenProvider: { getToken: async () => 't', invalidate: () => {} },
     })
   })
 })
@@ -704,7 +715,7 @@ import type {
   RotateServiceClientSecretResponse as ContractRotateServiceClientSecretResponse,
   RotateSubscriptionSecretResponse as ContractRotateSubscriptionSecretResponse,
   ServiceClientPublic as ContractServiceClientPublic,
-  ServiceClientScope as ContractServiceClientScope,
+  ServiceScope as ContractServiceScope,
   Subscription as ContractSubscription,
   UpdateServiceClientRequest as ContractUpdateServiceClientRequest,
   UpdateServiceClientResponse as ContractUpdateServiceClientResponse,
@@ -791,9 +802,9 @@ describe('S3 SDK mirrors equal the contract (D-28)', () => {
     >().toEqualTypeOf<WebhookSubscription>()
     // the coerced numbers of the query are `unknown` as zod input; the SDK takes numbers
     expectTypeOf<ListWebhookDeliveriesQuery>().not.toEqualTypeOf<ContractDeliveriesQuery>()
-    // the SDK accepts any scope string on input, the contract narrows it to the catalog
-    expectTypeOf<CreateServiceClientInput>().not.toEqualTypeOf<ContractCreateServiceClientRequest>()
-    expectTypeOf<UpdateServiceClientInput>().not.toEqualTypeOf<ContractUpdateServiceClientRequest>()
+    // the admin inputs are the contract request types (nothing is loosened any more)
+    expectTypeOf<CreateServiceClientInput>().toEqualTypeOf<ContractCreateServiceClientRequest>()
+    expectTypeOf<UpdateServiceClientInput>().toEqualTypeOf<ContractUpdateServiceClientRequest>()
     // `stateAccount` is the full AccountState union in the SDK, the one restore literal on the wire
     expectTypeOf<RestoreUserResult>().not.toEqualTypeOf<
       ContractRestoreUserResponse['data']
@@ -801,6 +812,6 @@ describe('S3 SDK mirrors equal the contract (D-28)', () => {
   })
 
   it('S2S_SCOPES values are the contract scopes (D-27)', () => {
-    expectTypeOf<S2SScope>().toEqualTypeOf<ContractServiceClientScope>()
+    expectTypeOf<S2SScope>().toEqualTypeOf<ContractServiceScope<'auth-api'>>()
   })
 })

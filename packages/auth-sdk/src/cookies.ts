@@ -1,4 +1,4 @@
-import { COOKIES, COOKIE_MAX_AGE } from './constants'
+import { COOKIE_MAX_AGE, getCookieNames } from './constants'
 import { getCookieDomain } from './config'
 import type { TokenPair } from './types'
 
@@ -51,6 +51,7 @@ export function readTokensFromCookies(
   cookieHeader: string | null,
 ): Partial<TokenPair> {
   if (!cookieHeader) return {}
+  const names = getCookieNames()
 
   const cookies = Object.fromEntries(
     cookieHeader.split(';').map((c) => {
@@ -65,24 +66,25 @@ export function readTokensFromCookies(
   )
 
   return {
-    ...(cookies[COOKIES.ACCESS_TOKEN] && {
-      accessToken: cookies[COOKIES.ACCESS_TOKEN],
+    ...(cookies[names.ACCESS_TOKEN] && {
+      accessToken: cookies[names.ACCESS_TOKEN],
     }),
-    ...(cookies[COOKIES.REFRESH_TOKEN] && {
-      refreshToken: cookies[COOKIES.REFRESH_TOKEN],
+    ...(cookies[names.REFRESH_TOKEN] && {
+      refreshToken: cookies[names.REFRESH_TOKEN],
     }),
   }
 }
 
 export function setTokenCookies(tokens: TokenPair): string[] {
+  const names = getCookieNames()
   return [
     serializeCookie(
-      COOKIES.ACCESS_TOKEN,
+      names.ACCESS_TOKEN,
       tokens.accessToken,
       COOKIE_MAX_AGE.ACCESS_TOKEN,
     ),
     serializeCookie(
-      COOKIES.REFRESH_TOKEN,
+      names.REFRESH_TOKEN,
       tokens.refreshToken,
       COOKIE_MAX_AGE.REFRESH_TOKEN,
     ),
@@ -90,8 +92,9 @@ export function setTokenCookies(tokens: TokenPair): string[] {
 }
 
 export function clearTokenCookies(): string[] {
+  const names = getCookieNames()
   return [
-    serializeClearCookie(COOKIES.ACCESS_TOKEN),
-    serializeClearCookie(COOKIES.REFRESH_TOKEN),
+    serializeClearCookie(names.ACCESS_TOKEN),
+    serializeClearCookie(names.REFRESH_TOKEN),
   ]
 }

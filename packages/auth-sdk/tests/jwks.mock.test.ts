@@ -32,11 +32,11 @@ describe('getJwksKeyFn', () => {
     expect((urlArg as URL).href).toBe('http://auth.test/.well-known/jwks.json')
   })
 
-  it('llama createRemoteJWKSet con cacheMaxAge: 86_400_000 (24h)', () => {
+  it('llama createRemoteJWKSet con cacheMaxAge: 600_000 (10 min)', () => {
     getJwksKeyFn()
 
     const [, options] = createRemoteJWKSetMock.mock.calls[0]
-    expect((options as Record<string, unknown>).cacheMaxAge).toBe(86_400_000)
+    expect((options as Record<string, unknown>).cacheMaxAge).toBe(600_000)
   })
 
   it('llama createRemoteJWKSet con cooldownDuration: 30_000 (30s)', () => {
