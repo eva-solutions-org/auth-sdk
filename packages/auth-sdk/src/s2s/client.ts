@@ -260,8 +260,8 @@ export type S2SClient = {
     input: ListAutorizacionesInput,
   ): Promise<Result<ListAutorizacionesResult>>
   /**
-   * ¿La otorgante autorizó ese permiso a la beneficiaria? (`autorizaciones:leer`, solo actores sin
-   * `producto` cuya audiencia es dueña del permiso). Vale solo si las dos empresas están activas.
+   * ¿La otorgante autorizó ese permiso a la beneficiaria? (`autorizaciones:leer`, solo actores cuya
+   * audiencia es dueña del permiso; puede tener además `producto`). Vale solo si las dos empresas están activas.
    *
    * Guarda el resultado 30 s (`AUTORIZACION_CACHE_TTL_MS`) por cliente: una revocación o una baja
    * tardan como máximo eso en notarse. Los errores no se guardan.

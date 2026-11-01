@@ -126,8 +126,8 @@ export const INTERNAL_GRUPO_ROUTES = {
 } as const satisfies Record<string, RouteDescriptor>
 
 /**
- * Authorization check, service-to-service: only for actors with no product whose audience owns the
- * permission. Relative to {@link API_PREFIX}.
+ * Authorization check, service-to-service: only for actors whose audience owns the permission
+ * (the actor may also have a product). Relative to {@link API_PREFIX}.
  */
 export const INTERNAL_AUTORIZACION_ROUTES = {
   verificar: { method: 'get', path: '/internal/autorizaciones/verificar' },

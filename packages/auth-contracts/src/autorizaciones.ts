@@ -34,8 +34,8 @@ export const listAutorizacionesQuerySchema = z
   .strict()
 
 /**
- * Query of `GET /internal/autorizaciones/verificar`: only for actors with no product whose
- * audience owns the permission. Valid only while both companies are active.
+ * Query of `GET /internal/autorizaciones/verificar`: only for actors whose audience owns the
+ * permission (the actor may also have a product). Valid only while both companies are active.
  */
 export const verificarAutorizacionQuerySchema = z
   .object({

@@ -1126,7 +1126,7 @@ Los paths llevan el prefijo `/api/v1` del Auth Service (ver [migration.md](migra
 | `createAutorizacion(otorganteId, input)` | POST | `/api/v1/internal/empresas/:id/autorizaciones` | `{ beneficiariaId, permiso, subjectToken }`; el permiso es del catálogo entre empresas. 201; `409` si ya está vigente. `autorizaciones:escribir`. |
 | `deleteAutorizacion(empresaId, autorizacionId, { subjectToken })` | DELETE | `/api/v1/internal/empresas/:id/autorizaciones/:autorizacionId` | Revoca (otorgante) o renuncia (beneficiaria). 204. |
 | `listAutorizaciones(empresaId, { direccion, subjectToken })` | GET | `/api/v1/internal/empresas/:id/autorizaciones?direccion=` | `otorgadas` o `recibidas`, vigentes. La persona viaja en el header `x-eva-subject-token` (un GET no tiene body). `autorizaciones:leer`. |
-| `checkAutorizacion({ otorgante, beneficiaria, permiso })` | GET | `/api/v1/internal/autorizaciones/verificar` | `{ autorizado }`. Solo para actores sin `producto` cuya audiencia es dueña del permiso. Vale si las dos empresas están activas. **Caché de 30 s por cliente** (también las negativas, no los errores): una revocación o una baja tardan como máximo eso en notarse. `autorizaciones:leer`. |
+| `checkAutorizacion({ otorgante, beneficiaria, permiso })` | GET | `/api/v1/internal/autorizaciones/verificar` | `{ autorizado }`. Solo para actores cuya audiencia es dueña del permiso (pueden tener además `producto`). Vale si las dos empresas están activas. **Caché de 30 s por cliente** (también las negativas, no los errores): una revocación o una baja tardan como máximo eso en notarse. `autorizaciones:leer`. |
 
 Todos los métodos retornan `Promise<Result<T>>` con `error: EvaError`. Los ids se validan y codifican como un solo segmento de path, igual que los demás.
 
