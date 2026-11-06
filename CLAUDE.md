@@ -33,7 +33,7 @@ Run scripts as `pnpm run <script>` (`version` and `docs` collide with pnpm built
 | `attw` | Check published types resolution |
 | `npm pack --dry-run` | Inspect the tarball contents (pnpm 11 has no `pnpm pack --dry-run`) |
 
-- **Branches**: `main` publishes — `.github/workflows/release.yml` runs `changeset publish` on every push to `main`, so merge to `main` only what is meant to be released; unreleased work stays on its feature branch. Maintainer steps in [`CONTRIBUTING.md`](CONTRIBUTING.md#releasing-maintainers).
+- **Branches**: features branch from `development` and return by PR. `development` publishes a snapshot `X.Y.Z-dev-<timestamp>` (dist-tag `dev`) when changesets are pending, after a `checks` job in the same workflow; `main` only opens the Version PR; the stable release (`latest`) is published when a GitHub Release `vX.Y.Z` is created from `main`, followed by a back-merge `main` → `development`. All of it runs in `.github/workflows/release.yml`. Local uses `pnpm link`. Maintainer steps in [`CONTRIBUTING.md`](CONTRIBUTING.md#releasing-maintainers).
 - **Commits**: conventional commits; `feat!` (or `BREAKING CHANGE:`) for breaking changes. No AI attribution, no co-author lines.
 - **Style**: oxfmt + oxlint.
 - **Docs**: `docs/` is the single source of truth. This repo has no project skills: the directory in this file is the only index. Rules and behavior live in `docs/`, never in this file. Update the affected doc in the same change.

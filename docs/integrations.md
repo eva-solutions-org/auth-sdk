@@ -85,7 +85,9 @@ Options, accepted forms and the config-error behavior: [configuration.md](config
 
 | Channel | How | Used for |
 |---------|-----|----------|
-| **npm** | Push to `main` runs `.github/workflows/release.yml`: `changesets/action` opens a Version PR and, when it is merged, publishes with `pnpm exec changeset publish` (provenance requested through `PNPM_CONFIG_PROVENANCE`). `prepublishOnly` lints, type-checks, tests and builds before publishing. | Every release. One artifact for all environments. |
+| **npm, stable** | Publishing a GitHub Release `vX.Y.Z` (not a prerelease) runs the `publish` job of `.github/workflows/release.yml`: its `checks` job (lint, format, type-check, tests, build) runs on the tagged commit first; the job then checks that the tag is `v<version of packages/auth-sdk>` and that its commit is in `main`, and runs `pnpm exec changeset publish --no-git-tag` under the dist-tag `latest` (provenance requested through `PNPM_CONFIG_PROVENANCE`). A push to `main` only runs the `version-pr` job, which opens or updates the Version PR and never publishes. | production. |
+| **npm, snapshot** | Push to `development` runs the `checks` job and then the `snapshot` job of the same workflow: `changeset version --snapshot dev` runs and, only if it changed `packages/auth-sdk/package.json` (pending changesets), `changeset publish --tag dev --no-git-tag` publishes `X.Y.Z-dev-<timestamp>` under the dist-tag `dev`. No commits, no git tags. | development. |
+| **Local link** | `pnpm link`, see [CONTRIBUTING.md](../CONTRIBUTING.md#three-environments). | local. |
 | **Local tarball** | `pnpm run build`, then `pnpm pack` inside `packages/auth-sdk/`, writes `eva_solutions-auth-sdk-<version>.tgz` in that directory. `*.tgz` is git-ignored. | Trying unreleased SDK changes in a consumer. |
 
 The publish credentials and the maintainer steps (including the one-time bootstrap) are in [CONTRIBUTING.md](../CONTRIBUTING.md#releasing-maintainers).
@@ -113,7 +115,7 @@ A change to an exposed contract above is not done until the consumers run it. Ch
 - [ ] Update [migration.md](migration.md) for breaking changes, and [api.md](api.md) / [configuration.md](configuration.md) for changed API or config (link, do not duplicate).
 - [ ] If the Auth Service API adds a permission (`SERVICE_AUDIENCE_SCOPES`, `S2S_SCOPES`), an audience or a route, add it to the contract and its exact-set tests (`packages/auth-contracts/tests/constants.test.ts`, `packages/auth-contracts/tests/identity-phase1.test.ts`, `packages/auth-sdk/tests/exports.test.ts`). A new audience also needs its variant in `setServiceClientGrantRequestSchema` (a test fails if it is missing).
 - [ ] If the Auth Service API adds an error code on an admin or `/internal/*` route, add it to `ADMIN_ERROR_CODES` / `S2S_ERROR_CODES` (`packages/auth-sdk/src/admin/error-codes.ts`, `packages/auth-sdk/src/s2s/error-codes.ts`) and to the exact-set tests in `tests/exports.test.ts`.
-- [ ] Merge to `main`; the release workflow opens the Version PR (`changeset version`) and, once that PR is merged, publishes. Follow the maintainer steps in [CONTRIBUTING.md](../CONTRIBUTING.md#releasing-maintainers).
+- [ ] Merge to `development` first: the snapshot is published under the `dev` dist-tag and the development consumers test it. Then merge `development` into `main`; the `version-pr` job opens the Version PR (`changeset version`). Merge it and create the GitHub Release `vX.Y.Z` from `main`: the `publish` job publishes by itself. After the release, open the back-merge PR `main` → `development`. Follow the maintainer steps in [CONTRIBUTING.md](../CONTRIBUTING.md#releasing-maintainers).
 - [ ] Each consumer updates its pinned version and lockfile, following the install method documented in its own repo, and passes `authUrl` if it did not before.
 - [ ] Each consumer runs its tests. They mock or exercise the SDK, so a signature or error-shape change fails there first.
 
