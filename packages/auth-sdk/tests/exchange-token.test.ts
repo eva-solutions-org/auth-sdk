@@ -68,6 +68,19 @@ const advance = (seconds: number) =>
 
 const exchanges = () => calls.filter((c) => c.url === EXCHANGE_URL)
 
+// Waits until the exchange request has been sent `n` times. The fingerprint and the HMAC signing
+// before the fetch are real async crypto (thread pool): a fixed number of event loop turns is not
+// enough under load (it failed in CI). It waits on the REAL clock with a deadline and never
+// touches the fake one (`vi.waitFor` would advance it).
+const exchangeCalled = async (n: number) => {
+  const deadline = performance.now() + 5_000
+  while (exchanges().length < n) {
+    if (performance.now() > deadline)
+      throw new Error(`exchange not requested ${n} times`)
+    await new Promise((resolve) => setImmediate(resolve))
+  }
+}
+
 const makeProvider = (over: { audience?: string } = {}): ServiceTokenProvider =>
   createServiceTokenProvider({
     authUrl: 'https://auth.test',
@@ -312,10 +325,7 @@ describe('the cache', () => {
     void provider.exchangeToken(input()) // the initiator, never awaited
 
     const joiner = provider.exchangeToken(input())
-    // `vi.waitFor` would advance the fake clock while polling; wait on the real event loop instead.
-    for (let i = 0; i < 200 && exchanges().length < 1; i++) {
-      await new Promise((resolve) => setImmediate(resolve))
-    }
+    await exchangeCalled(1)
     expect(exchanges()).toHaveLength(1)
     await vi.advanceTimersByTimeAsync(10_999)
     expect(exchanges()).toHaveLength(1)
@@ -337,9 +347,7 @@ describe('the cache', () => {
       n === 1 ? (new Promise(() => {}) as never) : exchangeOk(n)
     const provider = makeProvider()
     void provider.exchangeToken(input()) // the initiator, cancelled by the runtime
-    for (let i = 0; i < 200 && exchanges().length < 1; i++) {
-      await new Promise((resolve) => setImmediate(resolve))
-    }
+    await exchangeCalled(1)
     expect(exchanges()).toHaveLength(1)
 
     advance(12) // past one request duration plus the margin
@@ -359,9 +367,7 @@ describe('the cache', () => {
     const provider = makeProvider()
     void provider.exchangeToken(input())
     const joiner = provider.exchangeToken(input())
-    for (let i = 0; i < 200 && exchanges().length < 1; i++) {
-      await new Promise((resolve) => setImmediate(resolve))
-    }
+    await exchangeCalled(1)
     release()
 
     expect(await joiner).toMatchObject({ ok: true })
