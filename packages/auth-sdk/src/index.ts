@@ -4,10 +4,13 @@ export { verifyAccessToken } from './jwt'
 export type { VerifyAccessTokenOptions } from './jwt'
 export {
   configureEvaAuth,
-  type ConfigureEvaAuthOptions,
-  getAuthUrl,
-  getCookieDomain,
-} from './config'
+  getConfiguredClientIpForwarder,
+  readRequestHeader,
+  type ConfigureEvaAuthServerOptions as ConfigureEvaAuthOptions,
+  type ClientIpContext,
+  type ServiceCredentials,
+} from './client-ip-config'
+export { getAuthUrl, getCookieDomain } from './config'
 export type {
   EvaUser,
   EvaSession,

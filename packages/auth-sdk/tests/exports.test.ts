@@ -190,7 +190,7 @@ describe('exports preexistentes — regresión (T-035 no rompió nada)', () => {
   })
 
   it('getCookieNames devuelve ACCESS_TOKEN y REFRESH_TOKEN con el producto configurado', () => {
-    configureEvaAuth({ product: 'whatsapp-panel' })
+    configureEvaAuth({ product: 'whatsapp-panel', serviceCredentials: null })
     expect(getCookieNames().ACCESS_TOKEN).toBe(
       'eva_whatsapp-panel_access_token',
     )
@@ -633,6 +633,8 @@ describe('package manifest (workspace S0: REQ-WS-09, REQ-SDK-11)', () => {
 
 const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
   root: [
+    'getConfiguredClientIpForwarder',
+    'readRequestHeader',
     'ACCOUNT_STATES',
     'ADMIN_ERROR_CODES',
     'getCookieNames',
@@ -699,6 +701,8 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'verifyWebhookSignature',
   ],
   hono: [
+    'getConfiguredClientIpForwarder',
+    'readRequestHeader',
     'getCookieNames',
     'COOKIE_MAX_AGE',
     'DEFAULT_ERROR_MESSAGES',
@@ -720,6 +724,8 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'setTokenCookies',
   ],
   generic: [
+    'getConfiguredClientIpForwarder',
+    'readRequestHeader',
     'getCookieNames',
     'COOKIE_MAX_AGE',
     'DEFAULT_ERROR_MESSAGES',

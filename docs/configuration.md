@@ -127,14 +127,22 @@ El SDK expone `configureEvaAuth(opts)` para inyectar configuración en runtime. 
 
 ```ts
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
-// También disponible desde @eva_solutions/auth-sdk/hono, /generic y /react
+// También disponible desde @eva_solutions/auth-sdk/hono y /generic (servidor).
+// El entry /react (navegador) tiene la suya, sin `serviceCredentials`.
 
 configureEvaAuth({
   authUrl: process.env.AUTH_URL,             // URL del Auth Service (https, o http en loopback)
   product: 'whatsapp-panel',                 // producto de este consumidor (login, cookies, verifyAccessToken)
   cookieDomain: process.env.COOKIE_DOMAIN,   // Domain para cookies (ej: '.miempresa.com')
+  serviceCredentials: {                      // OBLIGATORIO en servidor: tu credencial de service client
+    clientId: process.env.AUTH_CLIENT_ID,
+    secretHex: process.env.AUTH_CLIENT_SECRET_HEX,
+  },
+  // getClientIp: fuera de Cloudflare Workers también es obligatorio (ver Reenvío de la IP del cliente)
 })
 ```
+
+En Cloudflare Workers eso es todo el cableado (fuera de Workers hace falta además `getClientIp`): con `serviceCredentials` el SDK reenvía la IP real del usuario a Auth en todas las rutas, en `evaAuth` y en `verifyRequest` (ver [Reenvío de la IP del cliente](#reenvío-de-la-ip-del-cliente)). Sin backend (solo local), pasa `serviceCredentials: null`.
 
 ### Opciones
 
@@ -142,14 +150,48 @@ configureEvaAuth({
 |--------|------|-------------|
 | `authUrl` | `string \| undefined` | URL base del Auth Service. Obligatoria antes del primer uso que la necesite; inmutable. Ver [URL del Auth Service](#url-del-auth-service). |
 | `product` | `string \| undefined` | Slug del producto (`^[a-z][a-z0-9-]{2,63}$`, por ejemplo `whatsapp-panel`). **Obligatorio solo** si usas las rutas de login, las cookies de sesión o `verifyAccessToken`: da el nombre de las cookies (`eva_<producto>_access_token` / `eva_<producto>_refresh_token`), la audiencia (`aud`) que exige `verifyAccessToken` y el `producto` que viaja en el login. Un servicio que solo verifica tokens de servicio no lo necesita. Inmutable, como `authUrl`; sin él, esos usos lanzan `EvaAuthConfigError` (500). Auth valida que el producto exista, esté habilitado y no coincida con una audiencia de servicio. |
+| `serviceCredentials` | `{ clientId: string; secretHex: string } \| null` | **Obligatorio en los entry de servidor** (raíz, `/hono`, `/generic`); no existe en `/react`. La credencial del service client de este backend; el permiso `login:client-ip` es implícito en Auth, no hay nada que conceder. `null` es el descarte explícito (solo local o sin backend); `undefined` lanza al configurar, sin valores sensibles en el mensaje. Reconfigurar con la misma credencial conserva el objeto de reenvío y su backoff. |
+| `getClientIp` | `(context: Context \| Request) => string \| null \| undefined` | De dónde sale la IP del usuario. **Obligatorio con `serviceCredentials` fuera de Cloudflare Workers** (lanza al configurar); en Workers es opcional y por defecto lee solo `cf-connecting-ip`. Ver [Reenvío de la IP del cliente](#reenvío-de-la-ip-del-cliente). |
+| `onClientIpForwardingError` | `(info: { code; status? }) => void` | Opcional, servidor. Aviso de un fallo del reenvío, sin token ni IP. Por defecto `console.warn` con `code` y `status`. |
 | `cookieDomain` | `string \| undefined` | Atributo `Domain` para `Set-Cookie`. Si se omite, no resetea el valor previo. |
 | `errorWire` | `'api' \| 'string' \| undefined` | Shape HTTP que el SDK emite cuando rechaza un request. Default: `'api'`. Ver [sección errorWire](#errorwire) más abajo. |
 | `errorMessages` | `Partial<EvaErrorMessages> \| undefined` | Override de mensajes de error. Ver [sección Mensajes de error personalizados](#mensajes-de-error-personalizados). |
+
+### Reenvío de la IP del cliente
+
+Auth limita `get-code` y `login` por IP y por persona, y guarda la IP de la sesión. Detrás de un backend, Auth vería la IP del backend: por eso el backend entrega su credencial **una vez** y el SDK reenvía la IP real, sin cablear nada.
+
+**Cloudflare Workers** (la IP la fija el borde en `cf-connecting-ip`; es el default y solo existe aquí, detectado con `navigator.userAgent === 'Cloudflare-Workers'`):
+
+```ts
+configureEvaAuth({
+  authUrl: env.AUTH_URL,
+  product: 'whatsapp-panel',
+  serviceCredentials: { clientId: env.AUTH_CLIENT_ID, secretHex: env.AUTH_CLIENT_SECRET_HEX },
+})
+```
+
+**Node, Bun o cualquier servidor fuera de Workers**: `getClientIp` es **obligatorio** con `serviceCredentials` (si falta, `configureEvaAuth` lanza al configurar; con `serviceCredentials: null` no aplica). En otro servidor `cf-connecting-ip` lo escribe el cliente, así que el SDK no lo usa por defecto. Lee el header que SOLO tu proxy fija, y asegúrate de que el proxy lo sobrescribe siempre (nunca `x-forwarded-for` tal cual: lo escribe el cliente).
+
+```ts
+import { configureEvaAuth, readRequestHeader } from '@eva_solutions/auth-sdk'
+
+configureEvaAuth({
+  authUrl: process.env.AUTH_URL,
+  product: 'whatsapp-panel',
+  serviceCredentials: { clientId: process.env.AUTH_CLIENT_ID, secretHex: process.env.AUTH_CLIENT_SECRET_HEX },
+  getClientIp: (context) => readRequestHeader(context, 'x-real-ip'), // lo fija nginx con `proxy_set_header X-Real-IP $remote_addr;`
+  onClientIpForwardingError: ({ code, status }) => logger.warn({ code, status }, 'client ip forwarding'),
+})
+```
+
+Quien llama directo a `createHttpClient` obtiene los headers con `getConfiguredClientIpForwarder()` (el mismo objeto, con el mismo backoff, que usan las rutas): `createHttpClient().getUser({ accessToken }, await getConfiguredClientIpForwarder()(request))`. Una opción `clientIpForwarding` explícita en `evaAuthRoutes`, `evaAuth` o `verifyRequest` tiene prioridad sobre la configurada. El detalle (headers, fallos, backoff) está en [api.md](api.md#reenvío-de-la-ip-del-cliente) y las reglas de seguridad en [security.md](security.md#reenvío-de-la-ip-del-cliente).
 
 ### Validaciones
 
 - `authUrl` debe cumplir las reglas de la tabla de [URL del Auth Service](#url-del-auth-service); si no, **lanza inmediatamente**.
 - `product` debe ser un slug (`^[a-z][a-z0-9-]{2,63}$`); si no, **lanza inmediatamente**.
+- `serviceCredentials` es obligatorio en los entry de servidor: `undefined` lanza, con credencial y sin `getClientIp` fuera de Cloudflare Workers también, y una credencial mal formada (`clientId` vacío o `secretHex` que no sea hex) también; ningún mensaje incluye el valor.
 - `cookieDomain` no puede contener `;`, `\r` ni `\n` (defensa contra header injection). Si los contiene, **lanza inmediatamente**.
 
 ### Reconfiguración
@@ -235,7 +277,7 @@ Llamar `configureEvaAuth` **antes del primer request**. Las cookies ya emitidas 
 ```ts
 // boot.ts
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
-configureEvaAuth({ authUrl: process.env.AUTH_URL, cookieDomain: '.miempresa.com' })  // PRIMERO
+configureEvaAuth({ authUrl: process.env.AUTH_URL, cookieDomain: '.miempresa.com', serviceCredentials })  // PRIMERO
 
 // app.ts
 import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
@@ -369,7 +411,7 @@ Configura `authUrl` una vez al arrancar, antes de montar rutas o middleware:
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
 
-configureEvaAuth({ authUrl: process.env.AUTH_URL })   // PRIMERO
+configureEvaAuth({ authUrl: process.env.AUTH_URL, serviceCredentials })   // PRIMERO
 
 app.route('/auth', evaAuthRoutes())
 app.use('/api/*', evaAuth())

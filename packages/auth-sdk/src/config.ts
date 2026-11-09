@@ -255,6 +255,9 @@ function buildConfigPatch(
  *   caracteres de header injection (;, \r, \n), o si errorMessages / errorWire son inválidos.
  */
 export function configureEvaAuth(opts: ConfigureEvaAuthOptions): void {
+  // Server-only option: a secret must never reach the browser (the server entries strip it).
+  if ('serviceCredentials' in opts)
+    throw new Error('serviceCredentials: server only')
   const patch = buildConfigPatch(opts, _runtimeConfig)
   _runtimeConfig = { ..._runtimeConfig, ...patch }
 }

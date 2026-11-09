@@ -4,10 +4,8 @@
  * Decisión M2: resolución de messages() por-request (closure evalúa global cada vez).
  */
 import type { Context, MiddlewareHandler } from 'hono'
-import {
-  createClientIpForwarder,
-  type ClientIpForwardingOptions,
-} from './client-ip-forwarding'
+import type { ClientIpForwardingOptions } from './client-ip-forwarding'
+import { resolveClientIpForwarder } from './client-ip-config'
 import { createHttpClient } from './http-client'
 import {
   readTokensFromCookies,
@@ -211,7 +209,7 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
   const client = createHttpClient()
 
   // Nunca rompe la llamada: ante un fallo devuelve undefined (sin headers).
-  const forwardingHeaders = createClientIpForwarder(opts.clientIpForwarding)
+  const forwardingHeaders = resolveClientIpForwarder(opts.clientIpForwarding)
 
   // Resolución diferida por-request (M2)
   const messages = () =>

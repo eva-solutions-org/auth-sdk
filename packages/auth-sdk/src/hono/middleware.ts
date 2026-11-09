@@ -7,10 +7,8 @@ import {
   clearTokenCookies,
 } from '../cookies'
 import type { Context } from 'hono'
-import {
-  createClientIpForwarder,
-  type ClientIpForwardingOptions,
-} from '../client-ip-forwarding'
+import type { ClientIpForwardingOptions } from '../client-ip-forwarding'
+import { resolveClientIpForwarder } from '../client-ip-config'
 import { createHttpClient } from '../http-client'
 import { deduplicateRefresh } from '../refresh-dedup'
 import { isDefinitiveRejection } from '../refresh-dedup'
@@ -56,7 +54,7 @@ export function evaAuth<TExtra extends Record<string, unknown> = {}>(
   if (opts.errorMessages !== undefined) {
     validateErrorMessagesInput(opts.errorMessages)
   }
-  const forwardingHeaders = createClientIpForwarder(opts.clientIpForwarding)
+  const forwardingHeaders = resolveClientIpForwarder(opts.clientIpForwarding)
   return createMiddleware<{ Variables: EvaAuthVariables<TExtra> }>(
     async (c, next) => {
       const cookieHeader = c.req.header('cookie') || null

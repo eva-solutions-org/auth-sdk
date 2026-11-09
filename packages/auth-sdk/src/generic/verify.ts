@@ -1,10 +1,8 @@
 import type { ZodType } from 'zod'
 import { verifyAccessToken } from '../jwt'
 import { readTokensFromCookies, setTokenCookies } from '../cookies'
-import {
-  createClientIpForwarder,
-  type ClientIpForwardingOptions,
-} from '../client-ip-forwarding'
+import type { ClientIpForwardingOptions } from '../client-ip-forwarding'
+import { resolveClientIpForwarder } from '../client-ip-config'
 import { createHttpClient } from '../http-client'
 import { deduplicateRefresh } from '../refresh-dedup'
 import { isTransientVerifyFailure } from '../verify-failure'
@@ -100,7 +98,7 @@ export async function verifyRequest<
     }
   }
 
-  const headers = await createClientIpForwarder(opts.clientIpForwarding)(
+  const headers = await resolveClientIpForwarder(opts.clientIpForwarding)(
     request,
   )
   const refreshResult = await deduplicateRefresh(refreshToken, () =>

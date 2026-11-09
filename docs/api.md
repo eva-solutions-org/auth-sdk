@@ -85,7 +85,7 @@ Un token inválido o expirado devuelve `{ ok: false }` (401) y no lanza. **Lanza
 | `PrivacyState` | Estado de privacidad |
 | `ReservedJwtClaim` | Tipo union: `typeof RESERVED_JWT_CLAIMS[number]` |
 | `EvaErrorMessages` | Interface con las 17 keys de mensajes de error del SDK |
-| `ConfigureEvaAuthOptions` | Opciones de `configureEvaAuth()`: `authUrl?`, `product?`, `cookieDomain?`, `errorMessages?` y `errorWire?` |
+| `ConfigureEvaAuthOptions` | Opciones de `configureEvaAuth()`: `authUrl?`, `product?`, `cookieDomain?`, `errorMessages?`, `errorWire?` y, en los entry de servidor (raíz, `/hono`, `/generic`), `serviceCredentials` (obligatorio, `null` para descartar), `getClientIp` (obligatorio con credencial fuera de Cloudflare Workers) y `onClientIpForwardingError?`. El entry `/react` no tiene `serviceCredentials` |
 
 ### Error utilities
 
@@ -224,43 +224,31 @@ Retorna `Hono`.
 
 #### Reenvío de la IP del cliente
 
-Auth limita `get-code` y `login` por IP (5 por minuto) y guarda la IP en la sesión. Cuando el login pasa por un backend (un Worker en otra zona, un Node en un servidor), Auth ve la IP del backend y toda la app comparte ese cupo. Con `clientIpForwarding` el backend reenvía la IP real, autenticado con su token de servicio de la audiencia `auth-api` y el permiso `login:client-ip` (`S2S_SCOPES.LOGIN_CLIENT_IP`; hay que concedérselo al service client).
+Auth limita `get-code` y `login` por IP (5 por minuto) y guarda la IP en la sesión. Cuando el login pasa por un backend (un Worker en otra zona, un Node en un servidor), Auth ve la IP del backend y toda la app comparte ese cupo. **El reenvío es automático**: `configureEvaAuth({ serviceCredentials })` (ver [configuration.md](configuration.md#reenvío-de-la-ip-del-cliente)) crea UN objeto de reenvío con un proveedor de tokens `aud: auth-api`, scope `login:client-ip` (`S2S_SCOPES.LOGIN_CLIENT_IP`; el permiso es implícito en Auth: no hay nada que conceder), y `evaAuthRoutes`, `evaAuthOpenAPIRoutes`, `evaAuth` y `verifyRequest` lo usan por defecto, compartiendo su estado.
 
 ```ts
-import { evaAuthRoutes, evaAuth } from '@eva_solutions/auth-sdk/hono'
-import { createServiceTokenProvider } from '@eva_solutions/auth-sdk/s2s'
-
-const tokenProvider = createServiceTokenProvider({
+configureEvaAuth({
   authUrl: env.AUTH_URL,
-  clientId: env.AUTH_CLIENT_ID,
-  secretHex: env.AUTH_CLIENT_SECRET_HEX,
-  audience: 'auth-api',
-  scope: 'login:client-ip',
+  product: 'whatsapp-panel',
+  serviceCredentials: { clientId: env.AUTH_CLIENT_ID, secretHex: env.AUTH_CLIENT_SECRET_HEX },
 })
 
-// Declárala una vez: los 30 s sin reintento del token son por objeto de opción.
-const clientIpForwarding = {
-  // Cloudflare: la IP que pone el borde. Nunca un header que el navegador pueda fijar.
-  getClientIp: (c) => c.req.header('cf-connecting-ip'),
-  getServiceToken: () => tokenProvider.getToken(),
-  onError: ({ code, status }) => log.warn('client ip forwarding failed', { code, status }),
-}
-
-app.route('/auth', evaAuthRoutes({ clientIpForwarding }))
-app.use('/api/*', evaAuth({ clientIpForwarding })) // auto-refresh
+app.route('/auth', evaAuthRoutes())   // sin más cableado
+app.use('/api/*', evaAuth())          // el auto-refresh también reenvía
 ```
 
-- **Headers**: con IP, envía juntos `x-eva-service-token: <token de servicio>` (`SERVICE_TOKEN_HEADER`) y `x-eva-client-ip: <ip>` (`CLIENT_IP_HEADER`); sin IP, ninguno y no llama a `getServiceToken`. Un solo canal para todas las rutas: `Authorization` queda para el token de usuario. Ambas constantes salen de `@eva_solutions/auth-sdk` y `@eva_solutions/auth-sdk/s2s`.
+- **IP**: en Cloudflare Workers el default es solo `cf-connecting-ip` (lo fija el borde; detectado con `navigator.userAgent === 'Cloudflare-Workers'`), nunca `x-forwarded-for`. Fuera de Workers ese default no existe (en otro servidor lo escribe el cliente): `getClientIp` es **obligatorio** con `serviceCredentials` y `configureEvaAuth` lanza al configurar si falta (con `null` no aplica). Acepta el `Context` de Hono o una `Request`; ver [configuration.md](configuration.md#reenvío-de-la-ip-del-cliente). Si no devuelve IP, no se reenvía.
+- **Headers**: con IP, envía juntos `x-eva-service-token: <token de servicio>` (`SERVICE_TOKEN_HEADER`) y `x-eva-client-ip: <ip>` (`CLIENT_IP_HEADER`); sin IP, ninguno y no pide el token. Un solo canal para todas las rutas: `Authorization` queda para el token de usuario. Ambas constantes salen de `@eva_solutions/auth-sdk` y `@eva_solutions/auth-sdk/s2s`.
 - **Cobertura**: `/get-code`, `/login`, `/refresh`, `/logout`, `/me` (GET, PATCH, DELETE), `/empresas`, `/empresa-activa`, `/sessions` (GET, DELETE por id y DELETE de todas), y el auto-refresh de `evaAuth` y de `verifyRequest`.
-- **Nunca rompe la llamada**: si `getClientIp` o `getServiceToken` lanzan, o el token no llega en 2 s, o no es un valor de header válido, la llamada sigue sin esos headers (Auth usa entonces la IP del backend). Tras un fallo de `getServiceToken` no se vuelve a pedir durante 30 s, y un token que llegó tarde (después de los 2 s) se usa dentro de esos 30 s sin otra espera. El estado es por objeto de opción: el mismo objeto pasado a `evaAuthRoutes`, `evaAuth` y `verifyRequest` lo comparte. `onError({ code, status? })` avisa con `code` `client_ip_failed`, `service_token_failed` o `service_token_timeout`; nunca recibe el token ni la IP, y una excepción del callback se ignora.
-- **`verifyRequest`** (sin Hono): `verifyRequest(request, { clientIpForwarding })` con `getClientIp: (request: Request) => ...`. Reutiliza el mismo objeto de opción entre llamadas (y con las rutas y `evaAuth`) para compartir el estado.
-- **Llamar a `createHttpClient` directo**: todas las llamadas hechas en nombre de un usuario aceptan un último argumento de headers extra. `createClientIpForwarder(opciones)` construye esos headers (devuelve siempre el mismo constructor para el mismo objeto de opciones):
+- **Nunca rompe la llamada**: si `getClientIp` o el proveedor lanzan, o el token no llega en 2 s, o no es un valor de header válido, la llamada sigue sin esos headers (Auth usa entonces la IP del backend). Tras un fallo del token no se vuelve a pedir durante 30 s, y un token que llegó tarde (después de los 2 s) se usa dentro de esos 30 s sin otra espera. Cada fallo avisa por `onClientIpForwardingError({ code, status? })` (`code`: `client_ip_failed`, `service_token_failed` o `service_token_timeout`); sin ese callback, un `console.warn` con `code` y `status`, así que nunca queda apagado en silencio. Nunca recibe el token ni la IP, y una excepción del callback se ignora.
+- **Una sola credencial, un solo estado**: reconfigurar con la misma credencial no recrea el objeto ni reinicia el backoff; una credencial distinta crea uno nuevo.
+- **Opción explícita**: `clientIpForwarding: { getClientIp, getServiceToken, onError? }` en `evaAuthRoutes`, `evaAuthOpenAPIRoutes`, `buildAuthHandlers`, `evaAuth` o `verifyRequest` tiene prioridad sobre la configurada (`getClientIp` recibe el `Request` en `verifyRequest`). El estado es por objeto de opción: declárala una vez, fuera del handler.
+- **Llamar a `createHttpClient` directo**: todas las llamadas hechas en nombre de un usuario aceptan un último argumento de headers extra. `getConfiguredClientIpForwarder()` devuelve el constructor de esos headers con la credencial configurada (el mismo, con el mismo backoff, que usan las rutas); `createClientIpForwarder(opciones)` hace lo mismo con una opción explícita.
 
 ```ts
-import { createHttpClient, createClientIpForwarder } from '@eva_solutions/auth-sdk'
+import { createHttpClient, getConfiguredClientIpForwarder } from '@eva_solutions/auth-sdk'
 
-const forward = createClientIpForwarder<Request>(clientIpForwarding) // una vez
-const headers = await forward(request) // undefined si no hay IP o falló
+const headers = await getConfiguredClientIpForwarder()(request) // undefined si no hay IP o falló
 await createHttpClient().getUser({ accessToken }, headers)
 ```
 
@@ -1070,7 +1058,7 @@ import { Hono } from 'hono'
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 import { serviceTokenAuth, type ServiceTokenAuthVariables } from '@eva_solutions/auth-sdk/hono'
 
-configureEvaAuth({ authUrl: process.env.AUTH_URL! }) // el JWKS sale de aquí; no hace falta `product`
+configureEvaAuth({ authUrl: process.env.AUTH_URL!, serviceCredentials: null }) // el JWKS sale de aquí; no hace falta `product`
 
 const app = new Hono<{ Variables: ServiceTokenAuthVariables }>()
 app.use(
