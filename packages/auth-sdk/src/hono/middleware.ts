@@ -6,8 +6,15 @@ import {
   setTokenCookies,
   clearTokenCookies,
 } from '../cookies'
+import type { Context } from 'hono'
+import {
+  createClientIpForwarder,
+  type ClientIpForwardingOptions,
+} from '../client-ip-forwarding'
 import { createHttpClient } from '../http-client'
 import { deduplicateRefresh } from '../refresh-dedup'
+import { isDefinitiveRejection } from '../refresh-dedup'
+import { isTransientVerifyFailure } from '../verify-failure'
 import type { EvaTokenPayload } from '../types'
 import { resolveErrorMessages, type EvaErrorMessages } from '../error-messages'
 import {
@@ -21,10 +28,26 @@ const client = createHttpClient()
 export type EvaAuthOptions<TExtra extends Record<string, unknown>> = {
   extraClaimsSchema?: ZodType<TExtra>
   errorMessages?: Partial<EvaErrorMessages>
+  /**
+   * Solo backends: reenvía la IP real del usuario en el auto-refresh (ver `evaAuthRoutes`). Sin
+   * IP, o ante cualquier fallo, el refresh sigue sin esos headers.
+   */
+  clientIpForwarding?: ClientIpForwardingOptions<Context>
 }
 
 export type EvaAuthVariables<TExtra extends Record<string, unknown>> = {
   evaPayload: EvaTokenPayload<TExtra>
+}
+
+function unavailable(c: Context, retryAfterSeconds?: number): Response {
+  const message = 'Servicio de autenticación no disponible'
+  if (retryAfterSeconds !== undefined) {
+    c.header('Retry-After', String(retryAfterSeconds))
+  }
+  if (getErrorWire() === 'api') {
+    return c.json({ error: { code: 'service_unavailable', message } }, 503)
+  }
+  return c.json({ error: message }, 503)
 }
 
 export function evaAuth<TExtra extends Record<string, unknown> = {}>(
@@ -33,6 +56,7 @@ export function evaAuth<TExtra extends Record<string, unknown> = {}>(
   if (opts.errorMessages !== undefined) {
     validateErrorMessagesInput(opts.errorMessages)
   }
+  const forwardingHeaders = createClientIpForwarder(opts.clientIpForwarding)
   return createMiddleware<{ Variables: EvaAuthVariables<TExtra> }>(
     async (c, next) => {
       const cookieHeader = c.req.header('cookie') || null
@@ -47,11 +71,15 @@ export function evaAuth<TExtra extends Record<string, unknown> = {}>(
           await next()
           return
         }
+        // No se pudo VERIFICAR (JWKS inaccesible): refrescar gastaría una rotación sin motivo y
+        // podría hacer que Auth cierre la sesión. Sin refresh y sin tocar cookies.
+        if (isTransientVerifyFailure(result.error)) return unavailable(c)
       }
 
       if (refreshToken) {
+        const headers = await forwardingHeaders(c)
         const refreshResult = await deduplicateRefresh(refreshToken, () =>
-          client.refresh({ refreshToken }),
+          client.refresh({ refreshToken }, headers),
         )
         if (refreshResult.ok && refreshResult.data.tokens) {
           const verifyResult = await verifyAccessToken<TExtra>(
@@ -69,6 +97,19 @@ export function evaAuth<TExtra extends Record<string, unknown> = {}>(
             await next()
             return
           }
+          // Auth ya rotó los tokens: si no se pudo VERIFICAR el nuevo (JWKS inaccesible) no se
+          // pierden ni se borran; se guardan y el cliente reintenta con ellos.
+          if (isTransientVerifyFailure(verifyResult.error)) {
+            for (const cookie of setTokenCookies(refreshResult.data.tokens)) {
+              c.header('Set-Cookie', cookie, { append: true })
+            }
+            return unavailable(c)
+          }
+        }
+        // Un fallo transitorio (red, 408, 429, 5xx) no prueba que la sesión murió: no se borran
+        // las cookies y se responde 503 para que el cliente reintente.
+        if (!refreshResult.ok && !isDefinitiveRejection(refreshResult.error)) {
+          return unavailable(c, refreshResult.error.retryAfterSeconds)
         }
         const clearHeaders = clearTokenCookies()
         for (const cookie of clearHeaders) {

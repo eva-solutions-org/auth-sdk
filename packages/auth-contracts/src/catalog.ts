@@ -32,6 +32,7 @@ export const SERVICE_AUDIENCE_SCOPES = {
     'autorizaciones:escribir',
     'autorizaciones:leer',
     'directorio:leer',
+    'login:client-ip',
   ],
   'whatsapp-api': ['messages:send:text', 'messages:send:media', 'admin'],
 } as const

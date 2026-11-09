@@ -24,7 +24,15 @@ export {
   USERS_BATCH_MAX_IDS,
   S2S_SCOPES,
   S2S_RESPONSE_HEADERS,
+  CLIENT_IP_HEADER,
+  SERVICE_TOKEN_HEADER,
 } from './constants'
+export { createClientIpForwarder } from '../client-ip-forwarding'
+export type {
+  ClientIpForwardingOptions,
+  ClientIpForwardingErrorInfo,
+  ClientIpForwardingErrorCode,
+} from '../client-ip-forwarding'
 export type { S2SScope } from './constants'
 
 export { S2S_ERROR_CODES } from './error-codes'

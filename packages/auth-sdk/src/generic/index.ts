@@ -1,4 +1,8 @@
-export { verifyRequest, type VerifyRequestOptions } from './verify'
+export {
+  verifyRequest,
+  type VerifyRequestOptions,
+  type VerifyRequestResult,
+} from './verify'
 export {
   readTokensFromCookies,
   setTokenCookies,

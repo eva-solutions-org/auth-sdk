@@ -32,6 +32,12 @@ export const S2S_NONCE_REGEX = /^[0-9a-f]{32}$/
  */
 export { USERS_BATCH_MAX_IDS } from '@eva_solutions/auth-contracts'
 
+/** Re-export del contrato: headers con los que un backend reenvía la IP real del usuario a Auth. */
+export {
+  CLIENT_IP_HEADER,
+  SERVICE_TOKEN_HEADER,
+} from '@eva_solutions/auth-contracts'
+
 /**
  * Permisos de la audiencia `auth-api`, tal como los concede el Auth Service a un service client.
  *
@@ -60,6 +66,7 @@ export const S2S_SCOPES = {
   AUTORIZACIONES_ESCRIBIR: 'autorizaciones:escribir',
   AUTORIZACIONES_LEER: 'autorizaciones:leer',
   DIRECTORIO_LEER: 'directorio:leer',
+  LOGIN_CLIENT_IP: 'login:client-ip',
 } as const satisfies Record<string, ServiceScope<'auth-api'>>
 
 /** Unión de literales de todos los permisos de la audiencia `auth-api`. */

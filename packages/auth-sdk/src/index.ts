@@ -116,6 +116,11 @@ export type {
   RepublishPendingWebhooksResult,
   AdminErrorCode,
 } from './admin'
+export type {
+  ClientIpForwardingOptions,
+  ClientIpForwardingErrorInfo,
+  ClientIpForwardingErrorCode,
+} from './client-ip-forwarding'
 // Módulo S2S (REQ-EXPORTS-02 — accesible desde raíz)
 // Nota: WebhookSubscription/WebhookSubscriptionWithSecret/WebhookDelivery/RotateWebhookSecretResult
 // se exportan desde ./webhooks arriba (s2s los re-exporta internamente desde ../webhooks/types).
@@ -131,6 +136,9 @@ export {
   USERS_BATCH_MAX_IDS,
   S2S_SCOPES,
   S2S_RESPONSE_HEADERS,
+  CLIENT_IP_HEADER,
+  SERVICE_TOKEN_HEADER,
+  createClientIpForwarder,
   S2S_ERROR_CODES,
   verifyS2SRequest,
   createServiceTokenProvider,

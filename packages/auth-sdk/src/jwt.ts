@@ -3,6 +3,10 @@ import { z, ZodObject } from 'zod'
 import type { ZodType } from 'zod'
 import { USER_KID_PREFIX, USER_TOKEN_TYP } from '@eva_solutions/auth-contracts'
 import { getJwksKeyFn } from './jwks'
+import {
+  isDefinitiveJoseError,
+  markTransientVerifyFailure,
+} from './verify-failure'
 import { withKidPrefix } from './key-resolver'
 import { getProduct, isEvaAuthConfigError } from './config'
 import { JWT_CONFIG } from './constants'
@@ -85,6 +89,8 @@ export async function verifyAccessToken<
   token: string,
   opts: VerifyAccessTokenOptions<TExtra> = {},
 ): Promise<Result<EvaTokenPayload<TExtra>>> {
+  // Etapa 1 (jwtVerify y clave): un fallo que no sea de token es transitorio. Después, siempre definitivo.
+  let verifyStage = true
   try {
     // 1. Verificar firma + standard claims con jose.
     const { payload } = await jwtVerify(
@@ -99,6 +105,7 @@ export async function verifyAccessToken<
       },
     )
 
+    verifyStage = false
     // 2. Validar shape base (sub + sessionId presentes).
     const base = BaseClaimsSchema.safeParse(payload)
     if (!base.success) {
@@ -185,14 +192,18 @@ export async function verifyAccessToken<
     if (isEvaAuthConfigError(err)) throw err
     const message =
       err instanceof Error ? err.message : 'Verificación de token fallida'
+    const error: EvaSdkError = {
+      kind: 'sdk',
+      reason: 'token_invalid',
+      message,
+      status: 401,
+    }
     return {
       ok: false,
-      error: {
-        kind: 'sdk',
-        reason: 'token_invalid',
-        message,
-        status: 401,
-      } satisfies EvaSdkError,
+      error:
+        verifyStage && !isDefinitiveJoseError(err)
+          ? markTransientVerifyFailure(error)
+          : error,
     }
   }
 }

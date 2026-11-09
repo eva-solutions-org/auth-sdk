@@ -4,6 +4,10 @@
  * Decisión M2: resolución de messages() por-request (closure evalúa global cada vez).
  */
 import type { Context, MiddlewareHandler } from 'hono'
+import {
+  createClientIpForwarder,
+  type ClientIpForwardingOptions,
+} from './client-ip-forwarding'
 import { createHttpClient } from './http-client'
 import {
   readTokensFromCookies,
@@ -38,6 +42,16 @@ export interface AuthHandlerOptions {
    * (p. ej. `'*'` o `null`).
    */
   allowedOrigins?: readonly string[]
+  /**
+   * Solo backends. Reenvía la IP real del usuario a Auth en TODAS las llamadas que estas rutas
+   * hacen en nombre de un usuario (get-code, login, refresh, logout, me, empresas, sesiones), para
+   * que el rate limit y la sesión vean la IP real y no la de este backend. Si `getClientIp`
+   * devuelve una IP, pide el token de servicio (`aud: auth-api`, scope `login:client-ip`, máximo
+   * 2 s) y envía `x-eva-service-token` y `x-eva-client-ip` juntos; sin IP, ninguno. Si algo falla
+   * la llamada sigue sin esos headers, `onError` avisa (sin token ni IP) y no se reintenta el
+   * token durante 30 s. `getClientIp` debe leer una fuente confiable (ver docs/security.md).
+   */
+  clientIpForwarding?: ClientIpForwardingOptions<Context>
 }
 
 /**
@@ -196,6 +210,9 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
 
   const client = createHttpClient()
 
+  // Nunca rompe la llamada: ante un fallo devuelve undefined (sin headers).
+  const forwardingHeaders = createClientIpForwarder(opts.clientIpForwarding)
+
   // Resolución diferida por-request (M2)
   const messages = () =>
     resolveErrorMessages(opts.errorMessages, getErrorMessages())
@@ -271,7 +288,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           400,
         )
       }
-      const result = await client.getCode(parsed.data)
+      const result = await client.getCode(
+        parsed.data,
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
     },
@@ -299,7 +319,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
         )
       }
       const deviceInfo = parseDeviceInfo(c.req.raw)
-      const result = await client.login({ ...parsed.data, ...deviceInfo })
+      const result = await client.login(
+        { ...parsed.data, ...deviceInfo },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       if (result.data.tokens) {
         const cookieHeaders = setTokenCookies(result.data.tokens)
@@ -320,8 +343,9 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           sdkError('auth_required', messages().tokenNotFound, 401),
           401,
         )
+      const headers = await forwardingHeaders(c)
       const result = await deduplicateRefresh(refreshToken, () =>
-        client.refresh({ refreshToken }),
+        client.refresh({ refreshToken }, headers),
       )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       if (result.data.tokens) {
@@ -343,7 +367,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           sdkError('auth_required', messages().tokenNotFound, 401),
           401,
         )
-      const result = await client.logout({ refreshToken })
+      const result = await client.logout(
+        { refreshToken },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       const clearHeaders = clearTokenCookies()
       for (const cookie of clearHeaders) {
@@ -362,7 +389,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           sdkError('auth_required', messages().tokenNotFound, 401),
           401,
         )
-      const result = await client.getUser({ accessToken })
+      const result = await client.getUser(
+        { accessToken },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
     },
@@ -395,7 +425,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           400,
         )
       }
-      const result = await client.updateUser({ accessToken, data: parsed.data })
+      const result = await client.updateUser(
+        { accessToken, data: parsed.data },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
     },
@@ -410,7 +443,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           sdkError('auth_required', messages().tokenNotFound, 401),
           401,
         )
-      const result = await client.deleteUser({ accessToken })
+      const result = await client.deleteUser(
+        { accessToken },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       const clearHeaders = clearTokenCookies()
       for (const cookie of clearHeaders) {
@@ -429,7 +465,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           sdkError('auth_required', messages().tokenNotFound, 401),
           401,
         )
-      const result = await client.getUserEmpresas({ accessToken })
+      const result = await client.getUserEmpresas(
+        { accessToken },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
     },
@@ -468,10 +507,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           400,
         )
       }
-      const result = await client.setActiveEmpresa({
-        accessToken,
-        empresaId: parsed.data.empresaId,
-      })
+      const result = await client.setActiveEmpresa(
+        { accessToken, empresaId: parsed.data.empresaId },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       // Auth reemite SOLO el access token; sin él la sesión seguiría con la empresa vieja y no hay
       // nada que reescribir: es una respuesta inválida de Auth, no un éxito.
@@ -502,7 +541,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           sdkError('auth_required', messages().tokenNotFound, 401),
           401,
         )
-      const result = await client.getSessions({ accessToken })
+      const result = await client.getSessions(
+        { accessToken },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
     },
@@ -525,7 +567,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           400,
         )
       }
-      const result = await client.deleteSession({ accessToken, sessionId })
+      const result = await client.deleteSession(
+        { accessToken, sessionId },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       return c.json({ data: result.data })
     },
@@ -540,7 +585,10 @@ export function buildAuthHandlers(opts: AuthHandlerOptions = {}): AuthHandlers {
           sdkError('auth_required', messages().tokenNotFound, 401),
           401,
         )
-      const result = await client.deleteAllSessions({ refreshToken })
+      const result = await client.deleteAllSessions(
+        { refreshToken },
+        await forwardingHeaders(c),
+      )
       if (!result.ok) return errorResponse(c, result.error, result.error.status)
       const clearHeaders = clearTokenCookies()
       for (const cookie of clearHeaders) {

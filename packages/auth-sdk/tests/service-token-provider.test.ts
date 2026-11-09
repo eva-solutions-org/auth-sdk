@@ -293,6 +293,26 @@ describe('an orphaned in-flight request (Workers cancel it when its request ends
   })
 })
 
+describe('an orphaned in-flight request without timers (Workers kill the timer with the request)', () => {
+  it('getToken drops an in-flight request older than its deadline and makes its own', async () => {
+    // Only Date is faked and no timer ever fires: the orphan cannot rescue itself.
+    fetchMock
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce(tokenResponse('tok-own'))
+    const provider = createServiceTokenProvider(config)
+    void provider.getToken() // the initiator, cancelled by the runtime
+    await fetchCalled(1)
+
+    advance(10) // still within one request duration: joins, no second request
+    void provider.getToken()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    advance(2) // 12 s after the start: the in-flight request is orphaned
+    expect(await provider.getToken()).toBe('tok-own')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('invalidate(rejectedToken)', () => {
   it('discards the cached token only when it is the rejected one', async () => {
     fetchMock

@@ -33,6 +33,16 @@ export const HEADERS = {
   NEW_REFRESH_TOKEN: 'x-eva-new-refresh-token',
 } as const
 
+/**
+ * Headers with which a backend forwards the real client IP to Auth on the calls it makes on behalf
+ * of a user: `x-eva-service-token` carries a service token (audience `auth-api`, scope
+ * `login:client-ip`) and `x-eva-client-ip` the IP; both or neither. They live apart from
+ * `Authorization` because the session routes already use it for the user token. Without a valid
+ * token Auth ignores the IP.
+ */
+export const CLIENT_IP_HEADER = 'x-eva-client-ip'
+export const SERVICE_TOKEN_HEADER = 'x-eva-service-token'
+
 /** Names of the headers of the service-to-service signed requests and responses. */
 export const INTERNAL_HEADERS = {
   X_EVA_CLIENT_ID: 'x-eva-client-id',

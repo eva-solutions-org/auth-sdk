@@ -33,6 +33,8 @@ type FetchOptions = {
   accessToken?: string
   refreshToken?: string
   body?: unknown
+  /** Headers extra; no pisan `content-type`. */
+  extraHeaders?: Record<string, string>
   /** La respuesta reemite solo el access token (`x-eva-new-access-token`); el refresh no rota. */
   reissuesAccessTokenOnly?: boolean
 }
@@ -48,9 +50,16 @@ const authFetch = async <T>(
   path: string,
   options: FetchOptions = {},
 ): Promise<Result<T & { tokens?: TokenPair }>> => {
-  const { method = 'GET', accessToken, refreshToken, body } = options
+  const {
+    method = 'GET',
+    accessToken,
+    refreshToken,
+    body,
+    extraHeaders,
+  } = options
 
   const headers: Record<string, string> = {
+    ...extraHeaders,
     'content-type': 'application/json',
   }
 
@@ -67,7 +76,15 @@ const authFetch = async <T>(
 
     if (!res.ok) {
       const body = await res.json().catch(() => null)
-      return { ok: false, error: parseErrorResponse(res.status, body) }
+      const error = parseErrorResponse(res.status, body)
+      const retryAfter = res.headers?.get('retry-after')?.trim()
+      return {
+        ok: false,
+        error:
+          retryAfter !== undefined && /^\d+$/.test(retryAfter)
+            ? { ...error, retryAfterSeconds: Number(retryAfter) }
+            : error,
+      }
     }
 
     const json: unknown = await res.json()
@@ -118,12 +135,14 @@ const authFetch = async <T>(
  * `login`; cada `getCode` nuevo invalida el `challengeId` anterior.
  * El tipo es un cast: la respuesta del Auth Service no se parsea en runtime.
  */
-const getCode = (params: {
-  phone: string
-}): Promise<Result<{ message: string; challengeId: string }>> =>
+const getCode = (
+  params: { phone: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<{ message: string; challengeId: string }>> =>
   authFetch(apiPath(AUTH_ROUTES.getCode), {
     method: 'POST',
     body: { phone: params.phone },
+    ...(extraHeaders && { extraHeaders }),
   })
 
 /**
@@ -144,6 +163,7 @@ const login = (
     challengeId: string
     empresaId?: string
   } & DeviceInfo,
+  extraHeaders?: Record<string, string>,
 ): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> => {
   const {
     phone,
@@ -168,6 +188,7 @@ const login = (
       browser,
       userAgent,
     },
+    ...(extraHeaders && { extraHeaders }),
   })
 }
 
@@ -176,59 +197,75 @@ const login = (
  * token (`x-eva-new-access-token`; el refresh no rota): llega en `accessToken`. Auth valida la
  * pertenencia; si la persona no pertenece, responde error.
  */
-const setActiveEmpresa = (params: {
-  accessToken: string
-  empresaId: string | null
-}): Promise<Result<{ empresaId: string | null; accessToken?: string }>> =>
+const setActiveEmpresa = (
+  params: { accessToken: string; empresaId: string | null },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<{ empresaId: string | null; accessToken?: string }>> =>
   authFetch(apiPath(AUTH_ROUTES.setActiveEmpresa), {
     method: 'POST',
     accessToken: params.accessToken,
     body: { empresaId: params.empresaId },
     reissuesAccessTokenOnly: true,
+    ...(extraHeaders && { extraHeaders }),
   })
 
-const refresh = (params: {
-  refreshToken: string
-}): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> =>
+const refresh = (
+  params: { refreshToken: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<{ user: { id: string }; tokens?: TokenPair }>> =>
   authFetch(apiPath(AUTH_ROUTES.refresh), {
     method: 'POST',
     refreshToken: params.refreshToken,
+    ...(extraHeaders && { extraHeaders }),
   })
 
-const logout = (params: {
-  refreshToken: string
-}): Promise<Result<{ message: string }>> =>
+const logout = (
+  params: { refreshToken: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<{ message: string }>> =>
   authFetch(apiPath(AUTH_ROUTES.logout), {
     method: 'POST',
     refreshToken: params.refreshToken,
+    ...(extraHeaders && { extraHeaders }),
   })
 
-const getUser = (params: { accessToken: string }): Promise<Result<EvaUser>> =>
-  authFetch(apiPath(USER_ROUTES.get), { accessToken: params.accessToken })
+const getUser = (
+  params: { accessToken: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<EvaUser>> =>
+  authFetch(apiPath(USER_ROUTES.get), {
+    accessToken: params.accessToken,
+    ...(extraHeaders && { extraHeaders }),
+  })
 
-const updateUser = (params: {
-  accessToken: string
-  data: Record<string, unknown>
-}): Promise<Result<EvaUser>> =>
+const updateUser = (
+  params: { accessToken: string; data: Record<string, unknown> },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<EvaUser>> =>
   authFetch(apiPath(USER_ROUTES.update), {
     method: 'PATCH',
     accessToken: params.accessToken,
     body: params.data,
+    ...(extraHeaders && { extraHeaders }),
   })
 
-const deleteUser = (params: {
-  accessToken: string
-}): Promise<Result<{ message: string }>> =>
+const deleteUser = (
+  params: { accessToken: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<{ message: string }>> =>
   authFetch(apiPath(USER_ROUTES.deactivate), {
     method: 'DELETE',
     accessToken: params.accessToken,
+    ...(extraHeaders && { extraHeaders }),
   })
 
-const getUserEmpresas = (params: {
-  accessToken: string
-}): Promise<Result<EvaEmpresa[]>> =>
+const getUserEmpresas = (
+  params: { accessToken: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<EvaEmpresa[]>> =>
   authFetch(apiPath(USER_ROUTES.listCompanies), {
     accessToken: params.accessToken,
+    ...(extraHeaders && { extraHeaders }),
   })
 
 /**
@@ -238,6 +275,7 @@ const getUserEmpresas = (params: {
  */
 const getDirectorio = (
   params: { accessToken: string } & DirectorioQuery,
+  extraHeaders?: Record<string, string>,
 ): Promise<Result<DirectorioResponse['data']>> => {
   const { accessToken, ...filters } = params
   const query = new URLSearchParams()
@@ -247,19 +285,23 @@ const getDirectorio = (
   const qs = query.toString()
   return authFetch(
     `${apiPath(DIRECTORIO_ROUTES.search)}${qs === '' ? '' : `?${qs}`}`,
-    { accessToken },
+    { accessToken, ...(extraHeaders && { extraHeaders }) },
   )
 }
 
-const getSessions = (params: {
-  accessToken: string
-}): Promise<Result<EvaSession[]>> =>
-  authFetch(apiPath(SESSION_ROUTES.list), { accessToken: params.accessToken })
+const getSessions = (
+  params: { accessToken: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<EvaSession[]>> =>
+  authFetch(apiPath(SESSION_ROUTES.list), {
+    accessToken: params.accessToken,
+    ...(extraHeaders && { extraHeaders }),
+  })
 
-const deleteSession = (params: {
-  accessToken: string
-  sessionId: string
-}): Promise<Result<{ message: string }>> => {
+const deleteSession = (
+  params: { accessToken: string; sessionId: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<{ message: string }>> => {
   if (!/^[\w-]+$/.test(params.sessionId)) {
     return Promise.resolve({
       ok: false,
@@ -276,16 +318,19 @@ const deleteSession = (params: {
     {
       method: 'DELETE',
       accessToken: params.accessToken,
+      ...(extraHeaders && { extraHeaders }),
     },
   )
 }
 
-const deleteAllSessions = (params: {
-  refreshToken: string
-}): Promise<Result<{ message: string; count: number }>> =>
+const deleteAllSessions = (
+  params: { refreshToken: string },
+  extraHeaders?: Record<string, string>,
+): Promise<Result<{ message: string; count: number }>> =>
   authFetch(apiPath(SESSION_ROUTES.deleteAll), {
     method: 'DELETE',
     refreshToken: params.refreshToken,
+    ...(extraHeaders && { extraHeaders }),
   })
 
 // Every other route is built with `apiPath` (`API_PREFIX + path`); health is an operational probe

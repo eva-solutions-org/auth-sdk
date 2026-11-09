@@ -122,7 +122,7 @@ Retorna `string`.
 | `WEBHOOK_HEADERS` | Nombres de los headers HTTP que el Auth Service incluye en cada webhook: `SIGNATURE`, `ID`, `TIMESTAMP`. |
 | `ADMIN_ERROR_CODES` | Códigos de error específicos del módulo Admin: `service_client_already_exists`, `service_client_not_found`, `service_client_secret_rotation_conflict`, `last_admin_client`. |
 | `S2S_ERROR_CODES` | Códigos de error específicos del módulo S2S (usuarios y webhooks): `user_not_found`, `webhook_subscription_duplicate`, `webhook_subscription_not_found`, `webhook_secret_rotation_conflict`, `webhook_url_invalid`, `webhook_event_codes_empty`. |
-| `S2S_SCOPES` | Permisos de la audiencia `auth-api`: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`, `EMPRESAS_LEER`, `EMPRESAS_ESCRIBIR`. `admin` no está: la superficie `/admin` de Auth se firma, no usa tokens. |
+| `S2S_SCOPES` | Permisos de la audiencia `auth-api`: `USERS_READ`, `WEBHOOKS_READ`, `WEBHOOKS_WRITE`, `EMPRESAS_LEER`, `EMPRESAS_ESCRIBIR`, `LOGIN_CLIENT_IP` (y los demás del catálogo). `admin` no está: la superficie `/admin` de Auth se firma, no usa tokens. |
 | `S2S_RESPONSE_HEADERS` | Header de respuesta S2S: `SERVER_TIME` (`x-eva-server-time`). |
 | `USERS_BATCH_MAX_IDS` | Número máximo de IDs por llamada a `batchUsers` (100). El cliente valida este límite antes de hacer fetch. |
 
@@ -220,6 +220,52 @@ Retorna `Hono`.
 |--------|------|-------------|
 | `errorMessages` | `Partial<EvaErrorMessages>` | Override local de mensajes de error |
 | `allowedOrigins` | `readonly string[]` | Orígenes extra (`https://app.example.com`, `tauri://localhost`; sin path) desde los que se aceptan las mutaciones con cookies. Ver [CSRF por Origin](#csrf-por-origin) |
+| `clientIpForwarding` | `{ getClientIp(c): string \| null \| undefined; getServiceToken(): Promise<string>; onError?(info): void }` | Solo backends. Reenvía la IP real del usuario a Auth en todas las llamadas que las rutas hacen en nombre de un usuario. Ver [Reenvío de la IP del cliente](#reenvío-de-la-ip-del-cliente) |
+
+#### Reenvío de la IP del cliente
+
+Auth limita `get-code` y `login` por IP (5 por minuto) y guarda la IP en la sesión. Cuando el login pasa por un backend (un Worker en otra zona, un Node en un servidor), Auth ve la IP del backend y toda la app comparte ese cupo. Con `clientIpForwarding` el backend reenvía la IP real, autenticado con su token de servicio de la audiencia `auth-api` y el permiso `login:client-ip` (`S2S_SCOPES.LOGIN_CLIENT_IP`; hay que concedérselo al service client).
+
+```ts
+import { evaAuthRoutes, evaAuth } from '@eva_solutions/auth-sdk/hono'
+import { createServiceTokenProvider } from '@eva_solutions/auth-sdk/s2s'
+
+const tokenProvider = createServiceTokenProvider({
+  authUrl: env.AUTH_URL,
+  clientId: env.AUTH_CLIENT_ID,
+  secretHex: env.AUTH_CLIENT_SECRET_HEX,
+  audience: 'auth-api',
+  scope: 'login:client-ip',
+})
+
+// Declárala una vez: los 30 s sin reintento del token son por objeto de opción.
+const clientIpForwarding = {
+  // Cloudflare: la IP que pone el borde. Nunca un header que el navegador pueda fijar.
+  getClientIp: (c) => c.req.header('cf-connecting-ip'),
+  getServiceToken: () => tokenProvider.getToken(),
+  onError: ({ code, status }) => log.warn('client ip forwarding failed', { code, status }),
+}
+
+app.route('/auth', evaAuthRoutes({ clientIpForwarding }))
+app.use('/api/*', evaAuth({ clientIpForwarding })) // auto-refresh
+```
+
+- **Headers**: con IP, envía juntos `x-eva-service-token: <token de servicio>` (`SERVICE_TOKEN_HEADER`) y `x-eva-client-ip: <ip>` (`CLIENT_IP_HEADER`); sin IP, ninguno y no llama a `getServiceToken`. Un solo canal para todas las rutas: `Authorization` queda para el token de usuario. Ambas constantes salen de `@eva_solutions/auth-sdk` y `@eva_solutions/auth-sdk/s2s`.
+- **Cobertura**: `/get-code`, `/login`, `/refresh`, `/logout`, `/me` (GET, PATCH, DELETE), `/empresas`, `/empresa-activa`, `/sessions` (GET, DELETE por id y DELETE de todas), y el auto-refresh de `evaAuth` y de `verifyRequest`.
+- **Nunca rompe la llamada**: si `getClientIp` o `getServiceToken` lanzan, o el token no llega en 2 s, o no es un valor de header válido, la llamada sigue sin esos headers (Auth usa entonces la IP del backend). Tras un fallo de `getServiceToken` no se vuelve a pedir durante 30 s, y un token que llegó tarde (después de los 2 s) se usa dentro de esos 30 s sin otra espera. El estado es por objeto de opción: el mismo objeto pasado a `evaAuthRoutes`, `evaAuth` y `verifyRequest` lo comparte. `onError({ code, status? })` avisa con `code` `client_ip_failed`, `service_token_failed` o `service_token_timeout`; nunca recibe el token ni la IP, y una excepción del callback se ignora.
+- **`verifyRequest`** (sin Hono): `verifyRequest(request, { clientIpForwarding })` con `getClientIp: (request: Request) => ...`. Reutiliza el mismo objeto de opción entre llamadas (y con las rutas y `evaAuth`) para compartir el estado.
+- **Llamar a `createHttpClient` directo**: todas las llamadas hechas en nombre de un usuario aceptan un último argumento de headers extra. `createClientIpForwarder(opciones)` construye esos headers (devuelve siempre el mismo constructor para el mismo objeto de opciones):
+
+```ts
+import { createHttpClient, createClientIpForwarder } from '@eva_solutions/auth-sdk'
+
+const forward = createClientIpForwarder<Request>(clientIpForwarding) // una vez
+const headers = await forward(request) // undefined si no hay IP o falló
+await createHttpClient().getUser({ accessToken }, headers)
+```
+
+  Aceptan headers extra `getCode`, `login`, `refresh`, `logout`, `deleteAllSessions`, `getUser`, `updateUser`, `deleteUser`, `getUserEmpresas`, `setActiveEmpresa`, `getDirectorio`, `getSessions` y `deleteSession`. Los headers extra no pueden pisar `content-type` ni la credencial de usuario que fija la llamada.
+- Funciona igual en `evaAuthOpenAPIRoutes` (comparte handlers).
 
 #### CSRF por Origin
 
@@ -392,7 +438,7 @@ if (result.ok) {
 }
 ```
 
-Retorna `Promise<Result<{ payload: EvaTokenPayload<TExtra> & TExtra, newCookies?: string[] }>>`.
+Retorna `Promise<VerifyRequestResult<TExtra>>`: un `Result<{ payload: EvaTokenPayload<TExtra> & TExtra, newCookies?: string[] }>`, salvo que un fallo puede traer `newCookies`. Un fallo transitorio al verificar (JWKS inaccesible) devuelve `{ ok: false, error: { kind: 'sdk', reason: 'network', status: 503 } }` sin refrescar; si ocurre tras un refresh exitoso, además trae `newCookies` con los tokens ya rotados, que debes escribir o la rotación se pierde. Un token realmente inválido conserva el resultado de siempre (401, sin `newCookies`).
 
 Lanza un error de configuración (`name === 'EvaAuthConfigError'`) si la request trae algún token y `authUrl` no fue configurada; una request sin tokens devuelve `auth_required` (401) sin leer la configuración.
 
@@ -1173,7 +1219,7 @@ Cobertura actual (crece por slices; lo demás sigue definido en el SDK y en la A
 | `IDENTITY_EVENT_PAYLOAD_SCHEMAS` (+ schemas por payload) | constante | `data` de los 12 eventos de la fase 2, por event code. **Solo ids** (y `rol` / `estado` / `permiso`): sin datos de contacto. `empresa.*`, `grupo.*` y `autorizacion.*` se entregan solo a los clients cuyo producto contrató la empresa afectada (o que no tienen producto) |
 | `WEBHOOK_HEADERS`, `WEBHOOK_TIMESTAMP_WINDOW_SECONDS` | constante | Nombres en minúsculas de los headers del webhook (`SIGNATURE`, `ID`, `TIMESTAMP`) y ventana de la marca de tiempo (`300` s) |
 | `DELIVERY_STATUSES` | constante | Tupla de estados de entrega |
-| `SERVICE_AUDIENCE_SCOPES`, `SERVICE_AUDIENCES` (+ types `ServiceAudience`, `ServiceScope<A>`), `isServiceAudience`, `isScopeOfAudience` | constante + función | Catálogo cerrado de audiencias de servicio y sus permisos: `auth-api` (`users:read`, `webhooks:read`, `webhooks:write`, `empresas:leer`, `empresas:escribir`, `tokens:exchange`, `contrataciones:pedir`, `contrataciones:escribir`, `contrataciones:leer`, `empresas:baja`, `autorizaciones:escribir`, `autorizaciones:leer`, `directorio:leer`; **sin `admin`**) y `whatsapp-api` (`messages:send:text`, `messages:send:media`, `admin`). Un slug de producto nunca coincide con una audiencia (`isServiceAudience`) |
+| `SERVICE_AUDIENCE_SCOPES`, `SERVICE_AUDIENCES` (+ types `ServiceAudience`, `ServiceScope<A>`), `isServiceAudience`, `isScopeOfAudience` | constante + función | Catálogo cerrado de audiencias de servicio y sus permisos: `auth-api` (`users:read`, `webhooks:read`, `webhooks:write`, `empresas:leer`, `empresas:escribir`, `tokens:exchange`, `contrataciones:pedir`, `contrataciones:escribir`, `contrataciones:leer`, `empresas:baja`, `autorizaciones:escribir`, `autorizaciones:leer`, `directorio:leer`, `login:client-ip`; **sin `admin`**) y `whatsapp-api` (`messages:send:text`, `messages:send:media`, `admin`). Un slug de producto nunca coincide con una audiencia (`isServiceAudience`) |
 | `DELEGABLE_AUDIENCE_SCOPES`, `DELEGABLE_AUDIENCES`, `DELEGABLE_SCOPES`, `isDelegableAudience`, `isDelegableScope` (+ types) | constante + función | Lo que una arista de delegación puede llevar: hoy `whatsapp-api` con `messages:send:text` y `messages:send:media`. **`auth-api` nunca es destino y `admin` nunca es delegable** (un test lo fija) |
 | `INTER_EMPRESA_PERMISSIONS`, `INTER_EMPRESA_PERMISSION_LIST`, `isInterEmpresaPermission`, `interEmpresaPermissionOwner` (+ types) | constante + función | Catálogo **cerrado y separado** de permisos entre empresas ("la empresa B puede X sobre los datos de A"), por servicio dueño de los datos. Arranca mínimo (`whatsapp-api`: `whatsapp:mensajes:leer`) y cada servicio agrega los suyos. Distinto del de audiencias: "el client puede X" no es "la empresa B puede X sobre A" |
 | `EMPRESA_ROLES`, `empresaRoleAtLeast`, `EMPRESA_ESTADOS`, `CONTRATACION_ESTADOS`, `CONTRATACION_ESTADOS_VIGENTES`, `CONTRATACION_ESTADOS_FACTURACION`, `isContratacionVigente`, `AUTORIZACION_DIRECCIONES`, `TITULAR_ANTERIOR_DESTINOS` | constante + función | Vocabulario de empresas (módulo puro): roles `titular` > `administrador` > `miembro`, estados de empresa (`activa`, `baja`) y de contratación (`prueba`, `pendiente_pago`, `activo`, `suspendido`, `cancelado`; solo `prueba` y `activo`, sin vencer, cuentan como contratado) |

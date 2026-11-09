@@ -103,6 +103,18 @@ El SDK es dueño del algoritmo de firma S2S (canonical de 7 líneas, ver [api.md
 - **Solo ES256**: `algorithms` fijo; un `alg` distinto se rechaza aunque el JWKS tenga una clave válida de otro algoritmo.
 - **Fallos de infraestructura no son rechazos**: JWKS inalcanzable o `authUrl` sin configurar lanzan (500), no devuelven 401.
 
+## Reenvío de la IP del cliente
+
+`clientIpForwarding` (en `evaAuthRoutes`, `evaAuthOpenAPIRoutes`, `evaAuth` y `verifyRequest`; ver [api.md](api.md#reenvío-de-la-ip-del-cliente)) manda `x-eva-client-ip` a Auth junto con `x-eva-service-token`, un token de servicio con el permiso `login:client-ip`:
+
+- **Solo para backends** con credencial de servicio. Nunca la uses ni expongas el token en código que corra en el navegador.
+- **El backend debe obtener la IP de una fuente confiable**: el header que fija su propio borde o proxy (por ejemplo `cf-connecting-ip` en Cloudflare), o la IP del socket. Nunca leas `x-forwarded-for` ni otro header que el cliente pueda fijar: quien controle ese valor elige su propio cupo de rate limit.
+- Auth solo acepta la IP con un token válido de ese permiso; sin él la ignora y usa la IP de la conexión.
+- **Un fallo no rompe la sesión**: sin token o con el proveedor caído, la llamada sigue sin los headers (2 s de espera máxima, 30 s sin reintento). `onError` avisa sin token ni IP; no los registres en tu callback.
+- **Cookies ante un refresh fallido**: `evaAuth` solo borra las cookies si Auth rechazó el refresh de forma definitiva (error de la API distinto de 408, 429 y 5xx). Ante un fallo de red, 408, 429 o 5xx conserva las cookies y responde 503: un corte de Auth no cierra la sesión de nadie. Si el refresh respondió 200 pero el token nuevo no se pudo verificar por un fallo transitorio (JWKS inaccesible), guarda igual las cookies rotadas y responde 503; un token nuevo realmente inválido sí borra las cookies (401). El 503 lleva `Retry-After` cuando Auth lo mandó. `verifyRequest` nunca borra cookies; si tu consumidor lo hace al fallar, aplica la misma regla (`error.kind === 'api'` y un estado que no sea 408, 429 ni 5xx).
+- **Fallo transitorio al verificar**: en la etapa de firma y clave (`jwtVerify`), solo los errores de token de jose (expirado, firma o claims inválidos, `kid` sin clave, algoritmo no permitido) son definitivos; todo lo demás (JWKS inaccesible o con error, `fetch` caído, `Network connection lost.`) es transitorio. Lo que lance el parseo de `extraClaimsSchema` es siempre definitivo. Ante un fallo transitorio del access token, `evaAuth` y `verifyRequest` responden 503 sin refrescar ni tocar cookies (refrescar gastaría una rotación sin motivo). Tras un refresh 200 con fallo transitorio, `evaAuth` escribe las cookies rotadas y responde 503; `verifyRequest` devuelve `{ ok: false, error: { status: 503 }, newCookies }`: escribe `newCookies` o la rotación se pierde.
+- **Refresh en curso huérfano**: si Workers cancela la request que inició un refresh, su entrada se descarta por antigüedad (8 s) y quien se unió reintenta a los 8 s del inicio de ese refresh, no desde que se unió: Auth solo acepta el refresh token anterior 10 s tras una rotación.
+
 ## Delegación: token delegado (token exchange)
 
 `provider.exchangeToken` pide el token y `verifyDelegatedToken` / `delegatedTokenAuth` lo verifican ([api.md](api.md#verificación-de-token-delegado-verifydelegatedtoken--delegatedtokenauth)). Puntos de seguridad:

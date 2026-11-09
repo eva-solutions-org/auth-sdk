@@ -18,6 +18,7 @@ import {
   isServiceAudience,
 } from '@eva_solutions/auth-contracts'
 import { apiPath } from '../api-path'
+import { ORPHAN_AFTER_MS, isOrphaned } from '../orphan'
 import { validateHttpsUrl } from '../config'
 import type { Result } from '../types'
 import { signS2SHeaders } from './sign'
@@ -26,9 +27,6 @@ import { signS2SHeaders } from './sign'
 export const SERVICE_TOKEN_RENEW_MARGIN_MS = 30_000
 
 const REQUEST_TIMEOUT_MS = 10_000
-
-// Margen para que el plazo de quien se une no venza antes que el aborto del que inició el pedido.
-const JOIN_GRACE_MS = 1_000
 
 const encoder = new TextEncoder()
 
@@ -325,6 +323,7 @@ export function createServiceTokenProvider(
 
   let cached: CachedToken | undefined
   let inFlight: Promise<string> | undefined
+  let inFlightStartedMs = 0
 
   // Token exchange: authenticates with a service token of its own (`aud: auth-api`, permission
   // `tokens:exchange`), whatever the audience of this provider is. Created on first use.
@@ -351,7 +350,7 @@ export function createServiceTokenProvider(
   // Pedidos en curso por llave: dos llamadas simultáneas iguales hacen UN pedido (como `getToken`).
   const exchangeInFlight = new Map<
     string,
-    Promise<Result<DelegatedTokenGrant>>
+    { promise: Promise<Result<DelegatedTokenGrant>>; startedMs: number }
   >()
 
   const requestExchange = async (
@@ -472,7 +471,12 @@ export function createServiceTokenProvider(
       if (Date.now() < hit.renewAtMs) return { ok: true, data: hit.grant }
       exchangeCache.delete(key)
     }
-    const pending = exchangeInFlight.get(key)
+    let entry = exchangeInFlight.get(key)
+    if (entry !== undefined && isOrphaned(entry.startedMs)) {
+      exchangeInFlight.delete(key)
+      entry = undefined
+    }
+    const pending = entry?.promise
     if (pending !== undefined) {
       // Como en `getToken`: si la request que inició el pedido terminó sin esperarlo, Workers lo
       // cancela y su promesa NUNCA se resuelve (`.finally` tampoco corre). Quien se une espera
@@ -480,10 +484,10 @@ export function createServiceTokenProvider(
       // esa) y hace el suyo.
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
-          if (exchangeInFlight.get(key) === pending)
+          if (exchangeInFlight.get(key)?.promise === pending)
             exchangeInFlight.delete(key)
           exchangeToken(input).then(resolve, reject)
-        }, REQUEST_TIMEOUT_MS + JOIN_GRACE_MS)
+        }, ORPHAN_AFTER_MS)
         pending.then(
           (result) => {
             clearTimeout(timer)
@@ -497,9 +501,10 @@ export function createServiceTokenProvider(
       })
     }
     const started = requestExchange(input, key).finally(() => {
-      if (exchangeInFlight.get(key) === started) exchangeInFlight.delete(key)
+      if (exchangeInFlight.get(key)?.promise === started)
+        exchangeInFlight.delete(key)
     })
-    exchangeInFlight.set(key, started)
+    exchangeInFlight.set(key, { promise: started, startedMs: Date.now() })
     return started
   }
 
@@ -507,7 +512,7 @@ export function createServiceTokenProvider(
   // request que lo inició termina sin esperarlo (por ejemplo `provider.getToken()` sin `await` ni
   // `waitUntil`), el runtime cancela su subrequest y esa promesa NUNCA se resuelve: quien se
   // unió quedaría colgado. Por eso los que se unen esperan como máximo lo que dura un pedido
-  // (`REQUEST_TIMEOUT_MS` más un margen de 1 s); pasado ese plazo lo dan por huérfano y hacen el suyo.
+  // (`ORPHAN_AFTER_MS`: un pedido más un margen de 1 s); pasado ese plazo lo dan por huérfano y hacen el suyo.
   // (Probado en workerd: ver docs/api.md, sección `createServiceTokenProvider`.)
   const joinWithDeadline = (
     pending: Promise<string>,
@@ -517,7 +522,7 @@ export function createServiceTokenProvider(
       const timer = setTimeout(() => {
         if (inFlight === pending) inFlight = undefined
         retry().then(resolve, reject)
-      }, REQUEST_TIMEOUT_MS + JOIN_GRACE_MS)
+      }, ORPHAN_AFTER_MS)
       pending.then(
         (token) => {
           clearTimeout(timer)
@@ -535,6 +540,11 @@ export function createServiceTokenProvider(
       if (cached !== undefined && Date.now() < cached.renewAtMs) {
         return Promise.resolve(cached.token)
       }
+      // A request cancelled by the runtime leaves `inFlight` hanging and its timer dies with it:
+      // one older than its deadline is orphaned, whatever the timers did.
+      if (inFlight !== undefined && isOrphaned(inFlightStartedMs)) {
+        inFlight = undefined
+      }
       if (inFlight !== undefined) {
         return joinWithDeadline(inFlight, () => provider.getToken())
       }
@@ -547,6 +557,7 @@ export function createServiceTokenProvider(
           if (inFlight === pending) inFlight = undefined
         })
       inFlight = pending
+      inFlightStartedMs = Date.now()
       return pending
     },
     invalidate(rejectedToken) {

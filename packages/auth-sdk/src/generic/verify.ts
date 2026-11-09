@@ -1,9 +1,14 @@
 import type { ZodType } from 'zod'
 import { verifyAccessToken } from '../jwt'
 import { readTokensFromCookies, setTokenCookies } from '../cookies'
+import {
+  createClientIpForwarder,
+  type ClientIpForwardingOptions,
+} from '../client-ip-forwarding'
 import { createHttpClient } from '../http-client'
 import { deduplicateRefresh } from '../refresh-dedup'
-import type { EvaTokenPayload, Result, EvaSdkError } from '../types'
+import { isTransientVerifyFailure } from '../verify-failure'
+import type { EvaTokenPayload, EvaError, EvaSdkError } from '../types'
 import {
   resolveErrorMessages,
   formatMessage,
@@ -14,6 +19,11 @@ import { getErrorMessages, validateErrorMessagesInput } from '../config'
 export type VerifyRequestOptions<TExtra extends Record<string, unknown>> = {
   extraClaimsSchema?: ZodType<TExtra>
   errorMessages?: Partial<EvaErrorMessages>
+  /**
+   * Solo backends: reenvía la IP real del usuario en el auto-refresh (ver `evaAuthRoutes`). El
+   * estado (30 s sin reintento) es por objeto de opción: declárala una vez, fuera del handler.
+   */
+  clientIpForwarding?: ClientIpForwardingOptions<Request>
 }
 
 type VerifyResult<TExtra extends Record<string, unknown>> = {
@@ -24,8 +34,26 @@ type VerifyResult<TExtra extends Record<string, unknown>> = {
 const client = createHttpClient()
 
 /**
- * Verifica una Request (cookies, JWT y auto-refresh) y devuelve un `Result`; los rechazos de
- * autenticación (401) no lanzan.
+ * Resultado de `verifyRequest`. Es un `Result`, salvo que un fallo puede traer `newCookies`: pasa
+ * cuando Auth ya rotó los tokens pero el nuevo no se pudo verificar por un fallo transitorio
+ * (503). Escríbelas igual, o la sesión rotada se pierde.
+ */
+export type VerifyRequestResult<TExtra extends Record<string, unknown>> =
+  | { ok: true; data: VerifyResult<TExtra> }
+  | { ok: false; error: EvaError; newCookies?: string[] }
+
+const unavailable = (): EvaSdkError => ({
+  kind: 'sdk',
+  reason: 'network',
+  message: 'Servicio de autenticación no disponible',
+  status: 503,
+})
+
+/**
+ * Verifica una Request (cookies, JWT y auto-refresh) y devuelve un `VerifyRequestResult`; los
+ * rechazos de autenticación (401) no lanzan. Un fallo transitorio de verificación (JWKS
+ * inaccesible) devuelve 503 sin refrescar; si ocurre tras un refresh, trae `newCookies` con los
+ * tokens ya rotados.
  *
  * @throws Error de configuración (`name === 'EvaAuthConfigError'`) si `authUrl` no fue
  *   configurada con `configureEvaAuth({ authUrl })` y la request trae algún token: se necesita
@@ -39,7 +67,7 @@ export async function verifyRequest<
 >(
   request: Request,
   opts: VerifyRequestOptions<TExtra> = {},
-): Promise<Result<VerifyResult<TExtra>>> {
+): Promise<VerifyRequestResult<TExtra>> {
   if (opts.errorMessages !== undefined) {
     validateErrorMessagesInput(opts.errorMessages)
   }
@@ -53,6 +81,10 @@ export async function verifyRequest<
       extraClaimsSchema: opts.extraClaimsSchema,
     })
     if (result.ok) return { ok: true, data: { payload: result.data } }
+    // No se pudo VERIFICAR (JWKS inaccesible): sin refresh, que gastaría una rotación sin motivo.
+    if (isTransientVerifyFailure(result.error)) {
+      return { ok: false, error: unavailable() }
+    }
   }
 
   // Path: no hay accessToken válido ni refreshToken → auth_required (REQ-SDK-01)
@@ -68,8 +100,11 @@ export async function verifyRequest<
     }
   }
 
+  const headers = await createClientIpForwarder(opts.clientIpForwarding)(
+    request,
+  )
   const refreshResult = await deduplicateRefresh(refreshToken, () =>
-    client.refresh({ refreshToken }),
+    client.refresh({ refreshToken }, headers),
   )
 
   if (!refreshResult.ok) {
@@ -95,6 +130,16 @@ export async function verifyRequest<
   const verifyResult = await verifyAccessToken<TExtra>(tokens.accessToken, {
     extraClaimsSchema: opts.extraClaimsSchema,
   })
+
+  // Auth ya rotó los tokens: si no se pudo VERIFICAR el nuevo (fallo transitorio) se devuelven
+  // para que el consumidor los escriba, con 503; no se pierde la rotación.
+  if (!verifyResult.ok && isTransientVerifyFailure(verifyResult.error)) {
+    return {
+      ok: false,
+      error: unavailable(),
+      newCookies: setTokenCookies(tokens),
+    }
+  }
 
   // Path: verify post-refresh falló → verify_failed (REQ-SDK-04, REQ-SDK-05)
   if (!verifyResult.ok) {

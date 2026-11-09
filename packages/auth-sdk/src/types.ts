@@ -40,6 +40,8 @@ export type EvaApiError = {
   message: string
   /** HTTP status code del API (400–503). */
   status: number
+  /** Segundos de espera que Auth pidió con `Retry-After`, si mandó un número. */
+  retryAfterSeconds?: number
 }
 
 /**
@@ -54,6 +56,8 @@ export type EvaSdkError = {
   message: string
   /** HTTP status sugerido: 401 (auth/token), 500 (verify_failed), 0 (network/malformed). */
   status: number
+  /** Segundos de espera que Auth pidió con `Retry-After`, si mandó un número. */
+  retryAfterSeconds?: number
 }
 
 /**

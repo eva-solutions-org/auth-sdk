@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { z } from 'zod'
+import { isTransientVerifyFailure } from '../src/verify-failure'
 import { verifyAccessToken } from '../src/jwt'
 import { JWT_CONFIG } from '../src/constants'
 
@@ -189,6 +190,54 @@ describe('verifyAccessToken', () => {
     if (result.ok) return
     expect(result.error.kind).toBe('sdk')
     expect(result.error.status).toBe(401)
+  })
+
+  it.each([
+    ['JWKSTimeout', 'request timed out', true],
+    ['JWKSInvalid', 'bad jwks', true],
+    ['TypeError', 'fetch failed', true],
+    ['Error', 'Network connection lost.', true],
+    ['JWKSNoMatchingKey', 'no key', false],
+    ['JWTExpired', 'expired', false],
+    ['JWSSignatureVerificationFailed', 'bad sig', false],
+    ['JWTClaimValidationFailed', 'bad claim', false],
+    ['JWTInvalid', 'bad jwt', false],
+    ['JOSEAlgNotAllowed', 'bad alg', false],
+  ])(
+    'jwtVerify stage: %s "%s" is transient=%s for the middleware, result unchanged',
+    async (name, message, transient) => {
+      const err = new Error(message)
+      err.name = name
+      jwtVerifyMock.mockRejectedValue(err)
+
+      const result = await verifyAccessToken('t')
+
+      expect(result.ok).toBe(false)
+      if (result.ok) return
+      expect(result.error).toMatchObject({
+        reason: 'token_invalid',
+        status: 401,
+      })
+      expect(isTransientVerifyFailure(result.error)).toBe(transient)
+    },
+  )
+
+  it('a throw while parsing extraClaimsSchema is always definitive, even a TypeError', async () => {
+    jwtVerifyMock.mockResolvedValue({
+      payload: { sub: 'u', sessionId: 's', client_id: 'whatsapp-panel' },
+      protectedHeader: { alg: 'ES256' },
+    } as any)
+    const schema = {
+      safeParseAsync: () => {
+        throw new TypeError('schema bug')
+      },
+    } as any
+
+    const result = await verifyAccessToken('t', { extraClaimsSchema: schema })
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(isTransientVerifyFailure(result.error)).toBe(false)
   })
 
   // ───── Algorithm confusion — REQ-JWT-02 (test dedicado) ─────

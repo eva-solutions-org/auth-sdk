@@ -384,6 +384,7 @@ describe('S2S_SCOPES export (Batch-14 G3)', () => {
     expect(S2S_SCOPES.AUTORIZACIONES_ESCRIBIR).toBe('autorizaciones:escribir')
     expect(S2S_SCOPES.AUTORIZACIONES_LEER).toBe('autorizaciones:leer')
     expect(S2S_SCOPES.DIRECTORIO_LEER).toBe('directorio:leer')
+    expect(S2S_SCOPES.LOGIN_CLIENT_IP).toBe('login:client-ip')
     expect(S2S_SCOPES.EMPRESAS_ESCRIBIR).toBe('empresas:escribir')
     expect('ADMIN' in S2S_SCOPES).toBe(false)
   })
@@ -635,7 +636,10 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
     'ACCOUNT_STATES',
     'ADMIN_ERROR_CODES',
     'getCookieNames',
+    'CLIENT_IP_HEADER',
     'COOKIE_MAX_AGE',
+    'SERVICE_TOKEN_HEADER',
+    'createClientIpForwarder',
     'DEFAULT_ERROR_MESSAGES',
     'EMPTY_BODY_SHA256_HEX',
     'ERROR_CODES',
@@ -781,6 +785,9 @@ const PUBLIC_EXPORT_NAMES: Record<string, string[]> = {
   admin: ['ADMIN_ERROR_CODES', 'createAdminClient'],
   s2s: [
     'AUTORIZACION_CACHE_TTL_MS',
+    'CLIENT_IP_HEADER',
+    'SERVICE_TOKEN_HEADER',
+    'createClientIpForwarder',
     'EMPTY_BODY_SHA256_HEX',
     'S2S_ERROR_CODES',
     'S2S_RESPONSE_HEADERS',

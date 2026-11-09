@@ -17,6 +17,8 @@ import {
   ERROR_CODES,
   HEADERS,
   INTERNAL_HEADERS,
+  CLIENT_IP_HEADER,
+  SERVICE_TOKEN_HEADER,
   PRIVACY_STATES,
   USERS_BATCH_MAX_IDS,
   WEBHOOK_HEADERS,
@@ -394,6 +396,13 @@ describe('contract wire constants (REQ-CONTRACT-08)', () => {
     expect(contract.ERROR_CODES).toBe(ERROR_CODES)
     expect(contract.HEADERS).toBe(HEADERS)
     expect(contract.INTERNAL_HEADERS).toBe(INTERNAL_HEADERS)
+    expect(contract.CLIENT_IP_HEADER).toBe(CLIENT_IP_HEADER)
+    expect(contract.SERVICE_TOKEN_HEADER).toBe(SERVICE_TOKEN_HEADER)
+  })
+
+  it('client_ip_header_is_x_eva_client_ip', () => {
+    expect(CLIENT_IP_HEADER).toBe('x-eva-client-ip')
+    expect(SERVICE_TOKEN_HEADER).toBe('x-eva-service-token')
   })
 })
 
@@ -540,6 +549,7 @@ describe('contract webhook and service client constants (REQ-CONTRACT-08, REQ-CO
       'autorizaciones:escribir',
       'autorizaciones:leer',
       'directorio:leer',
+      'login:client-ip',
     ])
     expect(Array.isArray(DELIVERY_STATUSES)).toBe(true)
     expect([...DELIVERY_STATUSES]).toEqual([

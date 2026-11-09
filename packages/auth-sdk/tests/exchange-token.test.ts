@@ -331,6 +331,25 @@ describe('the cache', () => {
     expect(exchanges()).toHaveLength(2)
   })
 
+  it('an_orphaned_request_older_than_its_deadline_is_dropped_without_timers', async () => {
+    // Only Date is faked (beforeEach): no timer fires, so the orphan cannot rescue itself.
+    exchangeAnswer = (n) =>
+      n === 1 ? (new Promise(() => {}) as never) : exchangeOk(n)
+    const provider = makeProvider()
+    void provider.exchangeToken(input()) // the initiator, cancelled by the runtime
+    for (let i = 0; i < 200 && exchanges().length < 1; i++) {
+      await new Promise((resolve) => setImmediate(resolve))
+    }
+    expect(exchanges()).toHaveLength(1)
+
+    advance(12) // past one request duration plus the margin
+    expect(await provider.exchangeToken(input())).toMatchObject({
+      ok: true,
+      data: { accessToken: 'dlg-2' },
+    })
+    expect(exchanges()).toHaveLength(2)
+  })
+
   it('a_joiner_that_is_answered_in_time_never_makes_a_second_request', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))

@@ -20,6 +20,7 @@ describe('service audience catalog', () => {
         'autorizaciones:escribir',
         'autorizaciones:leer',
         'directorio:leer',
+        'login:client-ip',
       ],
       'whatsapp-api': ['messages:send:text', 'messages:send:media', 'admin'],
     })

@@ -96,7 +96,10 @@ describe('POST /get-code', () => {
 
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ data: { message: 'Código enviado' } })
-    expect(mockGetCode).toHaveBeenCalledWith({ phone: '+51999999999' })
+    expect(mockGetCode).toHaveBeenCalledWith(
+      { phone: '+51999999999' },
+      undefined,
+    )
   })
 
   it('get_code_passthrough_challenge: el body al navegador es igual al del upstream, con challengeId', async () => {
@@ -194,13 +197,16 @@ describe('POST /login', () => {
       body: JSON.stringify(loginBody),
     })
 
-    expect(mockLogin).toHaveBeenCalledWith({
-      ...loginBody,
-      deviceType: 'desktop',
-      os: 'Windows',
-      browser: 'Chrome',
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-    })
+    expect(mockLogin).toHaveBeenCalledWith(
+      {
+        ...loginBody,
+        deviceType: 'desktop',
+        os: 'Windows',
+        browser: 'Chrome',
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      },
+      undefined,
+    )
   })
 
   it('login_requires_challenge_id: sin challengeId responde 400 y no llama al upstream', async () => {
@@ -313,7 +319,10 @@ describe('POST /refresh', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(mockRefresh).toHaveBeenCalledWith({ refreshToken: 'old-refresh' })
+    expect(mockRefresh).toHaveBeenCalledWith(
+      { refreshToken: 'old-refresh' },
+      undefined,
+    )
     expect(setTokenCookies).toHaveBeenCalledWith(newTokens)
     const setCookies = res.headers.getSetCookie()
     expect(setCookies).toContain('access-cookie')
@@ -338,7 +347,10 @@ describe('POST /logout', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(mockLogout).toHaveBeenCalledWith({ refreshToken: 'refresh-tok' })
+    expect(mockLogout).toHaveBeenCalledWith(
+      { refreshToken: 'refresh-tok' },
+      undefined,
+    )
     expect(clearTokenCookies).toHaveBeenCalled()
     const setCookies = res.headers.getSetCookie()
     expect(setCookies).toContain('clear-access')
@@ -360,7 +372,10 @@ describe('GET /me', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(mockGetUser).toHaveBeenCalledWith({ accessToken: 'valid-token' })
+    expect(mockGetUser).toHaveBeenCalledWith(
+      { accessToken: 'valid-token' },
+      undefined,
+    )
     expect(await res.json()).toEqual({ data: user })
   })
 
@@ -392,9 +407,10 @@ describe('DELETE /sessions', () => {
     })
 
     expect(res.status).toBe(200)
-    expect(mockDeleteAllSessions).toHaveBeenCalledWith({
-      refreshToken: 'refresh-tok',
-    })
+    expect(mockDeleteAllSessions).toHaveBeenCalledWith(
+      { refreshToken: 'refresh-tok' },
+      undefined,
+    )
     expect(clearTokenCookies).toHaveBeenCalled()
     const setCookies = res.headers.getSetCookie()
     expect(setCookies).toContain('clear-access')
