@@ -4,13 +4,16 @@
 
 | Cookie | Max-Age | HttpOnly | Secure | SameSite | Path |
 |--------|---------|----------|--------|----------|------|
-| `eva_access_token` | 900 (15 min) | Sí | Sí* | Lax | `/` |
-| `eva_refresh_token` | 2592000 (30 días) | Sí | Sí* | Lax | `/` |
+| `eva_<producto>_access_token` | 900 (15 min) | Sí | Sí | Lax | `/` |
+| `eva_<producto>_refresh_token` | 2592000 (30 días) | Sí | Sí | Lax | `/` |
 
-\* `Secure=false` solo cuando `EVA_BUILD_ENV=local`. En `development` es `true` — se espera HTTPS. → [ADR-002, ADR-007](decisions.md)
+`<producto>` es el slug de `configureEvaAuth({ product })`: dos productos bajo el mismo dominio padre no se pisan las cookies.
+
+`Secure` es **siempre** `true`, en todos los entornos y también al limpiar las cookies, aunque la `authUrl` sea `http://localhost`. Costo: Safari descarta cookies `Secure` sobre `http://localhost`, así que en desarrollo local se sirve la app por https. → [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre) (enmienda ADR-002 y ADR-007)
 
 - Tokens **nunca** accesibles por JavaScript (HttpOnly)
 - `SameSite=Lax`: POST desde sitios externos bloqueados
+- **CSRF por `Origin`** en las mutaciones de `evaAuthRoutes`/`evaAuthOpenAPIRoutes`: `SameSite=Lax` no frena a otro origen del mismo *site* (subdominios). Mismo host por defecto, orígenes extra en `allowedOrigins`; ver [api.md](api.md#csrf-por-origin)
 - Valores decodificados con `decodeURIComponent()` en parsing, con fallback al valor raw si el encoding es inválido (previene crasheo por cookies malformadas)
 - Cookies se limpian **solo después de confirmar éxito** en el Auth Service
 
@@ -25,7 +28,10 @@ Claims validados:
 | Claim | Valor esperado |
 |-------|----------------|
 | `iss` | `auth-service` |
-| `aud` | `proyecto-global` |
+| `aud` | El producto configurado (`configureEvaAuth({ product })`) |
+| `client_id` | Obligatorio (RFC 9068): el producto |
+| `typ` (header) | `at+jwt` |
+| `kid` (header) | Obligatorio, con prefijo `usr-`: un token sin `kid` o con `kid` `svc-` se rechaza antes de buscar una clave |
 | `exp` | No expirado |
 | `nbf` | No antes de |
 
@@ -35,11 +41,12 @@ Claims validados:
 
 | Parámetro | Valor |
 |-----------|-------|
-| Cache TTL | 24 horas |
-| Max TTL (fallback) | 25 horas |
-| Revalidación | ETag / HTTP 304 |
+| Cache TTL (`cacheMaxAge`) | 10 minutos |
+| Cooldown entre re-fetches | 30 segundos |
+| Timeout de fetch | 5 segundos |
+| Revalidación | Re-fetch completo (sin ETag) |
 
-Si el cache supera 25 horas sin actualización exitosa → **verificación rechazada**. No se usa key potencialmente revocada. → [ADR-005](decisions.md)
+Mientras el endpoint JWKS esté online: re-fetch transparente tras expiración del TTL, sin interrupción. Si el endpoint cae exactamente cuando el TTL expira: **verificación rechazada** (fail-closed). No se usa key potencialmente revocada tras expiración. Kid-matching RFC 7517 automático — soporte transparente de rotación multi-clave. El TTL de 10 min acota cuánto tiempo siguen aceptando los receptores una clave retirada (por ejemplo ante un compromiso). Un `kid` desconocido fuerza una recarga, respetando el cooldown. → [ADR-016](decisions.md), [ADR-020](decisions.md#adr-020-identidad-fase-1-tokens-de-servicio-token-de-usuario-por-producto-y-empresas)
 
 ---
 
@@ -53,7 +60,73 @@ Aplica en: `hono/middleware.ts`, `hono/auth-routes.ts`, `generic/verify.ts` (tod
 
 ### JWKS fetch
 
-Variable `pendingFetch` a nivel de módulo en `jwks.ts`. Múltiples verificaciones simultáneas → solo un fetch.
+Deduplicación interna de `createRemoteJWKSet` (jose) en `jwks.ts`. Múltiples verificaciones simultáneas → solo un fetch. Cooldown de 30s entre re-fetches anti-abuse.
+
+---
+
+## S2S: firma HMAC y anti-replay
+
+El SDK es dueño del algoritmo de firma S2S (canonical de 7 líneas, ver [api.md](api.md#eva_solutionsauth-sdks2s)). Puntos de seguridad:
+
+- **Nonce por request** (`x-eva-nonce`): 16 bytes de `crypto.getRandomValues` como 32 hex en minúsculas, parte de la firma. Antes el anti-replay se apoyaba en timestamp + firma, y dos requests idénticos en el mismo segundo producían la misma firma (colisión o falso replay).
+- **Formato canónico estricto**: el verificador valida `^[0-9a-f]{32}$` sin flag `/i` y rechaza con `nonce_malformed`; no normaliza. Es el contrato canónico y defensa en profundidad: una implementación que normalizara el valor podría derivar claves de replay distintas del valor realmente firmado. Reescribir el nonce en otra capitalización no evade el replay por sí solo, porque el nonce va dentro del canonical firmado y rompería el HMAC (`signature_invalid`). Se valida antes del HMAC porque no depende del secreto.
+- **Clave de replay** `${clientId}:${nonce}` (sin ambigüedad: el nonce es un sufijo de largo fijo, 32 hex, que no contiene `:`; el SDK no valida el formato del clientId).
+- **TTL del replayCache** `2 * timestampWindowSeconds + 1`. Con el TTL anterior (igual a la ventana) una clave podía expirar mientras el request aún era aceptable por timestamp, abriendo una ventana de replay.
+- **El anti-replay solo existe con `replayCache`** compartido entre instancias y atómico; sin él, un request capturado se puede reenviar durante la ventana.
+- **Query malformado falla cerrado**: un query con percent-encoding inválido (`?a=%ZZ`) se rechaza con `signature_invalid` por el mismo camino que una firma inválida (secreto y HMAC incluidos, `replayCache` intacto); nunca llega a 500. Un secreto no hex devuelto por `secretStore` es un error de configuración y se lanza de forma explícita, sin incluir el secreto en el mensaje.
+- **Vector de paridad (KAT)**: `packages/auth-sdk/tests/s2s-nonce.mock.test.ts` (test `KAT: canonical y firma literales`) trae un canonical y una firma literales calculados de forma independiente con `node:crypto`. Cualquier otro repo que verifique o firme S2S por su cuenta debe reproducirlos.
+- Decisión y alternativas: [ADR-018](decisions.md#adr-018-nonce-obligatorio-en-las-firmas-s2s-x-eva-nonce).
+
+---
+
+## Admin: firma HMAC de un service client `esAdmin`
+
+`createAdminClient` firma cada request con `signS2SHeaders` (mismas reglas que la sección anterior: nonce por request, timestamp, canonical de 7 líneas con el query y los bytes exactos del body) con el `clientId` y el `secretHex` de un service client con la marca `esAdmin` (ya no es un scope: `admin` no es concedible para `auth-api`). Puntos de seguridad:
+
+- **Sin credencial global ni secreto estático en el viaje**: ya no existe `adminPassword` ni el header `x-admin-password`; el secret no viaja, solo la firma. Una persona, un client: se revoca deshabilitando o borrando su client, y el API registra el slug que firmó.
+- **Anti-replay**: lo aplica el Auth Service con su `replayCache`; el SDK solo garantiza un nonce nuevo por llamada.
+- **Último admin**: el API responde `409 last_admin_client` ante una operación que dejaría al sistema sin un client admin habilitado (`ADMIN_ERROR_CODES.last_admin_client`).
+- **Solo backend u operador**: el secret del client admin da control total sobre los service clients; nunca va al navegador ni a un repositorio. `baseUrl` sigue exigiendo https (o loopback).
+
+---
+
+## Token de servicio (client credentials)
+
+`createServiceTokenProvider` pide el token y `verifyServiceToken` / `serviceTokenAuth` lo verifican (contrato en [api.md](api.md#verificación-de-token-de-servicio-verifyservicetoken--servicetokenauth)). Puntos de seguridad:
+
+- **Dos claves de firma separadas de verdad**: el JWKS publica una clave de usuario (`kid` `usr-…`) y una de servicio (`kid` `svc-…`). Cada verificador solo considera las claves de su prefijo y rechaza los tokens sin `kid`. Un token firmado con la clave de servicio bajo un `kid` `usr-` falla la firma, y al revés; hay un test por cada combinación.
+- **Tipado explícito** (RFC 8725 §3.11, RFC 9068 §2.1): usuario `typ: at+jwt`, servicio `typ: svc-at+jwt`. Cada verificador exige el suyo.
+- **Audiencias disjuntas**: el token de usuario lleva `aud` = producto; el de servicio, una audiencia de servicio. `verifyServiceToken` solo acepta audiencias del catálogo y un permiso que no sea de esa audiencia lanza `TypeError`. `admin` no es un permiso de `auth-api`.
+- **Identidad estable**: `sub` es el id interno del service client (no cambia ni se reutiliza); `client_id` (slug) es solo informativo. Los registros del receptor se indexan por `sub`.
+- **Vida corta y sin replay cache**: 300 s (60 s el token que Auth acuña por cada OTP), tolerancia de reloj de 5 s. Es reutilizable dentro de su vida: lo acotan la audiencia, el permiso y la vida. Revocar una concesión no afecta a los tokens ya emitidos (siguen valiendo hasta 300 s); para cortar de inmediato, deshabilitar el client.
+- **El secreto HMAC solo sirve para pedir tokens**: vive en Auth y en el servicio, y firma `POST /internal/token` (y la superficie `/admin`). El proveedor mide el vencimiento con `expires_in`, no con el `exp` contra el reloj local.
+- **Solo ES256**: `algorithms` fijo; un `alg` distinto se rechaza aunque el JWKS tenga una clave válida de otro algoritmo.
+- **Fallos de infraestructura no son rechazos**: JWKS inalcanzable o `authUrl` sin configurar lanzan (500), no devuelven 401.
+
+## Reenvío de la IP del cliente
+
+`configureEvaAuth({ serviceCredentials })` activa el reenvío por defecto en `evaAuthRoutes`, `evaAuthOpenAPIRoutes`, `evaAuth` y `verifyRequest` (ver [api.md](api.md#reenvío-de-la-ip-del-cliente)): manda `x-eva-client-ip` a Auth junto con `x-eva-service-token`, un token de servicio con el permiso `login:client-ip` (implícito en Auth para cualquier service client habilitado):
+
+- **Solo para backends** con credencial de servicio. `serviceCredentials` es obligatorio en los entry de servidor (`null` lo descarta de forma explícita) y no existe en el entry `/react`: un secreto nunca debe llegar al navegador, ni el tipo ni el entry lo aceptan, y el bundle de react no incluye el proveedor del token (lo verifica un test que construye los entry reales).
+- **El backend debe obtener la IP de una fuente confiable**: el default (`cf-connecting-ip`, que fija el borde de Cloudflare) solo se usa en Cloudflare Workers; fuera de Workers un cliente puede escribir ese header, así que `configureEvaAuth` exige `getClientIp` con `serviceCredentials` y lanza si falta. `getClientIp` debe leer un header que SOLO ese proxy fija y sobrescribe siempre (por ejemplo `x-real-ip` con `proxy_set_header X-Real-IP $remote_addr`), o la IP del socket. Nunca leas `x-forwarded-for` ni otro header que el cliente pueda fijar: quien controle ese valor elige su propio cupo de rate limit.
+- Auth solo acepta la IP con un token válido de ese permiso; sin él la ignora y usa la IP de la conexión.
+- **Un fallo no rompe la sesión**: sin token o con el proveedor caído, la llamada sigue sin los headers (2 s de espera máxima, 30 s sin reintento). `onClientIpForwardingError` avisa sin token ni IP (por defecto con `console.warn`, nunca en silencio); no los registres en tu callback.
+- **Cookies ante un refresh fallido**: `evaAuth` solo borra las cookies si Auth rechazó el refresh de forma definitiva (error de la API distinto de 408, 429 y 5xx). Ante un fallo de red, 408, 429 o 5xx conserva las cookies y responde 503: un corte de Auth no cierra la sesión de nadie. Si el refresh respondió 200 pero el token nuevo no se pudo verificar por un fallo transitorio (JWKS inaccesible), guarda igual las cookies rotadas y responde 503; un token nuevo realmente inválido sí borra las cookies (401). El 503 lleva `Retry-After` cuando Auth lo mandó. `verifyRequest` nunca borra cookies; si tu consumidor lo hace al fallar, aplica la misma regla (`error.kind === 'api'` y un estado que no sea 408, 429 ni 5xx).
+- **Fallo transitorio al verificar**: en la etapa de firma y clave (`jwtVerify`), solo los errores de token de jose (expirado, firma o claims inválidos, `kid` sin clave, algoritmo no permitido) son definitivos; todo lo demás (JWKS inaccesible o con error, `fetch` caído, `Network connection lost.`) es transitorio. Lo que lance el parseo de `extraClaimsSchema` es siempre definitivo. Ante un fallo transitorio del access token, `evaAuth` y `verifyRequest` responden 503 sin refrescar ni tocar cookies (refrescar gastaría una rotación sin motivo). Tras un refresh 200 con fallo transitorio, `evaAuth` escribe las cookies rotadas y responde 503; `verifyRequest` devuelve `{ ok: false, error: { status: 503 }, newCookies }`: escribe `newCookies` o la rotación se pierde.
+- **Refresh en curso huérfano**: si Workers cancela la request que inició un refresh, su entrada se descarta por antigüedad (8 s) y quien se unió reintenta a los 8 s del inicio de ese refresh, no desde que se unió: Auth solo acepta el refresh token anterior 10 s tras una rotación.
+
+## Delegación: token delegado (token exchange)
+
+`provider.exchangeToken` pide el token y `verifyDelegatedToken` / `delegatedTokenAuth` lo verifican ([api.md](api.md#verificación-de-token-delegado-verifydelegatedtoken--delegatedtokenauth)). Puntos de seguridad:
+
+- **Tres tipos, separados por `typ` y `kid`**: usuario (`at+jwt`, `usr-`), servicio (`svc-at+jwt`, `svc-`) y delegado (`dlg-at+jwt`, `svc-`). Ningún verificador acepta el tipo de otro; un test cruza los tres tipos con los dos prefijos contra los tres verificadores y solo acepta la diagonal.
+- **Una audiencia, nunca `auth-api`**: un `aud` arreglo se rechaza aunque contenga la audiencia propia. Las aristas y los permisos delegables salen de un catálogo cerrado donde `auth-api` y `admin` no existen; las opciones inválidas lanzan `TypeError` al construir.
+- **Empresa obligatoria**: un delegado sin `empresa` (o sin `producto` / `sid`) se rechaza (`claims_invalid`). La delegación sin empresa no existe en esta fase.
+- **Cadena acotada**: `act` de 1 a 3 niveles; una cadena más profunda se rechaza. Auth revalida la sesión, el usuario, la pertenencia, la empresa y la contratación en cada salto, así cerrar sesión o dar de baja corta la delegación en ≤ 120 s.
+- **El caché de `exchangeToken` no confía en claims sin verificar**: la llave lleva una huella SHA-256 del `subjectToken` completo (no sus claims), así que un token falsificado no puede leer la entrada de otra persona y un re-exchange desde otro token de la cadena (otro `jti`) nunca reutiliza una entrada obtenida con otro que sí cumplía `requiere_scope_origen`. El SDK no verifica el `subjectToken`: pásalo ya verificado.
+- **Ante Auth no se usan delegados**: toda acción de una persona sobre una empresa va con el token de servicio del producto más el access token de la persona (`subjectToken`), así ningún servicio intermedio puede ejercer el rol de la persona. El `subjectToken` va en el body, o en el header `x-eva-subject-token` en el único `GET` que lo necesita; nunca en la URL.
+- **Riesgo aceptado**: el token delegado no está atado al emisor (sin DPoP): quien lo robe lo usa hasta 120 s ante su `aud`. El servicio destino no ve los roles del producto.
+- **Caché de autorizaciones (30 s)**: una revocación o una baja de empresa tardan como máximo eso en notarse en un servicio que usa `checkAutorizacion`.
 
 ---
 
@@ -75,9 +148,17 @@ Implementados con `AbortSignal.timeout()`.
 - `phone` y `code`: validación de tipo y formato (schema Zod)
 - Body de `PATCH /me`: validado como objeto no vacío
 - User-Agent truncado a **500 caracteres**
+- `authUrl`: solo https (o http en loopback), sin userinfo, query ni fragmento; inmutable una vez fijada; los mensajes de error no repiten el valor recibido (CWE-319) → [configuration.md](configuration.md#url-del-auth-service)
 
 ### Response
 - Estructura `{ data: T }` del Auth Service validada en runtime
+
+### Cache
+- `POST /get-code` y `POST /login` (`evaAuthRoutes` y `evaAuthOpenAPIRoutes`) responden `Cache-Control: no-store` en éxito y en error: llevan el `challengeId` y las cookies de sesión, y no deben quedar en cachés intermedias ni del navegador → [api.md](api.md#evaauthroutesopts-evaauthroutesoptions)
+- El header se fija por **dos mecanismos**, uno por variante:
+  - **`evaAuthRoutes` (variante plana)**: el propio handler, como primera sentencia. Cubre el 200, el 400 por JSON o schema inválido y los errores del Auth Service.
+  - **`evaAuthOpenAPIRoutes`**: el validador responde el 400 *antes* de que corra el handler, así que el header del handler no llega a aplicarse. Lo fija un **middleware de ruta** registrado antes del validador (que además pre-valida que el body sea JSON y, si no lo es, responde el 400 de la variante plana con el header ya puesto) y, para el 400 de schema, el **`defaultHook`** del `OpenAPIHono`, que devuelve el mismo cuerpo `{ error: { code: 'bad_request', message } }` de la variante plana, sin filtrar el `ZodError`.
+- **Coincidencia exacta**: ambos mecanismos de la variante OpenAPI actúan solo sobre los `POST /get-code` y `POST /login` que registra el propio SDK, no por sufijo del path. Una ruta propia del consumidor (por ejemplo `/admin/login` o `/sms/get-code`) no hereda el header ni los mensajes del SDK: conserva su validación y su respuesta. El prefijo donde se monte la sub-app es irrelevante.
 
 ### Safe status cast
 Auth-routes usa `Set` de status codes HTTP conocidos. Status inesperado → fallback `500`.
@@ -88,6 +169,7 @@ Auth-routes usa `Set` de status codes HTTP conocidos. Status inesperado → fall
 
 - Errores del Auth Service se propagan **sin sanitizar** al frontend → [ADR-001](decisions.md)
 - HTTP 429 (rate limiting) pasa **transparente** — el SDK no implementa rate limiting propio
+- `authUrl` no configurada: el error de configuración (`EvaAuthConfigError`) se **propaga** (el consumidor responde 500) en vez de convertirse en 401 o en error de red, y no se emiten ni limpian cookies. → [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre)
 
 ---
 

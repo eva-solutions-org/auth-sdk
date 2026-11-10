@@ -123,52 +123,135 @@ Ver [ADR-011](decisions.md#adr-011-generic-evatokenpayload--optional-schema-vali
 
 ## configureEvaAuth — Configuración runtime
 
-A partir del change `deployment-flexibility`, el SDK ofrece `configureEvaAuth(opts)` para inyectar configuración en runtime sin necesidad de rebuild. Llamar al **boot**, antes del primer request.
+El SDK expone `configureEvaAuth(opts)` para inyectar configuración en runtime. Llamar al **boot**, antes del primer request.
 
 ```ts
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
-// También disponible desde @eva_solutions/auth-sdk/hono, /generic y /react
+// También disponible desde @eva_solutions/auth-sdk/hono y /generic (servidor).
+// El entry /react (navegador) tiene la suya, sin `serviceCredentials`.
 
 configureEvaAuth({
-  authUrl: process.env.EVA_AUTH_URL,         // Override URL del Auth Service
+  authUrl: process.env.AUTH_URL,             // URL del Auth Service (https, o http en loopback)
+  product: 'whatsapp-panel',                 // producto de este consumidor (login, cookies, verifyAccessToken)
   cookieDomain: process.env.COOKIE_DOMAIN,   // Domain para cookies (ej: '.miempresa.com')
+  serviceCredentials: {                      // OBLIGATORIO en servidor: tu credencial de service client
+    clientId: process.env.AUTH_CLIENT_ID,
+    secretHex: process.env.AUTH_CLIENT_SECRET_HEX,
+  },
+  // getClientIp: fuera de Cloudflare Workers también es obligatorio (ver Reenvío de la IP del cliente)
 })
 ```
+
+En Cloudflare Workers eso es todo el cableado (fuera de Workers hace falta además `getClientIp`): con `serviceCredentials` el SDK reenvía la IP real del usuario a Auth en todas las rutas, en `evaAuth` y en `verifyRequest` (ver [Reenvío de la IP del cliente](#reenvío-de-la-ip-del-cliente)). Sin backend (solo local), pasa `serviceCredentials: null`.
 
 ### Opciones
 
 | Opción | Tipo | Descripción |
 |--------|------|-------------|
-| `authUrl` | `string \| undefined` | URL del Auth Service. Override con máxima precedencia. Si se omite, no resetea el valor previo. |
+| `authUrl` | `string \| undefined` | URL base del Auth Service. Obligatoria antes del primer uso que la necesite; inmutable. Ver [URL del Auth Service](#url-del-auth-service). |
+| `product` | `string \| undefined` | Slug del producto (`^[a-z][a-z0-9-]{2,63}$`, por ejemplo `whatsapp-panel`). **Obligatorio solo** si usas las rutas de login, las cookies de sesión o `verifyAccessToken`: da el nombre de las cookies (`eva_<producto>_access_token` / `eva_<producto>_refresh_token`), la audiencia (`aud`) que exige `verifyAccessToken` y el `producto` que viaja en el login. Un servicio que solo verifica tokens de servicio no lo necesita. Inmutable, como `authUrl`; sin él, esos usos lanzan `EvaAuthConfigError` (500). Auth valida que el producto exista, esté habilitado y no coincida con una audiencia de servicio. |
+| `serviceCredentials` | `{ clientId: string; secretHex: string } \| null` | **Obligatorio en los entry de servidor** (raíz, `/hono`, `/generic`); no existe en `/react`. La credencial del service client de este backend; el permiso `login:client-ip` es implícito en Auth, no hay nada que conceder. `null` es el descarte explícito (solo local o sin backend); `undefined` lanza al configurar, sin valores sensibles en el mensaje. Reconfigurar con la misma credencial conserva el objeto de reenvío y su backoff. |
+| `getClientIp` | `(context: Context \| Request) => string \| null \| undefined` | De dónde sale la IP del usuario. **Obligatorio con `serviceCredentials` fuera de Cloudflare Workers** (lanza al configurar); en Workers es opcional y por defecto lee solo `cf-connecting-ip`. Ver [Reenvío de la IP del cliente](#reenvío-de-la-ip-del-cliente). |
+| `onClientIpForwardingError` | `(info: { code; status? }) => void` | Opcional, servidor. Aviso de un fallo del reenvío, sin token ni IP. Por defecto `console.warn` con `code` y `status`. |
 | `cookieDomain` | `string \| undefined` | Atributo `Domain` para `Set-Cookie`. Si se omite, no resetea el valor previo. |
 | `errorWire` | `'api' \| 'string' \| undefined` | Shape HTTP que el SDK emite cuando rechaza un request. Default: `'api'`. Ver [sección errorWire](#errorwire) más abajo. |
 | `errorMessages` | `Partial<EvaErrorMessages> \| undefined` | Override de mensajes de error. Ver [sección Mensajes de error personalizados](#mensajes-de-error-personalizados). |
 
-### Validaciones
+### Reenvío de la IP del cliente
 
-- `authUrl` debe ser una URL válida con protocolo `http:` o `https:`. Si no es válida o usa otro protocolo (`javascript:`, `data:`, `file:`, `ftp:`), la llamada **lanza inmediatamente** con mensaje descriptivo.
-- `cookieDomain` no puede contener `;`, `\r` ni `\n` (defensa contra header injection). Si los contiene, **lanza inmediatamente**.
+Auth limita `get-code` y `login` por IP y por persona, y guarda la IP de la sesión. Detrás de un backend, Auth vería la IP del backend: por eso el backend entrega su credencial **una vez** y el SDK reenvía la IP real, sin cablear nada.
 
-### Idempotencia
-
-Llamadas repetidas sobrescriben los campos provistos. Un campo omitido (`undefined`) preserva el valor previo:
+**Cloudflare Workers** (la IP la fija el borde en `cf-connecting-ip`; es el default y solo existe aquí, detectado con `navigator.userAgent === 'Cloudflare-Workers'`):
 
 ```ts
-configureEvaAuth({ authUrl: 'https://auth-a.com', cookieDomain: '.a.com' })
-configureEvaAuth({ cookieDomain: '.b.com' })  // authUrl sigue siendo 'https://auth-a.com'
+configureEvaAuth({
+  authUrl: env.AUTH_URL,
+  product: 'whatsapp-panel',
+  serviceCredentials: { clientId: env.AUTH_CLIENT_ID, secretHex: env.AUTH_CLIENT_SECRET_HEX },
+})
 ```
 
-### Precedencia de URL del Auth Service
+**Node, Bun o cualquier servidor fuera de Workers**: `getClientIp` es **obligatorio** con `serviceCredentials` (si falta, `configureEvaAuth` lanza al configurar; con `serviceCredentials: null` no aplica). En otro servidor `cf-connecting-ip` lo escribe el cliente, así que el SDK no lo usa por defecto. Lee el header que SOLO tu proxy fija, y asegúrate de que el proxy lo sobrescribe siempre (nunca `x-forwarded-for` tal cual: lo escribe el cliente).
 
+```ts
+import { configureEvaAuth, readRequestHeader } from '@eva_solutions/auth-sdk'
+
+configureEvaAuth({
+  authUrl: process.env.AUTH_URL,
+  product: 'whatsapp-panel',
+  serviceCredentials: { clientId: process.env.AUTH_CLIENT_ID, secretHex: process.env.AUTH_CLIENT_SECRET_HEX },
+  getClientIp: (context) => readRequestHeader(context, 'x-real-ip'), // lo fija nginx con `proxy_set_header X-Real-IP $remote_addr;`
+  onClientIpForwardingError: ({ code, status }) => logger.warn({ code, status }, 'client ip forwarding'),
+})
 ```
-configureEvaAuth({ authUrl }) > process.env.EVA_AUTH_URL > __EVA_AUTH_URL__ (build-time)
+
+Quien llama directo a `createHttpClient` obtiene los headers con `getConfiguredClientIpForwarder()` (el mismo objeto, con el mismo backoff, que usan las rutas): `createHttpClient().getUser({ accessToken }, await getConfiguredClientIpForwarder()(request))`. Una opción `clientIpForwarding` explícita en `evaAuthRoutes`, `evaAuth` o `verifyRequest` tiene prioridad sobre la configurada. El detalle (headers, fallos, backoff) está en [api.md](api.md#reenvío-de-la-ip-del-cliente) y las reglas de seguridad en [security.md](security.md#reenvío-de-la-ip-del-cliente).
+
+### Validaciones
+
+- `authUrl` debe cumplir las reglas de la tabla de [URL del Auth Service](#url-del-auth-service); si no, **lanza inmediatamente**.
+- `product` debe ser un slug (`^[a-z][a-z0-9-]{2,63}$`); si no, **lanza inmediatamente**.
+- `serviceCredentials` es obligatorio en los entry de servidor: `undefined` lanza, con credencial y sin `getClientIp` fuera de Cloudflare Workers también, y una credencial mal formada (`clientId` vacío o `secretHex` que no sea hex) también; ningún mensaje incluye el valor.
+- `cookieDomain` no puede contener `;`, `\r` ni `\n` (defensa contra header injection). Si los contiene, **lanza inmediatamente**.
+
+### Reconfiguración
+
+`authUrl` y `product` son **inmutables** (ver [URL del Auth Service](#url-del-auth-service)): reconfigurar el mismo valor es no-op y uno distinto lanza. Los demás campos provistos sobrescriben el valor previo; un campo omitido (`undefined`) preserva el valor previo:
+
+```ts
+configureEvaAuth({ cookieDomain: '.a.com' })
+configureEvaAuth({ cookieDomain: '.b.com' })  // sobrescribe .a.com
 ```
 
-Si `process.env.EVA_AUTH_URL` contiene un valor inválido, el SDK emite `console.warn` y cae al build-time fallback sin lanzar.
+La llamada es **atómica**: valida todos los campos y recién entonces los aplica. Si uno falla (incluido un `authUrl` distinto del ya configurado), no cambia ninguno.
 
-### Invalidación de JWKS cache
+### URL del Auth Service
 
-Al cambiar `authUrl` a un valor distinto, el SDK invalida automáticamente el cache JWKS. El siguiente fetch de public key irá al nuevo host. Si el `authUrl` es idéntico al previo, el cache se preserva.
+`authUrl` es la URL base del Auth Service. Se configura en runtime con `configureEvaAuth({ authUrl })`, **antes del primer uso que la necesite** (JWKS, `authFetch`, rutas de auth). Un único paquete sirve a todos los entornos; cada consumidor pasa su propia URL. Razonamiento: [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre).
+
+```ts
+configureEvaAuth({ authUrl: process.env.AUTH_URL })
+```
+
+| Entrada | Resultado |
+|---------|-----------|
+| `https://auth.miempresa.com` | Aceptada |
+| `https://auth.miempresa.com/auth` (con path) | Aceptada; el JWKS se lee de `https://auth.miempresa.com/auth/.well-known/jwks.json` |
+| `http://localhost:4000`, `http://127.0.0.1:4000`, `http://[::1]:4000` | Aceptada (http solo en loopback) |
+| `http://auth.miempresa.com` (http remoto) | Lanza |
+| Malformada, no-string o esquema distinto de http/https (`ftp:`, `mailto:`, ...) | Lanza |
+| Con credenciales (`https://user:pass@host`) | Lanza |
+| Con query o fragmento (`?a=1`, `#x`, incluso un `?` o `#` solitario) | Lanza |
+
+- **Sin `/api/v1`**: `authUrl` no lleva el prefijo de versión. El SDK lo agrega a cada ruta del Auth Service (`/api/v1/...`); el JWKS y `/health` se piden en la raíz de `authUrl`. Ver [migration.md](migration.md#9-rutas-del-auth-service-bajo-apiv1).
+- **Normalización**: host en minúsculas y sin `/` final. `getAuthUrl()` devuelve la forma normalizada.
+- **Sin eco**: los mensajes de error no repiten el valor recibido (podría traer credenciales). El rechazo de http remoto muestra solo el href normalizado.
+- **Inmutable**: repetir la llamada con el mismo valor normalizado es no-op; con otro valor lanza `authUrl ya fue configurada y no puede cambiar en runtime`.
+- **Estado por módulo**: la configuración vive en una variable del módulo. Cada proceso (o isolate, en Workers) debe llamar `configureEvaAuth` al arrancar.
+- **ESM y CJS no comparten estado**: los builds ESM y CJS del paquete mantienen cada uno su propia configuración. Si un proceso carga ambos formatos, configura el formato que atiende las requests; de lo contrario `getAuthUrl()` lanza el error de configuración.
+- **Importar no lanza**: importar el SDK o crear `evaAuth()` no lee la configuración.
+
+#### Si falta `authUrl`
+
+`getAuthUrl()` lanza un `Error` con `name === 'EvaAuthConfigError'` y el mensaje `[eva-auth-sdk] authUrl no configurada: llama configureEvaAuth({ authUrl }) al arrancar`. `authFetch` y `verifyAccessToken` lo propagan en vez de convertirlo en error de red o en token inválido; por eso `evaAuth()`, `evaAuthRoutes()` y `verifyRequest` lanzan y tu aplicación responde **500, nunca 401**, sin emitir ni limpiar cookies. Una request sin tokens sigue respondiendo 401 sin leer la configuración.
+
+> **Migración desde 2.x**: ver [migration.md](migration.md).
+
+### Validación HTTPS en S2S, Admin y proveedor de tokens
+
+`createS2SClient`, `createAdminClient` (`baseUrl`) y `createServiceTokenProvider` (`authUrl`) validan que la URL use `https:` (o `http:` con host loopback: `localhost`, `127.0.0.0/8`, `::1`/`[::1]`). Si no cumple, lanzan sincrónicamente antes de retornar el cliente.
+
+```ts
+// Válido — https
+createS2SClient({ baseUrl: 'https://auth.example.com', tokenProvider })
+
+// Válido — loopback para tests
+createS2SClient({ baseUrl: 'http://localhost:4000', tokenProvider })
+
+// Lanza — http no-loopback (CWE-319)
+createS2SClient({ baseUrl: 'http://auth.example.com', tokenProvider })
+// Error: S2SClientConfig.baseUrl inválida: se requiere https (o loopback http): http://auth.example.com
+```
 
 ### Recomendación de cookieDomain para subdominios
 
@@ -182,10 +265,10 @@ Sin punto leading (`miempresa.com`), el browser puede restringir la cookie al do
 
 ### Advertencia: Safari + Secure + HTTP (M-5)
 
-> **Warning**: en builds `dev` y `prod` el flag `Secure=true` está activo (ver ADR-007). Safari descarta cookies con `Secure` si la conexión no es HTTPS, incluso en `localhost`. Chrome tiene comportamiento parcialmente similar en ciertas versiones.
+> **Warning**: las cookies de sesión llevan `Secure` siempre, en todos los entornos (ver [ADR-017](decisions.md#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre)). Safari descarta cookies `Secure` sobre `http://localhost`. Chrome tiene comportamiento parcialmente similar en ciertas versiones.
 >
-> **Para desarrollo local sobre HTTP**: usar `pnpm build:local` (que setea `__EVA_ENV__=local` y desactiva `Secure`).
-> **Para staging / PR previews**: configurar HTTPS end-to-end (ej: Cloudflare, Vercel, mkcert para local).
+> **Para desarrollo local**: sirve tu aplicación por https (por ejemplo con `mkcert`). Una `authUrl` en `http://localhost` sigue siendo válida, pero no cambia el flag `Secure` de las cookies.
+> **Para staging / PR previews**: configura https de extremo a extremo (ej: Cloudflare, Vercel).
 
 ### Orden de inicialización — importa
 
@@ -194,7 +277,7 @@ Llamar `configureEvaAuth` **antes del primer request**. Las cookies ya emitidas 
 ```ts
 // boot.ts
 import { configureEvaAuth } from '@eva_solutions/auth-sdk'
-configureEvaAuth({ cookieDomain: '.miempresa.com' })  // PRIMERO
+configureEvaAuth({ authUrl: process.env.AUTH_URL, cookieDomain: '.miempresa.com', serviceCredentials })  // PRIMERO
 
 // app.ts
 import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
@@ -276,85 +359,63 @@ RFC 6265 exige que para borrar una cookie, el `Set-Cookie; Max-Age=0` del logout
 
 ---
 
-## Modelo build-time
+## Build y distribución
 
-El SDK **también soporta** configuración horneada en build-time para el caso zero-config. Si `configureEvaAuth()` no se llama, todo el comportamiento previo se preserva.
+El SDK se compila **una sola vez** (`pnpm run build`, tsdown; formatos ESM y CJS) y no hay variantes por entorno ni variables de build: la URL del Auth Service no forma parte del artefacto. El paquete publicado en npm es el mismo para todos los entornos.
 
-> **Nota**: antes de `deployment-flexibility`, este era el único modelo. Ahora es el fallback.
+| Script | Uso |
+|--------|-----|
+| `pnpm run build` | Compila `dist/` con la guarda de mapas (`packages/auth-sdk/scripts/build-with-maps.mjs`) |
+| `pnpm run dev` | Compila en modo watch (`tsdown --watch`), sin pasar por la guarda |
 
----
+### Guarda de mapas de declaraciones
 
-## Cómo funciona
+El build de tsdown 0.22.0 / rolldown-plugin-dts 0.25.1 no es determinista: a veces fusiona un chunk `.d.ts` en el index y omite los mapas de declaraciones. Por eso `pnpm run build` no invoca tsdown directamente, sino `packages/auth-sdk/scripts/build-with-maps.mjs`:
 
-`tsdown.config.ts` contiene un map interno de URLs por entorno:
+- Corre tsdown y verifica que existan `dist/index.d.ts.map` y `dist/index.d.cts.map`.
+- Si falta alguno, limpia `dist/` y reintenta, hasta 10 intentos en total.
+- Si tras los 10 intentos no obtiene los mapas, falla (exit 1) con un mensaje claro; basta con volver a correr el build.
+- Si tsdown mismo falla, el script termina de inmediato con su código de salida, sin reintentar.
+- `pnpm run dev` (`tsdown --watch`) no pasa por la guarda, así que en watch esos mapas pueden faltar.
 
-```ts
-const envUrls = {
-  local: 'http://localhost:4000',
-  development: 'https://auth-dev.example.com',
-  production: 'https://auth.example.com',
-}
-```
-
-La variable `EVA_BUILD_ENV` controla qué valores se hornean:
-
-```ts
-define: {
-  __EVA_AUTH_URL__: JSON.stringify(envUrls[env]),
-  __EVA_ENV__: JSON.stringify(env),
-}
-```
-
-Dentro del SDK, `config.ts` expone las constantes ya resueltas — no hay lectura de `process.env` en runtime.
-
----
-
-## Scripts de build
-
-| Script | Comando | Entorno horneado | URL horneada |
-|--------|---------|------------------|--------------|
-| `pnpm build:local` | `cross-env EVA_BUILD_ENV=local tsdown` | `local` | `http://localhost:4000` |
-| `pnpm build:dev` | `cross-env EVA_BUILD_ENV=development tsdown` | `development` | `https://auth-dev.example.com` |
-| `pnpm build:prod` | `cross-env EVA_BUILD_ENV=production tsdown` | `production` | `https://auth.example.com` |
-| `pnpm pack:local` | `build:local` + `pnpm pack` | `local` | `http://localhost:4000` |
-
-`pnpm build` (sin sufijo) usa `production` por defecto.
+Con la guarda, el `dist/` que sale de `pnpm run build` siempre trae los mapas, y por tanto el `pnpm pack` posterior es reproducible. Ejecuta `pnpm run build` antes de `pnpm pack`.
 
 ---
 
 ## Cómo consume el SDK el usuario final
 
-### Producción
+### Instalación
 
 ```bash
 npm install @eva_solutions/auth-sdk
 ```
 
-El paquete publicado en npm se construye con `build:prod` — trae las constantes de producción horneadas.
-
-### Desarrollo local
+### Probar cambios locales del SDK en un consumidor
 
 ```bash
 # En el repo del SDK
-pnpm pack:local
-# Genera eva-auth-sdk-x.x.x.tgz
+pnpm run build
+cd packages/auth-sdk
+pnpm pack
+# Genera eva_solutions-auth-sdk-<version>.tgz en packages/auth-sdk/ (*.tgz está en .gitignore)
 
 # En el proyecto consumidor
-npm install ../path/to/eva-auth-sdk-x.x.x.tgz
+npm install ../path/to/eva_solutions-auth-sdk-<version>.tgz
 ```
 
 ### En código
 
-No hay paso de inicialización obligatorio. El middleware y las rutas funcionan directamente:
+Configura `authUrl` una vez al arrancar, antes de montar rutas o middleware:
 
 ```ts
+import { configureEvaAuth } from '@eva_solutions/auth-sdk'
 import { evaAuth, evaAuthRoutes } from '@eva_solutions/auth-sdk/hono'
+
+configureEvaAuth({ authUrl: process.env.AUTH_URL, serviceCredentials })   // PRIMERO
 
 app.route('/auth', evaAuthRoutes())
 app.use('/api/*', evaAuth())
 ```
-
-Sin parámetros, sin env vars, sin configuración. Todo viene horneado.
 
 #### Uso avanzado: acceso directo al client
 
@@ -373,7 +434,7 @@ Esto es opcional — el flujo normal no lo requiere.
 
 ## Cookies, JWKS Cache y seguridad
 
-→ Ver [security.md](security.md) para configuración completa de cookies (flags, TTLs, Secure por entorno), JWKS cache y modelo de seguridad.
+→ Ver [security.md](security.md) para configuración completa de cookies (flags, TTLs, `Secure` siempre), JWKS cache y modelo de seguridad.
 
 ---
 
@@ -385,7 +446,7 @@ El sub-router se monta con un prefijo fijo. El estándar es `/auth`:
 app.route('/auth', evaAuthRoutes())
 ```
 
-Todos los endpoints quedan bajo `/auth/*` (ej: `/auth/login`, `/auth/me`, `/auth/sessions`).
+Todos los endpoints quedan bajo `/auth/*` (ej: `/auth/login`, `/auth/me`, `/auth/sessions`). Son rutas del BFF de tu backend, no del Auth Service: no llevan `/api/v1`.
 
 ---
 
@@ -496,7 +557,7 @@ local (por llamada) > global (configureEvaAuth) > defaults en español
 
 ### Todas las keys disponibles
 
-<!-- Defaults sincronizados con src/error-messages.ts. Si modificás los defaults, actualizá esta tabla. -->
+<!-- Defaults sincronizados con packages/auth-sdk/src/error-messages.ts. Si modificás los defaults, actualizá esta tabla. -->
 
 | Key | Default (español) |
 |-----|-------------------|
@@ -515,6 +576,7 @@ local (por llamada) > global (configureEvaAuth) > defaults en español
 | `invalidPhone` | `Teléfono inválido` |
 | `invalidUpdateBody` | `Cuerpo de actualización vacío` |
 | `sessionInvalid` | `ID de sesión inválido` |
+| `originNotAllowed` | `Origen no permitido` |
 | `internalError` | `Error interno` |
 
 El placeholder `{0}` en `verifyFailedAfterRefresh` es reemplazado en runtime con el mensaje del error de verificación.
@@ -534,7 +596,7 @@ Ver [ADR-012](decisions.md#adr-012-sistema-i18n-de-mensajes-de-error) para el ra
 
 ## Variante OpenAPI
 
-El SDK ofrece una variante de las rutas de auth compatible con **OpenAPI 3.1** a través del entry point `@eva_solutions/auth-sdk/hono-openapi`. Retorna un `OpenAPIHono` con 11 endpoints documentados.
+El SDK ofrece una variante de las rutas de auth compatible con **OpenAPI 3.1** a través del entry point `@eva_solutions/auth-sdk/hono-openapi`. Retorna un `OpenAPIHono` con 12 endpoints documentados.
 
 > **Importante**: `evaAuthOpenAPIRoutes()` retorna un `OpenAPIHono`. Para que la documentación se genere correctamente en `/doc`, el app padre también debe ser `OpenAPIHono`. Si se monta sobre un `Hono` plain, los handlers funcionan pero la ruta `/doc` no estará disponible.
 
@@ -590,14 +652,15 @@ npm install @hono/zod-openapi
 
 | Método | Path | Descripción |
 |--------|------|-------------|
-| `POST` | `/get-code` | Solicitar código de verificación |
-| `POST` | `/login` | Login con teléfono y código |
+| `POST` | `/get-code` | Solicitar código de verificación; responde `{ data: { message, challengeId } }` |
+| `POST` | `/login` | Login con teléfono, código y el `challengeId` de `/get-code` (obligatorio; sin él, 400) |
 | `POST` | `/refresh` | Rotar tokens via refresh cookie |
 | `POST` | `/logout` | Cerrar sesión actual |
 | `GET` | `/me` | Obtener datos del usuario autenticado |
 | `PATCH` | `/me` | Actualizar perfil del usuario |
 | `DELETE` | `/me` | Eliminar cuenta del usuario |
 | `GET` | `/me/empresas` | Obtener empresas del usuario |
+| `POST` | `/empresa-activa` | Cambiar la empresa activa (`{ empresaId \| null }`); reescribe solo la cookie de access |
 | `GET` | `/sessions` | Listar sesiones activas |
 | `DELETE` | `/sessions/:sessionId` | Eliminar una sesión específica |
 | `DELETE` | `/sessions` | Cerrar todas las sesiones |
@@ -672,10 +735,9 @@ Al testear handlers o middlewares que usan el SDK, es preferible mockear los mó
 ```ts
 import { vi } from 'vitest'
 
-// 1. Mock de config — evita dependencia de variables de entorno
+// 1. Mock de config — evita llamar configureEvaAuth({ authUrl }) en cada test
 vi.mock('@eva_solutions/auth-sdk/src/config', () => ({
   getAuthUrl: () => 'http://auth.test',
-  getEvaEnv: () => 'production' as const,
   getCookieDomain: () => undefined,
   configureEvaAuth: vi.fn(),
   getErrorMessages: vi.fn().mockReturnValue(undefined),
@@ -720,4 +782,4 @@ expect(res.status).toBe(401)
 expect(await res.json()).toEqual({ error: 'No token' })
 ```
 
-Ver los tests en `tests/hono-auth-routes.mock.test.ts` y `tests/generic-verify.mock.test.ts` para ejemplos completos.
+Ver los tests en `packages/auth-sdk/tests/hono-auth-routes.mock.test.ts` y `packages/auth-sdk/tests/generic-verify.mock.test.ts` para ejemplos completos.

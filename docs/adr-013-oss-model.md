@@ -18,7 +18,7 @@ Release the SDK as **fully open source** under the MIT License:
 - **Distribution**: npm public registry under `@eva_solutions/auth-sdk` (org `eva_solutions`)
 - **License**: MIT (permissive, broad adoption pattern for TS/JS auth SDKs)
 - **Contribution model**: open contributions, Contributor Covenant v3.0 Code of Conduct
-- **Positioning**: "Official TypeScript client for the EVA Auth Service" — the SDK is not generic; it targets the EVA Auth Service specifically (hardcoded `aud: 'proyecto-global'`, `iss: 'auth-service'` in JWT verification).
+- **Positioning**: "Official TypeScript client for the EVA Auth Service" — the SDK is not generic; it targets the EVA Auth Service specifically (hardcoded `iss: 'auth-service'` in JWT verification; the user token `aud` is the product set with `configureEvaAuth({ product })`).
 - **Provenance**: npm trusted publishing via OIDC from GitHub Actions
 
 ## Consequences

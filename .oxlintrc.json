@@ -1,5 +1,5 @@
 {
-  "ignorePatterns": ["docs-site/**", "dist/**", "node_modules/**", "coverage/**"],
+  "ignorePatterns": ["**/docs-site/**", "**/dist/**", "**/node_modules/**", "**/coverage/**"],
   "rules": {
     "no-unused-vars": "warn",
     "no-debugger": "error",

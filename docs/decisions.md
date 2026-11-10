@@ -28,7 +28,7 @@ Los errores del Auth Service se propagan **sin sanitizar** al frontend. El SDK n
 ## ADR-002: Cookie Secure=true en development
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada
+**Estado**: Aceptada — enmendada por [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre): ya no existe la excepción `local`; `Secure` es siempre `true`
 
 ### Contexto
 
@@ -96,7 +96,7 @@ Este patrón se aplica tanto en `hono/middleware.ts` como en `generic/verify.ts`
 ## ADR-005: JWKS cache con hard max TTL
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-016](#adr-016-migración-jwks-a-createremotejwkset-de-jose) — 2026-06-08. Ver ADR-016 para el modelo vigente.
 
 ### Contexto
 
@@ -120,7 +120,7 @@ La public key del Auth Service se cachea localmente para evitar fetch en cada ve
 ## ADR-006: Constantes build-time vía tsup define
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada — parcialmente reemplazada por [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time)
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre) — 2026-10-09. Histórico: parcialmente reemplazada por [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time), luego por [ADR-013](#adr-013-auth-url-build-time-puro--closed-environment-map) (build-time puro); ADR-017 abandona el modelo build-time completo.
 
 ### Contexto
 
@@ -149,7 +149,7 @@ Scripts de build: `build:local`, `build:dev`, `build:prod`, `pack:local`.
 ## ADR-007: Cookie Secure por entorno build-time
 
 **Fecha**: 2026-04-09
-**Estado**: Aceptada (reemplaza versión anterior con NODE_ENV runtime)
+**Estado**: Aceptada (reemplaza versión anterior con NODE_ENV runtime) — **enmendada** por [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre): `isSecureCookie()` y `getEvaEnv()` ya no existen; `Secure` se emite siempre, sin depender del entorno.
 
 ### Contexto
 
@@ -225,7 +225,7 @@ Validación anti-injection: `configureEvaAuth({ cookieDomain })` lanza `Error("c
 ## ADR-010: Auth URL Runtime Override con Fallback Build-Time
 
 **Fecha**: 2026-05-02
-**Estado**: Aceptada — parcialmente reemplaza [ADR-006](#adr-006-constantes-build-time-vía-tsup-define)
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-013](#adr-013-auth-url-build-time-puro--closed-environment-map) — 2026-06-08. Ver ADR-013 para el modelo vigente.
 
 ### Contexto
 
@@ -372,6 +372,8 @@ La variante OpenAPI usa `createRoute` (no `defineOpenAPIRoute` — que es para e
 **(i) Schemas Zod en `src/schemas.ts` (canónico) — B1 confirmado**
 
 T-00 probe validó que `@hono/zod-openapi@1.3.0` con schemas importados desde módulo distinto funciona correctamente con `createRoute` y type inference. Issue #1412 de honojs/middleware NO afecta este setup. Schemas declarados en `src/schemas.ts` e importados desde `auth-handlers.ts` y `hono-openapi/index.ts`.
+
+> **Nota (cambio `shared-api-contracts`, S1)**: lo anterior es el registro de la decisión original. Hoy `src/schemas.ts` (ahora en `packages/auth-sdk/src/`) sigue siendo el lugar de los schemas de entrada BFF, pero `ErrorResponseSchema`, `GetCodeResponseSchema`, `LoginResponseSchema` y `RefreshResponseSchema` son alias de los schemas del contrato compartido (`@eva_solutions/auth-contracts`). Y `parseErrorResponse` ya no está en `schemas.ts`: vive en `src/parse-error-response.ts`, un módulo puro sin `zod`. Ver [architecture.md](architecture.md#contrato-compartido).
 
 **(j) Parent OpenAPIHono required — CE1**
 
@@ -598,3 +600,278 @@ Hard delete de `src/errors.ts`. Ningún símbolo migrado ni deprecado.
 - `src/http-client.ts`: import de `parseErrorResponse` migrado a `./schemas`.
 - Tests que importaban de `./errors`: actualizados o eliminados.
 - Migration guide (`docs/migration.md`): documenta que `EvaAuthError` no existe en 1.0.0.
+
+> **Nota posterior**: `parseErrorResponse` se movió después de `src/schemas.ts` a `src/parse-error-response.ts` (cambio `shared-api-contracts`). La firma y el comportamiento no cambiaron; los imports citados arriba son los de esta decisión, no los vigentes.
+
+---
+
+## ADR-013: Auth URL Build-Time Puro — Closed Environment Map
+
+**Fecha**: 2026-06-08
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre) — 2026-10-09 (supersede [ADR-010](#adr-010-auth-url-runtime-override-con-fallback-build-time)). Sigue vigente solo `validateHttpsUrl` (https, o http en loopback) que reutilizan `createS2SClient` y `createAdminClient`.
+
+> **Numeración**: existen dos documentos llamados "ADR-013". Este es "Auth URL Build-Time Puro"; el otro es [adr-013-oss-model.md](adr-013-oss-model.md) (modelo de release OSS) y sigue vigente. No se renumeró ninguno para no romper referencias.
+
+### Contexto
+
+ADR-010 introdujo override runtime de URL via `configureEvaAuth({ authUrl })` y `process.env.EVA_AUTH_URL`. En producción, esto creó superficie de misconfiguración accidental: un consumidor podría apuntar a una URL incorrecta por una env var mal seteada en CI/CD. Además, `validateAuthUrl` aceptaba `http:` para cualquier host — exponiendo `secretHex` y `adminPassword` en claro ante un error de configuración. La auditoría de seguridad (2026-06-08) identificó ambos vectores como CWE-319 (Cleartext Transmission of Sensitive Information).
+
+Con el modelo build-time puro ya establecido para `getEvaEnv()` y cookies Secure, no existe razón técnica para mantener la excepción de URL en runtime.
+
+### Decisión
+
+**Auth URL es BUILD-TIME PURO**. `getAuthUrl()` retorna `BUILD_TIME_AUTH_URL` directamente, sin leer `process.env.EVA_AUTH_URL` ni `_runtimeConfig.authUrl`.
+
+- `configureEvaAuth.authUrl` eliminado de la interfaz pública.
+- `process.env.EVA_AUTH_URL` ignorado.
+- `__EVA_AUTH_URL__` sigue siendo la única fuente de verdad — horneada al compilar con `EVA_BUILD_ENV`.
+- `validateHttpsUrl(value, label)` reemplaza `validateAuthUrl` con semántica más estricta: requiere `https:` salvo host loopback (`localhost`, `127.0.0.0/8`, `::1`, `[::1]`). Se reutiliza en `createS2SClient` y `createAdminClient`.
+
+### Consecuencias
+
+- **Breaking change**: `ConfigureEvaAuthOptions.authUrl` eliminado. Bump a v2.0.0.
+- **Consumers JS puro**: campo `authUrl` extra ignorado silenciosamente (guard `console.warn` de cortesía). Sin throw.
+- **Tests**: `http://auth.test` como stub de `__EVA_AUTH_URL__` migrado a `http://localhost:4000`.
+- **createS2SClient / createAdminClient**: lanzan si `baseUrl` es `http:` no-loopback.
+- **JWKS cache invalidation**: eliminada (no hay authUrl que cambie en runtime).
+- **Edge runtimes**: sin acceso a `process.env.EVA_AUTH_URL` — comportamiento mejorado (consistente en todos los runtimes).
+- **IPv6 loopback**: la comparación en `validateHttpsUrl` cubre tanto `'::1'` como `'[::1]'` — Node.js retiene los corchetes en `.hostname` para IPv6 literals (B4-D1).
+
+### Justificación
+
+- Elimina superficie de misconfiguración accidental (CWE-319 mitigation).
+- Modelo consistente: URL, entorno y Secure cookies son todos build-time.
+- `createS2SClient`/`createAdminClient` con `validateHttpsUrl` evitan transmisión de secretos en claro por error de configuración.
+- El SDK se publica 3 veces (local/development/production) — el consumidor instala la variante correcta. Cero runtime config para URL.
+
+### Alternativas descartadas
+
+- **Deprecation gradual** (console.warn por 1 versión): rechazado (D-02). SDK no está ampliamente distribuido — hard removal es más limpio.
+- **Allowlist de hostnames en validateHttpsUrl**: redundante con build-time puro. La URL no viene de runtime → validar protocolo https es suficiente.
+
+---
+
+## ADR-016: Migración JWKS a createRemoteJWKSet de jose
+
+**Fecha**: 2026-06-08
+**Estado**: Aceptada — supersede [ADR-005](#adr-005-jwks-cache-con-hard-max-ttl)
+
+> **Nota (2026-10-09, re-anclaje a [ADR-017](#adr-017-auth-url-en-runtime-errores-de-configuración-propagados-y-secure-siempre))**: las referencias de este ADR a ADR-013 y al "build-time puro" describen el modelo que ADR-017 reemplazó. Lo que importa para la decisión sigue igual: la `authUrl` se fija una sola vez y es inmutable, así que el singleton JWKS nunca necesita invalidarse y `clearJwksCache` no se reintroduce. Si `authUrl` no está configurada, `getJwksKeyFn()` lanza antes de asignar el singleton: no queda un JWKS envenenado.
+
+### Contexto
+
+La implementación manual de JWKS cache en `src/jwks.ts` (ADR-005) seleccionaba la clave pública usando `keys[0]` de forma ciega, sin validar `kid`, `alg` ni `use`. Esto producía comportamiento incorrecto cuando el Auth Service emite múltiples claves (rotación). Adicionalmente, `jwtVerify` se invocaba sin especificar `algorithms`, permitiendo teóricamente algoritmos distintos de ES256 (defensa en profundidad).
+
+La librería `jose` expone `createRemoteJWKSet`, que implementa kid-matching RFC 7517 completo, deduplicación de fetch concurrente, cooldown anti-abuse, y errores tipados — eliminando la necesidad del código manual.
+
+Se verificó directamente el código fuente de jose v6.2.3 (`node_modules/.pnpm/jose@6.2.3/.../jwks/remote.js`) para confirmar el comportamiento fail-closed: si `cacheMaxAge` expira y el endpoint JWKS está caído, `createRemoteJWKSet` lanza inmediatamente. No usa clave stale tras expiración.
+
+### Decisión
+
+1. Migrar `src/jwks.ts` a `createRemoteJWKSet` de jose. Eliminar la implementación manual de cache (fetchJwks, getPublicKey, clearJwksCache) y el módulo de estado `src/jwks-cache.ts`.
+2. Configurar `cacheMaxAge: 86_400_000` (24h) — alineado con el TTL normal de ADR-005. *(Enmienda ADR-020: 10 min.)*
+3. Configurar `cooldownDuration: 30_000` (30s) y `timeoutDuration: 5_000` (5s) explícitamente.
+4. Agregar `algorithms: ['ES256']` en el call a `jwtVerify` (defensa en profundidad — P4).
+5. Pinear jose a `~6.2.3` en package.json para acotar el rango de upgrades automáticos.
+6. Agregar test de contrato (`tests/jwks.contract.test.ts`) que valida el comportamiento fail-closed con jose real (customFetch que retorna 500), detectando regresión en upgrades.
+
+### Comportamiento fail-closed (verificado)
+
+- Mientras el endpoint JWKS esté online: re-fetch transparente si el endpoint está online tras expiración del `cacheMaxAge`. Sin interrupción de servicio.
+- Si el endpoint JWKS cae exactamente cuando `cacheMaxAge` expira: jose lanza (JWKSTimeout u otro JOSEError) → `verifyAccessToken` retorna `{ ok: false, error: { reason: 'token_invalid', status: 401 } }`.
+- No se usa clave potencialmente revocada tras expiración. El comportamiento fail-closed está protegido por el test de contrato `tests/jwks.contract.test.ts`.
+
+### Justificación
+
+- ADR-005 requería un "hard max TTL con rechazo". jose con `cacheMaxAge: 86_400_000` cumple esa garantía sin código adicional — el behavior fail-closed está verificado en el código fuente.
+- El grace period de 1h de ADR-005 era un beneficio de disponibilidad, no de seguridad. Se acepta la pérdida: si el Auth Service cae exactamente en la ventana post-expiración, las verificaciones fallan hasta que el servicio vuelva (behavior correcto).
+- kid-matching RFC 7517 de jose resuelve el bug P5 (selección ciega `keys[0]`) de forma correcta y probada.
+- La eliminación de `getPublicKey`, `fetchJwks`, `clearJwksCache` del barrel público es consistente con major v2.0.0.
+
+### Consecuencias
+
+- `getPublicKey`, `fetchJwks`, `clearJwksCache` eliminados del barrel público `src/index.ts` (breaking change v2.0.0).
+- Mensajes de error en `EvaSdkError.message` cambian de español SDK-propio a inglés técnico de jose. El discriminator `reason: 'token_invalid'` no cambia.
+- `src/jwks-cache.ts` eliminado.
+- jose pinado a `~6.2.3`. Upgrades de minor version requieren re-validar el test de contrato fail-closed.
+
+### Alternativas descartadas
+
+- **Wrapper de hard reject sobre createRemoteJWKSet**: requeriría ~30 LOC de estado mutable adicional para rastrear el último fetch exitoso, accediendo a `JWKS.fresh` (propiedad no documentada como API estable). El test de contrato hace innecesario este wrapper — si jose cambia su comportamiento, el test lo detecta.
+- **Mantener fetchJwks/getPublicKey como wrappers**: la razón de existir de clearJwksCache era invalidar el cache cuando cambiaba la URL (ADR-010, supersedido por ADR-013 build-time puro). Sin URL dinámica, no hay caso de uso válido. Mantener exports muertos confunde la API.
+
+---
+
+## ADR-017: Auth URL en runtime, errores de configuración propagados y Secure siempre
+
+**Fecha**: 2026-10-09
+**Estado**: Aceptada (supersede [ADR-013](#adr-013-auth-url-build-time-puro--closed-environment-map) de este registro; enmienda [ADR-007](#adr-007-cookie-secure-por-entorno-build-time); re-ancla [ADR-016](#adr-016-migración-jwks-a-createremotejwkset-de-jose))
+
+### Contexto
+
+El modelo build-time (ADR-006, ADR-013) horneaba la URL del Auth Service en el paquete: un tarball por entorno. Los consumidores dependían de tarballs locales (`file:`) y no podían instalar el SDK desde un registro, lo que choca con publicarlo en npm público ([adr-013-oss-model.md](adr-013-oss-model.md), [adr-014-package-scope.md](adr-014-package-scope.md)), donde hay un único artefacto para todos los entornos.
+
+Las razones de ADR-013 siguen vigentes: evitar una URL mal configurada y la transmisión en claro de secretos (CWE-319). Cambia el mecanismo: en vez de impedir la configuración en runtime, se valida su estructura.
+
+### Decisión
+
+1. **`authUrl` se configura en runtime** con `configureEvaAuth({ authUrl })`, al arrancar y antes del primer uso que la necesite. Importar el SDK o crear `evaAuth()` no lee la configuración ni lanza.
+2. **Validación de estructura** (`validateAuthUrl`, `src/config.ts`): acepta `https`, o `http` solo en loopback (`localhost`, `127.0.0.0/8`, `[::1]`); admite path (`https://host/auth`). Rechaza valores que no sean string, URL malformada, esquemas distintos de http/https (incluidos los de path opaco como `mailto:`), userinfo, query y fragmento (también un `?` o `#` solitario). Ningún mensaje repite el valor recibido; el único caso que muestra algo es el rechazo de `http` remoto, que muestra el href ya normalizado (sin userinfo, query ni fragmento).
+3. **Normalizada, inmutable y atómica**: se guarda en minúsculas de host y sin `/` final. Reconfigurar con el mismo valor normalizado es no-op; con otro valor lanza. `configureEvaAuth` valida todos los campos antes de confirmar ninguno: si uno falla, no cambia nada.
+4. **Sin `authUrl`, error de configuración que se propaga**: `getAuthUrl()` lanza un `Error` con `name === 'EvaAuthConfigError'`. `authFetch` y `verifyAccessToken` lo relanzan en vez de mapearlo a `network` o `token_invalid`. El consumidor responde **500, nunca 401**, y el SDK no emite `clearTokenCookies()` por esta causa. Una request sin tokens sigue respondiendo 401 sin leer la configuración. El factory y el predicado del error son internos (no están en los barrels).
+5. **`Secure` siempre** en las cookies de sesión, al emitirlas y al limpiarlas. No hay predicado ni opción.
+6. **Se eliminan** `getEvaEnv`, el tipo `EvaEnv`, `isSecureCookie`, la inyección build-time (`__EVA_AUTH_URL__`, `__EVA_ENV__`) y las variantes de build: queda un único `build`.
+7. **El estado de configuración es por formato de módulo**: los builds ESM y CJS mantienen cada uno su propio estado. Un proceso que cargue ambos formatos debe llamar `configureEvaAuth` en el formato que atiende las requests; si no, `getAuthUrl()` lanza el error de configuración (un 500 explícito, no una URL equivocada en silencio).
+
+### Alternativas consideradas
+
+- **Mantener variantes build-time**: descartada por el contexto; obliga a un tarball por entorno e impide un único paquete publicado en npm.
+- **Capa de compatibilidad para consumidores 2.x**: descartada; no hay consumidores externos en npm, así que el cambio de contrato va en una major (3.0.0) sin shim.
+- **`Secure` derivado del entorno o de la `authUrl`**: descartada; agrega ramas y configuración, y la decisión fue que `Secure` sea siempre `true`.
+
+### Consecuencias
+
+- **Costo en desarrollo local**: Safari no guarda cookies `Secure` sobre `http://localhost`. En local hay que servir el consumidor por https (por ejemplo con un certificado local).
+- `verifyAccessToken` y `verifyRequest` pueden lanzar el error de configuración (documentado con `@throws`); el consumidor debe dejarlo llegar a su handler de errores como 500.
+- Un solo artefacto sirve a todos los entornos; el consumidor es responsable de pasar `authUrl` al arrancar. Olvidarla produce un 500 visible en la primera request que la necesite, no una URL equivocada.
+- La `authUrl` no cambia en runtime, por lo que el cache JWKS no necesita invalidación (ver nota en ADR-016).
+- Los tests que necesiten reiniciar la configuración usan `vi.resetModules()` con import dinámico: el SDK no exporta un reset.
+- Cambio incompatible: major 3.0.0. Guía de migración en [migration.md](migration.md).
+
+---
+
+## ADR-018: Nonce obligatorio en las firmas S2S (x-eva-nonce)
+
+**Fecha**: 2026-10-10
+**Estado**: Aceptada (parte de 3.0.0)
+
+### Contexto
+
+La firma S2S cubría método, path, query, timestamp, clientId y hash del body. Tres problemas:
+
+1. **Colisión en el mismo segundo**: el timestamp tiene resolución de segundos, así que dos requests idénticos (mismo método, path, query y body) emitidos en el mismo segundo producían exactamente la misma firma. El anti-replay se apoyaba en la firma (`${clientId}:${timestamp}:${signatureHex}`), de modo que el segundo request legítimo se rechazaba como `replay_detected`.
+2. **Evasión por capitalización**: el formato de firma se validaba con una regex insensible a mayúsculas. La misma firma en otra capitalización producía una clave de replay distinta en un store sensible a mayúsculas.
+3. **TTL del replayCache incorrecto**: se pasaba `timestampWindowSeconds` como TTL, pero la hora se trunca a segundos y la ventana es inclusiva (±W), por lo que un request es aceptable por timestamp durante 2W + 1 segundos. La clave podía expirar mientras el request seguía siendo válido.
+
+### Decisión
+
+1. Header obligatorio `x-eva-nonce`: 16 bytes de `crypto.getRandomValues` como 32 hex en minúsculas. El verificador valida `^[0-9a-f]{32}$` **sin** flag `/i`; rechaza lo no canónico con la razón nueva `nonce_malformed`, antes del HMAC, sin normalizar.
+2. El canonical pasa a 7 líneas: METHOD, PATH, QUERY, TIMESTAMP, NONCE, CLIENT_ID, BODY_HASH. `nonce` es obligatorio en `S2SCanonicalParts`; `signS2SRequest` lanza si no cumple el formato.
+3. Obligatorio y sin modo dual: sin header → `header_missing`.
+4. La clave de replay la arma el SDK: `${clientId}:${nonce}`. El TTL es `2 * timestampWindowSeconds + 1` (241 s por defecto). El chequeo sigue después del HMAC.
+5. Nuevos exports: `generateS2SNonce()` y `signS2SHeaders(...)`, único punto que genera timestamp + nonce y firma; `createS2SClient` lo usa. Los firmantes manuales migran a él.
+6. El SDK es el dueño del contrato del algoritmo; se elimina la afirmación de que el builder es un espejo del canonical del Auth Service.
+
+### Alternativas consideradas
+
+- **Timestamp en milisegundos**: descartada. Reduce la colisión pero no la elimina (dos requests en el mismo ms), cambia el formato y la ventana del timestamp, y no aporta unicidad criptográfica.
+- **Aceptar nonce en mayúsculas o minúsculas (normalizar o regex `/i`)**: descartada. Obliga a normalizar en todos los puntos (una implementación que normalice mal podría derivar claves de replay distintas del valor firmado); rechazar lo no canónico es más simple y mantiene un único contrato. No era un vector de evasión por sí mismo: el nonce va en el canonical firmado, así que reescribirlo en otra capitalización rompe el HMAC.
+- **Solo documentar la colisión y el TTL**: descartada. Deja a los consumidores con falsos replays y con una ventana de replay real; un defecto de protocolo no se resuelve con documentación.
+- **Modo dual (nonce opcional durante una transición)**: descartada. Un nonce opcional es un downgrade: el atacante lo omite y vuelve al esquema débil. La versión es una major sin consumidores externos, así que no hay costo de transición que justifique el modo dual.
+
+### Consecuencias
+
+- Cambio incompatible dentro de 3.0.0 (aún sin publicar): firmantes y verificadores 2.x y 3.0.0 no interoperan. Guía en [migration.md](migration.md#7-s2s-requiere-x-eva-nonce).
+- `S2SVerifyReason` gana `nonce_malformed`; los mensajes por defecto y `messages` la cubren.
+- Las claves del replayCache cambian de forma y su TTL sube de 120 s a 241 s: el store necesita retener claves más tiempo.
+- Cualquier verificador independiente (por ejemplo en el Auth Service) debe adoptar el canonical de 7 líneas desde este SDK.
+
+## ADR-019: JWT de servicio ES256 para las llamadas del Auth Service
+
+**Fecha**: 2026-10-30
+**Estado**: ~~Aceptada~~ **SUPERSEDED** por [ADR-020](#adr-020-identidad-fase-1-tokens-de-servicio-token-de-usuario-por-producto-y-empresas) (2026-10-31): `verifyServiceJwt` / `serviceJwtAuth` (`svc+jwt` con `bsha` y `replayCache`) se retiran; el token de servicio pasa a ser `svc-at+jwt`, reutilizable dentro de su vida.
+
+### Contexto
+
+El Auth Service llama a otros servicios (Whatsapp-api) y hoy firma esas llamadas con HMAC (el sentido de `verifyS2SRequest` es el contrario: servicio hacia Auth). Eso obliga a compartir un secreto simétrico por cada receptor. El Auth Service ya publica un JWKS ES256, que los receptores consumen con `getJwksKeyFn`.
+
+### Decisión
+
+1. `verifyServiceJwt` (subpath `./s2s`) y `serviceJwtAuth` (subpath `./hono`) verifican un JWT ES256 contra el JWKS remoto, con `iss: 'auth-service'`, `aud` del receptor, `typ: 'svc+jwt'`, `scope`, `jti` y `bsha` (SHA-256 base64url del body crudo). Contrato (histórico; reemplazado por el de ADR-020) en la sección de token de servicio de [api.md](api.md).
+2. Como comparte emisor y JWKS con los access tokens, el `typ` y la `aud` propia lo separan de ellos; configurar la `aud` de usuario lanza.
+3. `replayCache` es **obligatorio** (en `verifyS2SRequest` es opcional): el token vive hasta 60 s y la llamada tiene efectos (enviar un mensaje).
+4. `verify.ts` (HMAC) no cambia: ADR-018 y sus decisiones siguen vigentes.
+
+### Alternativas consideradas
+
+- **Seguir con HMAC en ambos sentidos**: descartada. Un secreto compartido por cada receptor que hay que provisionar y rotar; el JWKS ya existe.
+- **Reutilizar el access token con otra `aud` y sin `typ`**: descartada. Un solo chequeo (`aud`) separaría dos usos con distinta autoridad; el `typ` y el `scope` lo hacen explícito.
+- **`replayCache` opcional como en HMAC**: descartada; un default inseguro silencioso.
+
+### Consecuencias
+
+- Los receptores necesitan `configureEvaAuth({ authUrl })` y un `replayCache` atómico.
+- El emisor (Auth Service) debe producir exactamente el formato de claims del contrato; el SDK no incluye el firmante.
+
+## ADR-020: Identidad fase 1: tokens de servicio, token de usuario por producto y empresas
+
+**Fecha**: 2026-10-31
+**Estado**: Aceptada (parte del SDK y del contrato del diseño `identidad-fase1`, revisión 3, del repo de Ecosistema)
+
+### Contexto
+
+Hasta ahora el SDK tenía un solo tipo de clave y de audiencia: el access token de usuario era `aud: 'proyecto-global'`, los servicios se autenticaban entre sí con HMAC en cada llamada, y el Auth Service firmaba sus llamadas a otros servicios con un JWT `svc+jwt` de un solo uso (ADR-019). Eso no permite más de un producto por usuario, ni que un servicio tenga identidad y permisos por audiencia, ni que los productos creen empresas y sucursales. Nada está en producción: se permiten cambios incompatibles sin expand/contract.
+
+### Decisión
+
+1. **Dos claves, separadas por `kid`**: el JWKS publica claves de usuario (`usr-…`) y de servicio (`svc-…`). El resolutor del SDK (`withKidPrefix`) rechaza los tokens sin `kid` y solo entrega a jose las claves del prefijo que corresponde al tipo de token. Caché del JWKS de 10 min (antes 24 h).
+2. **Tipado explícito**: usuario `typ: at+jwt`, servicio `typ: svc-at+jwt`; cada verificador exige el suyo.
+3. **Token de usuario por producto**: `configureEvaAuth({ product })`; `aud` = producto, `client_id` = producto, `empresa` opcional; `verifyAccessToken` devuelve `clientId` y `empresaId`. Cookies `eva_<producto>_access_token` / `eva_<producto>_refresh_token`. El login lleva `producto` (siempre el configurado) y `empresaId` opcional; `POST /auth/empresa-activa` cambia la empresa activa. `product` es obligatorio solo para login, cookies y `verifyAccessToken`.
+4. **Token de servicio (client credentials)**: `POST /internal/token` autenticado con la firma HMAC existente; respuesta y errores según RFC 6749/8707. `createServiceTokenProvider` guarda el token, mide el vencimiento con `expires_in`, renueva 30 s antes, deduplica pedidos simultáneos e invalida con `invalidate(tokenRechazado)`. `createS2SClient` usa el proveedor (Bearer) y, ante un 401, invalida y reintenta **una** vez. `verifyServiceToken` / `serviceTokenAuth` verifican (`sub` = id estable, `client_id` = slug, `aud` única, `scope`).
+5. **Catálogo cerrado en el contrato** (`catalog.ts`): audiencias de servicio y permisos por audiencia. `admin` no es concedible para `auth-api` (el admin de Auth sigue firmado con HMAC y se marca con `esAdmin`) y sí para `whatsapp-api`. Las concesiones se administran por `/admin/service-clients/{slug}/grants`.
+6. **API interna de empresas** (`empresas:leer` / `empresas:escribir`) y sucursales, con los eventos `empresa.created`, `empresa.member_added`, `empresa.member_removed`, `empresa.branch_created`. Auth no guarda roles.
+7. Se retiran `verifyServiceJwt`, `serviceJwtAuth`, `COOKIES`, `JWT_CONFIG.AUDIENCE`, `SERVICE_CLIENT_SCOPES` y el `admin` de `S2S_SCOPES`. La firma HMAC (`signS2SHeaders` …) se conserva: la usan `/internal/token` y `/admin`.
+8. Los módulos nuevos del contrato que no necesita `react` (`catalog.ts`, `tokens.ts`) son PURE y van aparte de `constants.ts` para no engordar el cierre del entry `react`.
+
+### Alternativas consideradas
+
+- **Una sola clave y distinguir por `typ` y `aud`**: descartada. Un fallo en un chequeo bastaría para confundir tipos; con claves separadas por `kid`, un token de servicio no pasa como de usuario aunque `typ` y `aud` se falsifiquen.
+- **Replay cache para el token de servicio**: descartada. El token es reutilizable por diseño (vida de 300 s, una audiencia, permisos mínimos); el costo del replay cache (estado compartido) no compra nada que la vida corta y la audiencia no den. El token del OTP es de 60 s por envío.
+- **`obtenerToken` con el proveedor del SDK dentro de otros SDKs**: el SDK de WhatsApp no depende de este; el consumidor le pasa el proveedor.
+- **Validar en `configureEvaAuth` que el producto no coincida con una audiencia**: descartada en el SDK (cuesta ~900 B gzip en el cierre de `react` y no cambia ningún resultado: un token de usuario nunca lleva una audiencia de servicio). Lo valida Auth con `isServiceAudience`.
+
+### Consecuencias
+
+- Cambio incompatible: versión mayor. Guía en [migration.md](migration.md#13-identidad-fase-1-producto-token-de-servicio-y-empresas).
+- Los consumidores de usuario configuran `product`; los servicios receptores usan `serviceTokenAuth`; los servicios que llaman a Auth o a otros servicios usan `createServiceTokenProvider`.
+- Revocar una concesión no afecta a los tokens ya emitidos (hasta 300 s). Para cortar de inmediato, deshabilitar el client.
+- El presupuesto ESM del cierre de `react` sube de 11 272 a 11 800 B.
+
+## ADR-021: Identidad fase 2: roles de empresa, delegación (token exchange), contratación, directorio, autorizaciones y grupos
+
+**Fecha**: 2026-10-31
+**Estado**: Aceptada (parte del SDK y del contrato del diseño `identidad-fase2`, revisión 3, del repo de Ecosistema; la implementa después Auth - API)
+
+### Contexto
+
+La fase 1 dejó tokens de servicio, token de usuario por producto y una API interna de empresas sin roles. Falta que un servicio llame a otro en nombre de una persona, que la empresa tenga roles y productos contratados, y que existan directorio, autorizaciones entre empresas y grupos. Nada está en producción: se permiten cambios incompatibles, también sobre la API de empresas de la fase 1.
+
+### Decisión
+
+1. **Token delegado (RFC 8693).** Tercer tipo de token: `typ: dlg-at+jwt`, firmado con clave de servicio (`kid` `svc-`), una sola `aud` (servicio destino, nunca `auth-api`), `act` (cadena de 1 a 3 actores), `empresa` / `producto` / `sid` obligatorios e inmutables, 120 s. Se pide con `exchangeToken` sobre el proveedor de tokens (Bearer de servicio `aud: auth-api` con `tokens:exchange`, sin HMAC en el camino caliente). `verifyDelegatedToken` / `delegatedTokenAuth` exigen `typ` + `kid`; **ningún verificador acepta el tipo de otro** (test cruzado 3 tipos × 2 prefijos × 3 verificadores). Un delegado sin empresa se rechaza.
+2. **Catálogos separados.** `auth-api` suma `tokens:exchange`, `contrataciones:pedir` (concedible a productos: pedir o cancelar la propia), `contrataciones:escribir` (solo facturación) y `leer`, `empresas:baja`, `autorizaciones:escribir|leer` y `directorio:leer`. `DELEGABLE_AUDIENCE_SCOPES` fija lo que una arista puede llevar (sin `auth-api`, sin `admin`). `INTER_EMPRESA_PERMISSIONS` es un catálogo **aparte** de permisos entre empresas (no se confunde "el client puede X" con "la empresa B puede X sobre A"), por servicio dueño de los datos.
+3. **Un único mecanismo ante Auth.** Toda acción de una persona sobre una empresa = token de servicio del producto + el access token de la persona (`subjectToken`, en el body; en el header `x-eva-subject-token` solo en el `GET` de autorizaciones). La empresa sale de la ruta; el rol lo lee Auth de la base (no viaja en los tokens). Los tokens delegados no hablan con Auth.
+4. **Contrato de la API interna adaptada**: `POST/PATCH/GET` de empresas, miembros con rol y salida propia, sucursales con `PATCH` y baja lógica, `GET` con vista `completa` o `recortada`, contratación (`pendiente_pago` propia, cancelar, `GET .../productos/{producto}`), baja y reactivar (`empresas:baja`), grupos, `GET /directorio`, autorizaciones con `verificar`, y del lado admin delegaciones, permisos autorizables, producto/audiencia de los clients, titular, baja/reactivar y contratación a mano. Eventos nuevos con payload de solo ids.
+5. **Caché del exchange por isolate** (hasta 30 s antes del `exp`) con llave = audiencia + scope + huella SHA-256 del `subjectToken` completo. **Desvío deliberado de la llave del diseño** (`sid`, `sub`, `empresa`, `audience`, `scope` y, en re-exchange, `jti`): esos claims salen de un token que el SDK no verificó, y una llave basada en ellos dejaba que un token falsificado que repitiera los claims de otra persona leyera su token delegado. La huella los contiene a todos (incluido el `jti`) y solo pierde el reuso entre dos access tokens distintos de la misma sesión, que no compra nada con una vida de 120 s.
+6. **`checkAutorizacion`** guarda el resultado 30 s por cliente S2S (también las negativas, no los errores). Declarado: una revocación o una baja tardan como máximo eso en notarse.
+7. `ServiceTokenProvider` = `ServiceTokenSource` (`getToken`, `invalidate`; lo que consumen los clientes) + `exchangeToken`. `S2SClientConfig.tokenProvider` es un `ServiceTokenSource`, así un proveedor hecho a mano sigue valiendo.
+8. Los event codes pasan a un módulo puro propio (`event-codes.ts`) y el vocabulario de empresas a `empresa-vocab.ts`: el catálogo de eventos crece con cada fase y `react` no lo usa, así que sale del cierre (que baja en lugar de subir).
+
+### Alternativas consideradas
+
+- **Tokens delegados también ante Auth**: descartada. Cualquier servicio intermedio de una cadena podría ejercer el rol de la persona; con el access token de la persona en el body, solo el backend del producto que la autenticó lo puede hacer.
+- **El rol dentro del token**: descartada. Un cambio de rol no regiría hasta que venciera el token; Auth lo lee en cada operación.
+- **`subjectToken` en un header para todo**: descartada para los verbos con body (el diseño lo fija en el body); un `GET` no tiene body, y la URL no es lugar para un token (se registra en logs).
+- **Llave de caché por claims** (diseño): descartada por la razón del punto 5.
+
+### Consecuencias
+
+- Cambio incompatible: versión mayor. Guía en [migration.md](migration.md#14-identidad-fase-2-roles-de-empresa-delegación-contratación-directorio-autorizaciones-y-grupos).
+- `addEmpresaMember`, `removeEmpresaMember`, `createSucursal` y `createEmpresa` cambian de firma (llevan `subjectToken`; `createEmpresa` pierde `primerMiembroUserId`).
+- El servicio destino de un token delegado no ve los roles del producto: el producto que actúa es responsable de haber comprobado el permiso de la persona antes de pedir el token. El token delegado no está atado al emisor (sin DPoP): quien lo robe lo usa hasta 120 s ante su `aud`.
+- **Desvíos y supuestos declarados** respecto del diseño:
+  - El directorio incluye `razonSocial` (sin nombre la entrada no sirve), además de los campos de perfil.
+  - `prueba` está en `CONTRATACION_ESTADOS_FACTURACION` para poder extender pruebas.
+  - `whatsapp:mensajes:leer` es un **placeholder** hasta el primer permiso real entre empresas.
+  - `requiere_scope_origen` debe pertenecer a la audiencia del actor (el token de entrada se emitió para ella); el contrato solo lo acota al catálogo delegable y **lo valida Auth - API**.
+  - Un fallo del token de la persona responde `403 subject_token_invalid`, no `401`, para no disparar el descarte del token de servicio; `contrataciones:pedir` se separa de `contrataciones:escribir`; los eventos de la fase 1 también tienen payload de solo ids; `jti` es obligatorio en el delegado y su `client_id` debe igualar al de `act`.

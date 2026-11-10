@@ -38,7 +38,7 @@ Los errores del Auth Service se propagan **transparentes** al frontend. El SDK a
 | Archivos | kebab-case | `auth-routes.ts`, `http-client.ts` |
 | Funciones | camelCase | `readTokensFromCookies`, `verifyAccessToken` |
 | Types | PascalCase | `EvaTokenPayload`, `AuthContextValue` |
-| Constantes | UPPER_SNAKE | `HEADERS`, `COOKIES`, `JWT_CONFIG` |
+| Constantes | UPPER_SNAKE | `HEADERS`, `COOKIE_MAX_AGE`, `JWT_CONFIG` |
 
 ---
 
@@ -61,14 +61,14 @@ import { evaAuth } from '@eva_solutions/auth-sdk/hono/middleware'
 ## Tests
 
 - Un archivo por módulo con sufijo `.mock.test.ts`
-- Fixtures compartidas en `tests/helpers/fixtures.ts`
+- Fixtures compartidas en `packages/auth-sdk/tests/helpers/fixtures.ts`
 - Runner: Vitest
 - Mocks: `vi.mock()`
 
 Estructura:
 
 ```
-tests/
+packages/auth-sdk/tests/
 ├── client.mock.test.ts
 ├── cookies.mock.test.ts
 ├── hono-auth-routes.mock.test.ts
@@ -84,4 +84,4 @@ tests/
 ## Dependencies y build
 
 → Stack y dependencias: [architecture.md](architecture.md#stack-técnico)
-→ Build scripts y modelo build-time: [configuration.md](configuration.md)
+→ Build y distribución: [configuration.md](configuration.md#build-y-distribución)
